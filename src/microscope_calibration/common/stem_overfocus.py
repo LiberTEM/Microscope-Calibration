@@ -49,10 +49,8 @@ def make_model(params: OverfocusParams, dataset_shape):
         num_rays=7,  # somehow the minimum
         experiment='4DSTEM',
         detector_pixels=dataset_shape[2],
-        detector_size=dataset_shape[2] * params['detector_pixel_size']
+        detector_size=dataset_shape[2] * params['detector_pixel_size'],
     )
-
-    model.scan_pixel_size = params['scan_pixel_size']
     model.set_obj_lens_f_from_overfocus(params['overfocus'])
     model.scan_pixels = dataset_shape[0]
     return model
