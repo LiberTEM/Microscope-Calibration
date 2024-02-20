@@ -15,7 +15,7 @@ class OverfocusParams(TypedDict):
     semiconv: float  # rad
     cy: float
     cx: float
-    scan_rotation: float
+    scan_rotation: float  # deg
     flip_y: bool
 
 
@@ -116,5 +116,8 @@ def project_frame(frame, scan_y, scan_x, translation_matrix, result_out):
 
             s_y += translation_matrix[4, 0]
             s_x += translation_matrix[4, 1]
-            if s_y >= 0 and s_x >= 0 and s_y < frame.shape[0] and s_x < frame.shape[1]:
-                result_out[int(t_y), int(t_x)] += frame[int(s_y), int(s_x)]
+
+            ss_y = int(np.round(s_y))
+            ss_x = int(np.round(s_x))
+            if ss_y >= 0 and ss_x >= 0 and ss_y < frame.shape[0] and ss_x < frame.shape[1]:
+                result_out[t_y, t_x] += frame[ss_y, ss_x]
