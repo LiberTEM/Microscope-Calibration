@@ -338,8 +338,7 @@ def get_ref_translation_matrix(params: OverfocusParams, nav_shape):
                         1
                     ))
                     b.append((det_y, det_x))
-    #print(a)
-    #print(b)
+
     res = np.linalg.lstsq(a, b, rcond=None)
     return res[0]
 

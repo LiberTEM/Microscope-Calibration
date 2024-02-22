@@ -1,7 +1,7 @@
 from libertem.api import Context
 
 from microscope_calibration.udf.stem_overfocus import (
-    OverfocusUDF, OverfocusParams, OverfocusProcessParams
+    OverfocusUDF, OverfocusParams,
 )
 
 
@@ -20,11 +20,5 @@ def test_smoke():
             flip_y=False,
             scan_rotation=23,
         ),
-        process_params=OverfocusProcessParams(
-            pair_distance=10,
-            pair_radius=1,
-        ),
-        point_y=1,
-        point_x=2,
     )
     ctx.run_udf(dataset=ds, udf=udf)
