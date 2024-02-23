@@ -1,10 +1,11 @@
-from typing import TypedDict
+from typing import TypedDict, TYPE_CHECKING
 
 import numpy as np
-from temgymbasic import components as comp
-from temgymbasic.model import Model
-from temgymbasic.functions import get_pixel_coords
+from temgym_proto import STEMModel
 import numba
+
+if TYPE_CHECKING:
+    from libertem.common import Shape
 
 
 class OverfocusParams(TypedDict):
@@ -19,83 +20,57 @@ class OverfocusParams(TypedDict):
     flip_y: bool
 
 
-def make_model(params: OverfocusParams, dataset_shape):
-    # We have to make it square
-    sample = np.ones((dataset_shape[0], dataset_shape[0]))
-    # Create a list of components to model a simplified 4DSTEM experiment
-    components = [
-        comp.DoubleDeflector(name='Scan Coils', z_up=0.3, z_low=0.25),
-        comp.Lens(name='Lens', z=0.20),
-        comp.Sample(
-            name='Sample',
-            sample=sample,
-            z=params['camera_length'],
-            width=sample.shape[0] * params['scan_pixel_size']
-        ),
-        comp.DoubleDeflector(
-            name='Descan Coils',
-            z_up=0.1,
-            z_low=0.05,
-            scan_rotation=0.
-        )
-    ]
-
-    # Create the model Electron microscope. Initially we create a parallel
-    # circular beam leaving the "gun"
-    model = Model(
-        components,
-        beam_z=0.4,
-        beam_type='paralell',
-        num_rays=7,  # somehow the minimum
-        experiment='4DSTEM',
-        detector_pixels=dataset_shape[2],
-        detector_size=dataset_shape[2] * params['detector_pixel_size'],
+def make_model(params: OverfocusParams, dataset_shape: 'Shape') -> STEMModel:
+    model = STEMModel()
+    model.set_stem_params(
+        overfocus=params['overfocus'],
+        semiconv_angle=params['semiconv'],
+        scan_step_yx=(params['scan_pixel_size'], params['scan_pixel_size']),
+        scan_shape=dataset_shape.nav.to_tuple(),
+        camera_length=params['camera_length'],
     )
-    model.set_obj_lens_f_from_overfocus(params['overfocus'])
-    model.scan_pixels = dataset_shape[0]
+    model.detector.pixel_size = params['detector_pixel_size']
+    model.detector.shape = dataset_shape.sig.to_tuple()
+    model.detector.flip_y = params['flip_y']
+    model.detector.rotation = params['scan_rotation']
+    model.detector.set_center_px((params['cy'], params['cx']))
     return model
 
 
-def get_translation_matrix(params: OverfocusParams, model):
+def get_translation_matrix(model: STEMModel) -> np.ndarray:
+    yxs = (
+        (0, 0),
+        (model.sample.scan_shape[0], model.sample.scan_shape[1]),
+        (0, model.sample.scan_shape[1]),
+        (model.sample.scan_shape[0], 0),
+    )
+    num_rays = 7
+
     a = []
     b = []
-    model.scan_pixel_x = 0
-    model.scan_pixel_y = 0
-    for scan_y in (0, model.scan_pixels - 1):
-        for scan_x in (0, model.scan_pixels - 1):
-            model.scan_pixel_y = scan_y
-            model.scan_pixel_x = scan_x
-            model.update_scan_coil_ratio()
-            model.step()
-            sample_rays_x = model.r[model.sample_r_idx, 0, :]
-            sample_rays_y = model.r[model.sample_r_idx, 2, :]
-            detector_rays_x = model.r[-1, 0, :]
-            detector_rays_y = model.r[-1, 2, :]
-            sample_coords_x, sample_coords_y = get_pixel_coords(
-                rays_x=sample_rays_x,
-                rays_y=sample_rays_y,
-                size=model.components[model.sample_idx].sample_size,
-                pixels=model.components[model.sample_idx].sample_pixels,
-            )
-            detector_coords_x, detector_coords_y = get_pixel_coords(
-                rays_x=detector_rays_x,
-                rays_y=detector_rays_y,
-                size=model.detector_size,
-                pixels=model.detector_pixels,
-                flip_y=params['flip_y'],
-                scan_rotation=params['scan_rotation'],
-            )
-            for i in range(len(sample_coords_x)):
-                a.append((
-                    sample_coords_y[i],
-                    sample_coords_x[i],
-                    model.scan_pixels-model.scan_pixel_y,
-                    model.scan_pixels-model.scan_pixel_x,
-                    1
-                ))
-                b.append((detector_coords_y[i], detector_coords_x[i]))
-    res = np.linalg.lstsq(a, b, rcond=None)
-    return res[0]
+
+    for yx in yxs:
+        for rays in model.scan_point_iter(num_rays=num_rays, yx=yx):
+            if rays.location is model.sample:
+                yyxx = np.stack(
+                    model.sample.on_grid(rays, as_int=False),
+                    axis=-1,
+                )
+                coordinates = np.tile(
+                    np.asarray((*yx, 1)).reshape(-1, 3),
+                    (rays.num, 1),
+                )
+                a.append(np.concatenate((yyxx, coordinates), axis=-1))
+            elif rays.location is model.detector:
+                yy, xx = model.detector.on_grid(rays, as_int=False)
+                b.append(np.stack((yy, xx), axis=-1))
+
+    res, *_ = np.linalg.lstsq(
+        np.concatenate(a, axis=0),
+        np.concatenate(b, axis=0),
+        rcond=None,
+    )
+    return res
 
 
 @numba.njit(cache=True, fastmath=True)
