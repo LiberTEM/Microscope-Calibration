@@ -21,8 +21,7 @@ class OverfocusUDF(UDF):
     def get_task_data(self):
         overfocus_params = self.params.overfocus_params
         translation_matrix = get_translation_matrix(
-            params=overfocus_params,
-            model=make_model(overfocus_params, self.meta.dataset_shape)
+            make_model(overfocus_params, self.meta.dataset_shape)
         )
         select_roi = np.zeros(self.meta.dataset_shape.nav, dtype=bool)
         nav_y, nav_x = self.meta.dataset_shape.nav

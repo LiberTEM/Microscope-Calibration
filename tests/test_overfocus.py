@@ -5,9 +5,12 @@ from numpy.testing import assert_allclose
 from microscope_calibration.util.stem_overfocus_sim import (
     get_transformation_matrix, detector_px_to_specimen_px, project, smiley
 )
-from microscope_calibration.common.stem_overfocus import OverfocusParams
+from microscope_calibration.common.stem_overfocus import (
+    OverfocusParams, make_model, get_translation_matrix
+)
 from microscope_calibration.udf.stem_overfocus import OverfocusUDF
 from libertem.api import Context
+from libertem.common import Shape
 
 
 @pytest.mark.parametrize(
@@ -29,7 +32,7 @@ def test_get_transformation_matrix(params):
         scan_pixel_size=1,
         camera_length=1,
         detector_pixel_size=2,
-        semiconv=np.pi,
+        semiconv=0.004,
         cy=8,
         cx=8,
         scan_rotation=0,
@@ -177,7 +180,7 @@ def test_project():
         scan_pixel_size=0.1,
         camera_length=1,
         detector_pixel_size=1,
-        semiconv=np.pi,
+        semiconv=0.004,
         cy=size/2,
         cx=size/2,
         scan_rotation=0,
@@ -201,7 +204,7 @@ def test_project_2():
         scan_pixel_size=0.1,
         camera_length=1,
         detector_pixel_size=1,
-        semiconv=np.pi,
+        semiconv=0.004,
         cy=size/2 + 3,
         cx=size/2 - 7,
         scan_rotation=0,
@@ -225,7 +228,7 @@ def test_project_3():
         scan_pixel_size=0.1,
         camera_length=1,
         detector_pixel_size=0.5,
-        semiconv=np.pi,
+        semiconv=0.004,
         cy=size/2,
         cx=size/2,
         scan_rotation=0,
@@ -252,7 +255,7 @@ def test_project_rotate():
         scan_pixel_size=0.1,
         camera_length=1,
         detector_pixel_size=1,
-        semiconv=np.pi,
+        semiconv=0.004,
         cy=size/2,
         cx=size/2,
         scan_rotation=180,
@@ -283,7 +286,7 @@ def test_project_odd():
         scan_pixel_size=0.01,
         camera_length=1.,
         detector_pixel_size=1,
-        semiconv=np.pi/2,
+        semiconv=0.004,
         cy=det_y/2,
         cx=det_x/2,
         scan_rotation=0.,
@@ -359,13 +362,38 @@ class RefOverfocusUDF(OverfocusUDF):
         }
 
 
+def test_translation_ref():
+    nav_shape = (8, 8)
+    sig_shape = (8, 8)
+
+    params = OverfocusParams(
+        overfocus=0.0001,
+        scan_pixel_size=0.00000001,
+        camera_length=1,
+        detector_pixel_size=0.0001,
+        semiconv=0.01,
+        cy=3,
+        cx=3,
+        scan_rotation=33.3,
+        flip_y=True,
+    )
+    ref_translation_matrix = get_ref_translation_matrix(
+        params=params,
+        nav_shape=nav_shape,
+    )
+
+    model = make_model(params, Shape(nav_shape + sig_shape, sig_dims=2))
+    proto_translation_matrix = get_translation_matrix(model)
+    assert proto_translation_matrix == pytest.approx(ref_translation_matrix, rel=0.001)
+
+
 def test_udf_ref():
     params = OverfocusParams(
         overfocus=0.0001,
         scan_pixel_size=0.00000001,
         camera_length=1,
         detector_pixel_size=0.0001,
-        semiconv=np.pi,
+        semiconv=0.001,
         cy=3.,
         cx=3.,
         scan_rotation=0,
