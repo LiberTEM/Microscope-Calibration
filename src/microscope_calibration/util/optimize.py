@@ -48,7 +48,7 @@ def make_overfocus_loss_function(
         allows using live plots.
     blur_function
         Function to calculate the blur of the :code:`shifted_sum` result buffer.
-        By default, skimage.measure.blur is used.
+        By default, :code:`skimage.measure.blur_effect` is used.
     extra_udfs
         Iterable of other UDFs to run alongside
     callback
