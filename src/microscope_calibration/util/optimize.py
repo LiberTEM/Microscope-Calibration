@@ -28,7 +28,7 @@ def make_overfocus_loss_function(
     This maps the :code:`scan_rotation` and :code:`overfocus` parameters
     for :class:`OverfocusUDF` in such a way that the starting value is at
     0 and a sensible interval for optimization is :code`[-10, 10]` based
-    on the starting parametres passed as an argument.
+    on the starting parameters passed as an argument.
 
     It also constructs a loss function that updates the parameters of
     the :class:`OverfocusUDF` passed as parameter :code:`overfocus_udf`,
