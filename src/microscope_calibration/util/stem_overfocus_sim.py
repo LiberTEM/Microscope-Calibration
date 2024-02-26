@@ -20,23 +20,28 @@ def smiley(size):
     obj = np.ones((size, size), dtype=np.complex64)
     y, x = np.ogrid[-size//2:size//2, -size//2:size//2]
 
-    outline = (((y*1.2)**2 + x**2) > (110/256*size)**2) & ((((y*1.2)**2 + x**2) < (120/256*size)**2))
+    outline = (((y*1.2)**2 + x**2) > (110/256*size)**2) & \
+              ((((y*1.2)**2 + x**2) < (120/256*size)**2))
     obj[outline] = 0.0
 
     left_eye = ((y + 40/256*size)**2 + (x + 40/256*size)**2) < (20/256*size)**2
     obj[left_eye] = 0
-    right_eye = (np.abs(y + 40/256*size) < 15/256*size) & (np.abs(x - 40/256*size) < 30/256*size)
+    right_eye = (np.abs(y + 40/256*size) < 15/256*size) & \
+                (np.abs(x - 40/256*size) < 30/256*size)
     obj[right_eye] = 0
 
     nose = (y + 20/256*size + x > 0) & (x < 0) & (y < 10/256*size)
 
     obj[nose] = (0.05j * x + 0.05j * y)[nose]
 
-    mouth = (((y*1)**2 + x**2) > (50/256*size)**2) & ((((y*1)**2 + x**2) < (70/256*size)**2)) & (y > 20/256*size)
+    mouth = (((y*1)**2 + x**2) > (50/256*size)**2) & \
+            ((((y*1)**2 + x**2) < (70/256*size)**2)) & \
+            (y > 20/256*size)
 
     obj[mouth] = 0
 
-    tongue = (((y - 50/256*size)**2 + (x - 50/256*size)**2) < (20/256*size)**2) & ((y**2 + x**2) > (70/256*size)**2)
+    tongue = (((y - 50/256*size)**2 + (x - 50/256*size)**2) < (20/256*size)**2) & \
+             ((y**2 + x**2) > (70/256*size)**2)
     obj[tongue] = 0
 
     # This wave modulation introduces a strong signature in the diffraction pattern
@@ -60,7 +65,9 @@ def get_transformation_matrix(sim_params: OverfocusParams):
 
 
 @numba.njit(inline='always', cache=True)
-def detector_px_to_specimen_px(y_px, x_px, cy, cx, detector_pixel_size, scan_pixel_size, camera_length, overfocus, transformation_matrix, fov_size_y, fov_size_x):
+def detector_px_to_specimen_px(
+        y_px, x_px, cy, cx, detector_pixel_size, scan_pixel_size, camera_length,
+        overfocus, transformation_matrix, fov_size_y, fov_size_x):
     position_y, position_x = (y_px - cy) * detector_pixel_size, (x_px - cx) * detector_pixel_size
     position_y, position_x = transformation_matrix @ np.array((position_y, position_x))
     specimen_position_y = position_y / camera_length * overfocus
@@ -71,7 +78,9 @@ def detector_px_to_specimen_px(y_px, x_px, cy, cx, detector_pixel_size, scan_pix
 
 
 @numba.njit(cache=True)
-def _project(image, cy, cx, detector_pixel_size, scan_pixel_size, camera_length, overfocus, transformation_matrix, result_out):
+def _project(
+        image, cy, cx, detector_pixel_size, scan_pixel_size, camera_length,
+        overfocus, transformation_matrix, result_out):
     scan_shape = result_out.shape[:2]
     for det_y in range(result_out.shape[2]):
         for det_x in range(result_out.shape[3]):
