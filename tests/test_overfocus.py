@@ -1,6 +1,7 @@
 import numpy as np
 import pytest
 from numpy.testing import assert_allclose
+from skimage.measure import blur_effect
 
 from microscope_calibration.util.stem_overfocus_sim import (
     get_transformation_matrix, detector_px_to_specimen_px, project, smiley
@@ -8,6 +9,8 @@ from microscope_calibration.util.stem_overfocus_sim import (
 from microscope_calibration.common.stem_overfocus import (
     OverfocusParams, make_model, get_translation_matrix
 )
+from microscope_calibration.util.optimize import make_overfocus_loss_function, minimize
+
 from microscope_calibration.udf.stem_overfocus import OverfocusUDF
 from libertem.api import Context
 from libertem.common import Shape
@@ -341,7 +344,6 @@ def get_ref_translation_matrix(params: OverfocusParams, nav_shape):
                         1
                     ))
                     b.append((det_y, det_x))
-
     res = np.linalg.lstsq(a, b, rcond=None)
     return res[0]
 
@@ -413,3 +415,59 @@ def test_udf_ref():
     res = ctx.run_udf(dataset=ds, udf=(ref_udf, res_udf))
     assert_allclose(res[0]['shifted_sum'].data.astype(bool), obj.astype(bool))
     assert_allclose(res[1]['shifted_sum'].data.astype(bool), obj.astype(bool))
+
+
+def test_optimize():
+    params = OverfocusParams(
+        overfocus=0.0001,
+        scan_pixel_size=0.00000001,
+        camera_length=1,
+        detector_pixel_size=0.0001,
+        semiconv=np.pi,
+        cy=3.,
+        cx=3.,
+        scan_rotation=0,
+        flip_y=False
+    )
+    obj = np.zeros((8, 8))
+    obj[3, 3] = 1
+    sim = project(obj, scan_shape=(8, 8), detector_shape=(8, 8), sim_params=params)
+    ctx = Context.make_with('inline')
+    ds = ctx.load('memory', data=sim)
+    ref_udf = RefOverfocusUDF(params)
+    make_new_params, loss = make_overfocus_loss_function(
+        params=params,
+        ctx=ctx,
+        dataset=ds,
+        overfocus_udf=ref_udf,
+    )
+    res = minimize(loss=loss)
+    res_params = make_new_params(res.x)
+    assert_allclose(res_params['scan_rotation'], params['scan_rotation'], atol=0.1)
+    assert_allclose(res_params['overfocus'], params['overfocus'], rtol=0.1)
+
+    valdict = {'val': False}
+
+    def callback(args, new_params, udf_results):
+        if valdict['val']:
+            pass
+        else:
+            valdict['val'] = True
+            assert_allclose(args, [0, 0])
+            assert params == new_params
+            assert_allclose(udf_results[0]['shifted_sum'].data.astype(bool), obj.astype(bool))
+
+    make_new_params, loss = make_overfocus_loss_function(
+        params=params,
+        ctx=ctx,
+        dataset=ds,
+        overfocus_udf=ref_udf,
+        callback=callback,
+        blur_function=blur_effect,
+        extra_udfs=(OverfocusUDF(params), ),
+        plots=(),
+    )
+    res = minimize(loss=loss, method='SLSQP', bounds=[(-10, 10), (-10, 10)])
+    res_params = make_new_params(res.x)
+    assert_allclose(res_params['scan_rotation'], params['scan_rotation'], atol=0.1)
+    assert_allclose(res_params['overfocus'], params['overfocus'], rtol=0.1)
