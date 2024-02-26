@@ -13,7 +13,7 @@ dependencies = [
     "numpy",
     "libertem",
     "typing-extensions",
-    "temgymbasic",
+    "temgymbasic@git+https://github.com/DavidLanders95/TemGymBasic@main",
     "numba",
 ]
 classifiers = [
