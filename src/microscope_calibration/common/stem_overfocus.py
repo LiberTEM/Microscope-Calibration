@@ -1,7 +1,7 @@
 from typing import TypedDict, TYPE_CHECKING
 
 import numpy as np
-from temgym_proto import STEMModel
+from temgymbasic.model import STEMModel
 import numba
 
 if TYPE_CHECKING:
