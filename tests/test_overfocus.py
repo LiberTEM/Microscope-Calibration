@@ -383,8 +383,8 @@ def test_translation_ref():
     )
 
     model = make_model(params, Shape(nav_shape + sig_shape, sig_dims=2))
-    proto_translation_matrix = get_translation_matrix(model)
-    assert proto_translation_matrix == pytest.approx(ref_translation_matrix, rel=0.001)
+    translation_matrix = get_translation_matrix(model)
+    assert translation_matrix == pytest.approx(ref_translation_matrix, rel=0.001)
 
 
 def test_udf_ref():
