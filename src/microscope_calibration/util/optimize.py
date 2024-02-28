@@ -1,5 +1,5 @@
 import numpy as np
-from scipy. optimize import minimize as scipy_minimize
+from scipy. optimize import shgo
 from skimage.measure import blur_effect
 from typing import TYPE_CHECKING, Iterable, Callable, Optional
 
@@ -73,10 +73,10 @@ def make_overfocus_loss_function(
     # Rotate and scale the angle so that the optimizer works between +-10,
     # corresponding to +- 5 deg
     rotation_diff = params['scan_rotation']
-    rotation_scale = 2
+    rotation_scale = 1
     # Values to shift and scale the overfocus so that the optimizer works between +-10
     overfocus_diff = params['overfocus']
-    overfocus_scale = 10 / np.abs(params['overfocus'])
+    overfocus_scale = 40 / np.abs(params['overfocus'])
 
     if blur_function is None:
         blur_function = blur_effect
@@ -124,19 +124,24 @@ def make_overfocus_loss_function(
     return make_new_params, loss
 
 
-def minimize(loss, method='COBYLA', **kwargs):
+def optimize(loss, bounds=None, minimizer_kwargs=None, **kwargs):
     '''
-    Convenience function to call :func:`scipy.optimize.minimize`
+    Convenience function to call :func:`scipy.optimize.shgo`
 
-    This calls :func:`scipy.optimize.minimize` with sensible starting
-    values and method for a loss function created with
-    :func:`make_overfocus_loss_function`. Additional kwargs
-    are passed to :func:`scipy.optimize.minimize`.
+    This calls :func:`scipy.optimize.shgo` with sensible bounds and minimizer
+    method for a loss function created with
+    :func:`make_overfocus_loss_function`. Additional kwargs are passed to
+    :func:`scipy.optimize.shgo`.
     '''
-    res = scipy_minimize(
-        fun=loss,
-        x0=[0, 0],
-        method=method,
+    if bounds is None:
+        bounds = [(-10, 10), (-10, 10)]
+
+    if minimizer_kwargs is None:
+        minimizer_kwargs = {'method': 'COBYLA'}
+    res = shgo(
+        func=loss,
+        bounds=bounds,
+        minimizer_kwargs=minimizer_kwargs,
         **kwargs
     )
     return res
