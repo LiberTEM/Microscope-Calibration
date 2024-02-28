@@ -53,7 +53,7 @@ def make_overfocus_loss_function(
         Iterable of other UDFs to run alongside
     callback
         Function that is called for each loop with the loss function
-        arguments, current parameters and UDF results
+        arguments, current parameters, UDF results and current loss
     **kwargs
         Extra arguments to pass to the :func:`~libertem.api.Context.run_udf` call,
         such as plots.
@@ -117,9 +117,10 @@ def make_overfocus_loss_function(
         param_copy = make_new_params(args)
         overfocus_udf.params.overfocus_params.update(param_copy)
         res = ctx.run_udf(dataset=dataset, udf=[overfocus_udf] + list(extra_udfs), **kwargs)
+        blur = blur_function(res[0]['shifted_sum'].data)
         if callback is not None:
-            callback(args, overfocus_udf.params.overfocus_params, res)
-        return blur_function(res[0]['shifted_sum'].data)
+            callback(args, overfocus_udf.params.overfocus_params, res, blur)
+        return blur
 
     return make_new_params, loss
 
