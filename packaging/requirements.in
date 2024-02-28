@@ -1,0 +1,11 @@
+jupyter
+notebook
+libertem[bqplot]
+pyqtgraph
+pyopengl
+numpy
+ipywidgets
+ipympl
+scikit-image
+matplotlib
+jupyter_ui_poll
