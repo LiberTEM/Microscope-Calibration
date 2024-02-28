@@ -1,3 +1,5 @@
+#!/bin/sh
+set -e
 (cd .. ; \
 rm -r packaging/Microscope-Calibration; \
 mkdir packaging/Microscope-Calibration; \
