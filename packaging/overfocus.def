@@ -1,0 +1,15 @@
+bootstrap: docker
+from: python:3.11-slim
+
+%files
+        ./Microscope-Calibration        /Microscope-Calibration
+        ./requirements.txt      /requirements.txt
+
+%post
+    apt-get update && apt-get -y install git
+    python -m venv /venv/
+    /venv/bin/python -m pip install -r /requirements.txt
+    /venv/bin/python -m pip install --no-deps -e /Microscope-Calibration
+
+%runscript
+    /venv/bin/jupyter lab /Microscope-Calibration/examples/
