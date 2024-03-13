@@ -9,7 +9,7 @@ from microscope_calibration.util.stem_overfocus_sim import (
 from microscope_calibration.common.stem_overfocus import (
     OverfocusParams, make_model, get_translation_matrix
 )
-from microscope_calibration.util.optimize import make_overfocus_loss_function, minimize
+from microscope_calibration.util.optimize import make_overfocus_loss_function, optimize
 
 from microscope_calibration.udf.stem_overfocus import OverfocusUDF
 from libertem.api import Context
@@ -441,14 +441,14 @@ def test_optimize():
         dataset=ds,
         overfocus_udf=ref_udf,
     )
-    res = minimize(loss=loss)
+    res = optimize(loss=loss)
     res_params = make_new_params(res.x)
     assert_allclose(res_params['scan_rotation'], params['scan_rotation'], atol=0.1)
     assert_allclose(res_params['overfocus'], params['overfocus'], rtol=0.1)
 
     valdict = {'val': False}
 
-    def callback(args, new_params, udf_results):
+    def callback(args, new_params, udf_results, current_loss):
         if valdict['val']:
             pass
         else:
@@ -467,7 +467,10 @@ def test_optimize():
         extra_udfs=(OverfocusUDF(params), ),
         plots=(),
     )
-    res = minimize(loss=loss, method='SLSQP', bounds=[(-10, 10), (-10, 10)])
+    res = optimize(
+        loss=loss, minimizer_kwargs={'method': 'SLSQP'},
+        bounds=[(-10, 10), (-10, 10)],
+    )
     res_params = make_new_params(res.x)
     assert_allclose(res_params['scan_rotation'], params['scan_rotation'], atol=0.1)
     assert_allclose(res_params['overfocus'], params['overfocus'], rtol=0.1)
