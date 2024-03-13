@@ -1,7 +1,8 @@
 import numpy as np
 from scipy. optimize import shgo
 from skimage.measure import blur_effect
-from typing import TYPE_CHECKING, Iterable, Callable, Optional
+from typing import TYPE_CHECKING, Callable, Optional
+from collections.abc import Iterable
 
 from microscope_calibration.common.stem_overfocus import OverfocusParams
 

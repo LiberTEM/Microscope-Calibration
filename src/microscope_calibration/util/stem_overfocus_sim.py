@@ -21,7 +21,7 @@ def smiley(size):
     y, x = np.ogrid[-size//2:size//2, -size//2:size//2]
 
     outline = (((y*1.2)**2 + x**2) > (110/256*size)**2) & \
-              ((((y*1.2)**2 + x**2) < (120/256*size)**2))
+              (((y*1.2)**2 + x**2) < (120/256*size)**2)
     obj[outline] = 0.0
 
     left_eye = ((y + 40/256*size)**2 + (x + 40/256*size)**2) < (20/256*size)**2
@@ -35,7 +35,7 @@ def smiley(size):
     obj[nose] = (0.05j * x + 0.05j * y)[nose]
 
     mouth = (((y*1)**2 + x**2) > (50/256*size)**2) & \
-            ((((y*1)**2 + x**2) < (70/256*size)**2)) & \
+            (((y*1)**2 + x**2) < (70/256*size)**2) & \
             (y > 20/256*size)
 
     obj[mouth] = 0
