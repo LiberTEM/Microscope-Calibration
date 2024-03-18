@@ -364,7 +364,13 @@ class RefOverfocusUDF(OverfocusUDF):
         }
 
 
-def test_translation_ref():
+@pytest.mark.parametrize(
+    # make sure the test is sensitive enough
+    'fail', [False, True]
+)
+def test_translation_ref(fail):
+    fail_factor = 1.001 if fail else 1
+
     nav_shape = (8, 8)
     sig_shape = (8, 8)
 
@@ -379,14 +385,27 @@ def test_translation_ref():
         scan_rotation=33.3,
         flip_y=True,
     )
+    fail_params = params.copy()
+    fail_params['overfocus'] /= fail_factor
+    fail_params['scan_pixel_size'] *= fail_factor
+    fail_params['camera_length'] *= fail_factor
+    fail_params['detector_pixel_size'] /= fail_factor
+    fail_params['cy'] *= fail_factor
+    fail_params['cx'] /= fail_factor
+    fail_params['scan_rotation'] *= fail_factor
+
     ref_translation_matrix = get_ref_translation_matrix(
-        params=params,
+        params=fail_params,
         nav_shape=nav_shape,
     )
 
     model = make_model(params, Shape(nav_shape + sig_shape, sig_dims=2))
     translation_matrix = get_translation_matrix(model)
-    assert translation_matrix == pytest.approx(ref_translation_matrix, rel=0.001)
+    if fail:
+        with pytest.raises(AssertionError):
+            assert translation_matrix == pytest.approx(ref_translation_matrix, rel=0.001)
+    else:
+        assert translation_matrix == pytest.approx(ref_translation_matrix, rel=0.001)
 
 
 def test_udf_ref():
