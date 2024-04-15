@@ -60,7 +60,7 @@ def test_get_transformation_matrix(params):
                 'y_px': 3.,
                 'x_px': -7.,
             },
-            (3, -7)
+            (1.5, -3.5)
         ),
         (
             {
@@ -68,7 +68,7 @@ def test_get_transformation_matrix(params):
                 'x_px': -7.,
                 'transformation_matrix': np.array(((-1., 0.), (0., -1.))),
             },
-            (-3, 7)
+            (-1.5, 3.5)
         ),
         (
             {
@@ -76,7 +76,7 @@ def test_get_transformation_matrix(params):
                 'y_px': 3.,
                 'x_px': -7.,
             },
-            (6, -14)
+            (3, -7)
         ),
         (
             {
@@ -85,7 +85,9 @@ def test_get_transformation_matrix(params):
                 'y_px': 3.,
                 'x_px': -7.,
             },
-            (3, -7)
+            # Factor 2 from pixel size ratio, factor 3 from
+            # overfocus / (camera length + overfocus)
+            (3*2/3, -7*2/3)
         ),
         (
             {
@@ -94,7 +96,9 @@ def test_get_transformation_matrix(params):
                 'y_px': 3.,
                 'x_px': -7.,
             },
-            (3, -7)
+            # Factor 10 from pixel size ratio, factor 0.11 from
+            # overfocus / (camera length + overfocus)
+            (3/1.1, -7/1.1)
         ),
         (
             {
@@ -103,7 +107,8 @@ def test_get_transformation_matrix(params):
                 'y_px': 3.,
                 'x_px': -7.,
             },
-            (2, -12)
+            # (y_px - cy) * overfocus / (camera length + overfocus)
+            ((3 - 1)/2, (-7 - 5)/2)
         ),
         (
             {
@@ -112,7 +117,8 @@ def test_get_transformation_matrix(params):
                 'fov_size_y': 4,
                 'fov_size_x': 6,
             },
-            (5, -4)
+            # (y_px - fov_size_y) * overfocus / (camera length + overfocus)
+            ((3 + 4) / 2, (-7 + 6) / 2)
         ),
         (
             {
@@ -128,9 +134,7 @@ def test_get_transformation_matrix(params):
                 'fov_size_x': 10,
                 'transformation_matrix': np.array(((-1., 0.), (0., -1.))),
             },
-            # y: (-3 + 17) * 2 + 2
-            # x: (7 + 19) * 2 + 5
-            (30, 57)
+            ((-3 + 17) * 2/2 + 2, (7 + 19) * 2/2 + 5)
         ),
         (
             {
@@ -140,7 +144,7 @@ def test_get_transformation_matrix(params):
                 'x_px': -7.,
                 'transformation_matrix': np.array(((-1., 0.), (0., 1.))),
             },
-            (-3, -7)
+            (3 * -1 * 10 * 0.1/1.1, -7 * 1 * 10 * 0.1 / 1.1)
         ),
         (
             {
@@ -152,7 +156,7 @@ def test_get_transformation_matrix(params):
                 'fov_size_x': 10,
                 'transformation_matrix': np.array(((-1., 0.), (0., 1.))),
             },
-            (-1, -2)
+            (-1 * (3 * 10 * 0.1/1.1 - 4/2), 1 * (-7 * 10 * 0.1 / 1.1 + 10/2)),
         ),
     ]
 )
@@ -179,8 +183,8 @@ def test_detector_specimen_px(params):
 def test_project():
     size = 16
     params = OverfocusParams(
-        overfocus=0.1,
-        scan_pixel_size=0.1,
+        overfocus=1,
+        scan_pixel_size=0.5,
         camera_length=1,
         detector_pixel_size=1,
         semiconv=0.004,
@@ -203,8 +207,8 @@ def test_project():
 def test_project_2():
     size = 16
     params = OverfocusParams(
-        overfocus=0.1,
-        scan_pixel_size=0.1,
+        overfocus=1,
+        scan_pixel_size=0.5,
         camera_length=1,
         detector_pixel_size=1,
         semiconv=0.004,
@@ -227,8 +231,8 @@ def test_project_2():
 def test_project_3():
     size = 16
     params = OverfocusParams(
-        overfocus=0.1,
-        scan_pixel_size=0.1,
+        overfocus=1,
+        scan_pixel_size=0.5,
         camera_length=1,
         detector_pixel_size=0.5,
         semiconv=0.004,
@@ -254,8 +258,8 @@ def test_project_3():
 def test_project_rotate():
     size = 16
     params = OverfocusParams(
-        overfocus=0.1,
-        scan_pixel_size=0.1,
+        overfocus=1,
+        scan_pixel_size=0.5,
         camera_length=1,
         detector_pixel_size=1,
         semiconv=0.004,
