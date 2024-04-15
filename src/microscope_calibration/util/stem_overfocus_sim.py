@@ -70,8 +70,8 @@ def detector_px_to_specimen_px(
         overfocus, transformation_matrix, fov_size_y, fov_size_x):
     position_y, position_x = (y_px - cy) * detector_pixel_size, (x_px - cx) * detector_pixel_size
     position_y, position_x = transformation_matrix @ np.array((position_y, position_x))
-    specimen_position_y = position_y / camera_length * overfocus
-    specimen_position_x = position_x / camera_length * overfocus
+    specimen_position_y = position_y / (overfocus + camera_length) * overfocus
+    specimen_position_x = position_x / (overfocus + camera_length) * overfocus
     specimen_px_x = specimen_position_x / scan_pixel_size + fov_size_x / 2
     specimen_px_y = specimen_position_y / scan_pixel_size + fov_size_y / 2
     return specimen_px_y, specimen_px_x
