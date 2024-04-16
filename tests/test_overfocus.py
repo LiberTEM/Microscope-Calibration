@@ -61,12 +61,34 @@ def test_get_transformation_matrix(params):
                 'cx': 0,
                 'y_px': 0.,
                 'x_px': 0.,
+                # fov_size_* == 0 means that (0, 0) in scan coordinates is
+                # (0, 0) in physical coordinates.
                 'fov_size_y': 0,
                 'fov_size_x': 0,
                 'transformation_matrix': np.array(((1., 0.), (0., 1.))),
             },
             # Straight through central beam
             (0, 0)
+        ),
+        (
+            {
+                'overfocus': 0.1234,
+                'scan_pixel_size': 0.987,
+                'camera_length': 2.34,
+                'detector_pixel_size': 0.71,
+                'cy': 13,
+                'cx': 14,
+                'y_px': 13.,
+                'x_px': 14.,
+                'fov_size_y': 5,
+                'fov_size_x': 6,
+                'transformation_matrix': np.array(((0., 1.), (-1., 0.))),
+            },
+            # Straight through central beam goes through center of fov. The
+            # straight through beam is not affected by scan rotation, flip_y,
+            # overfocus, scan pixel size, detector pixel size, or camera length
+            # fov_size_y/2, fov_size_x/2
+            (2.5, 3)
         ),
         (
             {
@@ -363,10 +385,10 @@ def test_project_scale():
         detector_shape=(detector_size, detector_size),
         sim_params=params,
     )
-    # Center of the scan, severy second detector pixel
+    # Center of the scan, every second detector pixel
     assert_allclose(obj, projected[size//2, size//2, ::2, ::2])
     # Scan area, trace of center of detector
-    assert_allclose(obj, projected[:, :, size*2//2, size*2//2])
+    assert_allclose(obj, projected[:, :, detector_size//2, detector_size//2])
 
 
 def test_project_2():
