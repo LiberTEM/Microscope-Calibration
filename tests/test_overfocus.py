@@ -52,73 +52,179 @@ def test_get_transformation_matrix(params):
     # params are relative to default parameters in function below
     'params', [
         (
-            {},
+            {
+                'overfocus': 1,
+                'scan_pixel_size': 1,
+                'camera_length': 1,
+                'detector_pixel_size': 1,
+                'cy': 0,
+                'cx': 0,
+                'y_px': 0.,
+                'x_px': 0.,
+                'fov_size_y': 0,
+                'fov_size_x': 0,
+                'transformation_matrix': np.array(((1., 0.), (0., 1.))),
+            },
+            # Straight through central beam
             (0, 0)
         ),
         (
             {
+                'overfocus': 1,
+                'scan_pixel_size': 1,
+                'camera_length': 0,
+                'detector_pixel_size': 1,
+                'cy': 0,
+                'cx': 0,
                 'y_px': 3.,
                 'x_px': -7.,
+                'fov_size_y': 0,
+                'fov_size_x': 0,
+                'transformation_matrix': np.array(((1., 0.), (0., 1.))),
             },
+            # Camera length 0, same grid and not transformation means detector
+            # and scan pixels are the same
+            (3., -7.)
+        ),
+        (
+            {
+                'overfocus': 1,
+                'scan_pixel_size': 1,
+                'camera_length': 1,
+                'detector_pixel_size': 1,
+                'cy': 0,
+                'cx': 0,
+                'y_px': 3.,
+                'x_px': -7.,
+                'fov_size_y': 0,
+                'fov_size_x': 0,
+                'transformation_matrix': np.array(((1., 0.), (0., 1.))),
+            },
+            # 2x demagnification from detector to specimen
             (1.5, -3.5)
         ),
         (
             {
+                'overfocus': -1,
+                'scan_pixel_size': 1,
+                'camera_length': 2,
+                'detector_pixel_size': 1,
+                'cy': 0,
+                'cx': 0,
                 'y_px': 3.,
                 'x_px': -7.,
+                'fov_size_y': 0,
+                'fov_size_x': 0,
+                'transformation_matrix': np.array(((1., 0.), (0., 1.))),
+            },
+            # Negative overfocus means coordinates are inverted compared to positive
+            # overfocus
+            # Magnification overfocus/(overfocus + camera_length) is -1 here
+            (-3, 7)
+        ),
+        (
+            {
+                'overfocus': 1,
+                'scan_pixel_size': 1,
+                'camera_length': 1,
+                'detector_pixel_size': 1,
+                'cy': 0,
+                'cx': 0,
+                'y_px': 3.,
+                'x_px': -7.,
+                'fov_size_y': 0,
+                'fov_size_x': 0,
                 'transformation_matrix': np.array(((-1., 0.), (0., -1.))),
             },
+            # Transformation inverts both axes, 180 deg rotation
             (-1.5, 3.5)
         ),
         (
             {
+                'overfocus': 1,
+                'scan_pixel_size': 1,
+                'camera_length': 1,
                 'detector_pixel_size': 2,
+                'cy': 0,
+                'cx': 0,
                 'y_px': 3.,
                 'x_px': -7.,
+                'fov_size_y': 0,
+                'fov_size_x': 0,
+                'transformation_matrix': np.array(((1., 0.), (0., 1.))),
             },
+            # 2x demagnification and half the pixel size from detector to scan
             (3, -7)
         ),
         (
             {
+                'overfocus': 1,
                 'scan_pixel_size': 0.5,
                 'camera_length': 2,
+                'detector_pixel_size': 1,
+                'cy': 0,
+                'cx': 0,
                 'y_px': 3.,
                 'x_px': -7.,
+                'fov_size_y': 0,
+                'fov_size_x': 0,
+                'transformation_matrix': np.array(((1., 0.), (0., 1.))),
             },
-            # Factor 2 from pixel size ratio, factor 3 from
-            # overfocus / (camera length + overfocus)
+            # Factor 2 magnification from pixel size ratio, factor 3
+            # demagnification from overfocus / (camera length + overfocus)
             (3*2/3, -7*2/3)
         ),
         (
             {
                 'overfocus': 0.1,
                 'scan_pixel_size': 0.1,
+                'camera_length': 1,
+                'detector_pixel_size': 1,
+                'cy': 0,
+                'cx': 0,
                 'y_px': 3.,
                 'x_px': -7.,
+                'fov_size_y': 0,
+                'fov_size_x': 0,
+                'transformation_matrix': np.array(((1., 0.), (0., 1.))),
             },
-            # Factor 10 from pixel size ratio, factor 0.11 from
-            # overfocus / (camera length + overfocus)
-            (3/1.1, -7/1.1)
+            # Factor 10 magnification from pixel size ratio, factor 0.11
+            # demagnification from overfocus / (camera length + overfocus)
+            (3*10*0.1/1.1, -7*10*0.1/1.1)
         ),
         (
             {
+                'overfocus': 1,
+                'scan_pixel_size': 1,
+                'camera_length': 1,
+                'detector_pixel_size': 1,
                 'cy': 1,
                 'cx': 5,
                 'y_px': 3.,
                 'x_px': -7.,
+                'fov_size_y': 0,
+                'fov_size_x': 0,
+                'transformation_matrix': np.array(((1., 0.), (0., 1.))),
             },
             # (y_px - cy) * overfocus / (camera length + overfocus)
-            ((3 - 1)/2, (-7 - 5)/2)
+            ((3 - 1)*1/(1 + 1), (-7 - 5)*1/(1 + 1))
         ),
         (
             {
+                'overfocus': 1,
+                'scan_pixel_size': 1,
+                'camera_length': 1,
+                'detector_pixel_size': 1,
+                'cy': 0,
+                'cx': 0,
                 'y_px': 3.,
                 'x_px': -7.,
                 'fov_size_y': 4,
                 'fov_size_x': 6,
+                'transformation_matrix': np.array(((1., 0.), (0., 1.))),
             },
-            # (y_px - fov_size_y) * overfocus / (camera length + overfocus)
-            ((3 + 4) / 2, (-7 + 6) / 2)
+            # y_px * overfocus / (camera length + overfocus) + fov_size / 2
+            (3/2 + 4/2, -7/2 + 6/2)
         ),
         (
             {
@@ -134,49 +240,53 @@ def test_get_transformation_matrix(params):
                 'fov_size_x': 10,
                 'transformation_matrix': np.array(((-1., 0.), (0., -1.))),
             },
+            # (y_px + cy) * detector_pixel_size / scan_pixel_size * \
+            # overfocus / (camera length + overfocus) + fov_size / 2
             ((-3 + 17) * 2/2 + 2, (7 + 19) * 2/2 + 5)
         ),
         (
             {
                 'overfocus': 0.1,
                 'scan_pixel_size': 0.1,
+                'camera_length': 1,
+                'detector_pixel_size': 1,
+                'cy': 0,
+                'cx': 0,
                 'y_px': 3.,
                 'x_px': -7.,
+                'fov_size_y': 0,
+                'fov_size_x': 0,
                 'transformation_matrix': np.array(((-1., 0.), (0., 1.))),
             },
-            (3 * -1 * 10 * 0.1/1.1, -7 * 1 * 10 * 0.1 / 1.1)
+            # flip_y: y axis inverted
+            # -1 * y_px * detector_pixel_size / scan_pixel_size * \
+            # overfocus / (camera length + overfocus)
+            (-1 * 3 * 1/0.1 * 0.1/1.1, 1 * -7 * 1/0.1 * 0.1/1.1)
         ),
         (
             {
                 'overfocus': 0.1,
                 'scan_pixel_size': 0.1,
+                'camera_length': 1,
+                'detector_pixel_size': 1,
+                'cy': 6,
+                'cx': 5,
                 'y_px': 3.,
                 'x_px': -7.,
                 'fov_size_y': 4,
                 'fov_size_x': 10,
                 'transformation_matrix': np.array(((-1., 0.), (0., 1.))),
             },
-            (-1 * (3 * 10 * 0.1/1.1 - 4/2), 1 * (-7 * 10 * 0.1 / 1.1 + 10/2)),
+            # flip_y: y axis inverted
+            # -1 * (y_px - cy) * detector_pixel_size / scan_pixel_size * \
+            # overfocus / (camera length + overfocus) + fov_size / 2
+            (-1 * (3 - 6) * 1/0.1 * 0.1/1.1 + 4/2, 1 * (-7 - 5) * 1/0.1 * 0.1 / 1.1 + 10/2),
         ),
     ]
 )
 def test_detector_specimen_px(params):
     inp, ref = params
-    func_params = {
-        'overfocus': 1,
-        'scan_pixel_size': 1,
-        'camera_length': 1,
-        'detector_pixel_size': 1,
-        'cy': 0,
-        'cx': 0,
-        'y_px': 0.,
-        'x_px': 0.,
-        'fov_size_y': 0,
-        'fov_size_x': 0,
-        'transformation_matrix': np.array(((1., 0.), (0., 1.))),
-    }
-    func_params.update(inp)
-    res = detector_px_to_specimen_px(**func_params)
+    res = detector_px_to_specimen_px(**inp)
     assert_allclose(res, ref, atol=1e-8)
 
 
@@ -202,6 +312,61 @@ def test_project():
     )
     assert_allclose(obj, projected[size//2, size//2])
     assert_allclose(obj, projected[:, :, size//2, size//2])
+
+
+def test_project_zerocl():
+    # Camera length is zero, 1:1 match of scan and detector
+    size = 16
+    params = OverfocusParams(
+        overfocus=1,
+        scan_pixel_size=1,
+        camera_length=0,
+        detector_pixel_size=1,
+        semiconv=0.004,
+        cy=size/2,
+        cx=size/2,
+        scan_rotation=0,
+        flip_y=False
+    )
+    obj = smiley(size)
+    projected = project(
+        image=obj,
+        scan_shape=(size, size),
+        detector_shape=(size, size),
+        sim_params=params,
+    )
+    assert_allclose(obj, projected[size//2, size//2])
+    assert_allclose(obj, projected[:, :, size//2, size//2])
+
+
+def test_project_scale():
+    # With overfocus == 1 and cl == 1, the image is 2x magnified on the
+    # detector. With same pixel size and twice the number of pixels, every
+    # second detector pixel maps to a single scan pixel
+    size = 16
+    detector_size = 2 * size
+    params = OverfocusParams(
+        overfocus=1,
+        scan_pixel_size=1,
+        camera_length=1,
+        detector_pixel_size=1,
+        semiconv=0.004,
+        cy=detector_size/2,
+        cx=detector_size/2,
+        scan_rotation=0,
+        flip_y=False
+    )
+    obj = smiley(size)
+    projected = project(
+        image=obj,
+        scan_shape=(size, size),
+        detector_shape=(detector_size, detector_size),
+        sim_params=params,
+    )
+    # Center of the scan, severy second detector pixel
+    assert_allclose(obj, projected[size//2, size//2, ::2, ::2])
+    # Scan area, trace of center of detector
+    assert_allclose(obj, projected[:, :, size*2//2, size*2//2])
 
 
 def test_project_2():
