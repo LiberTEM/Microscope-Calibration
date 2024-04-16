@@ -55,6 +55,13 @@ def smiley(size):
 
 
 def get_transformation_matrix(sim_params: OverfocusParams):
+    '''
+    Calculate a transformation matrix for :func:`detector_px_to_specimen_px`
+    from the provided parameters.
+
+    Internally this uses :func:`libertem.analysis.com.apply_correction` to
+    transform unit vectors in order to determine the matrix.
+    '''
     transformation_matrix = np.array(com_analysis.apply_correction(
         y_centers=np.array((1, 0)),
         x_centers=np.array((0, 1)),
@@ -68,6 +75,32 @@ def get_transformation_matrix(sim_params: OverfocusParams):
 def detector_px_to_specimen_px(
         y_px, x_px, cy, cx, detector_pixel_size, scan_pixel_size, camera_length,
         overfocus, transformation_matrix, fov_size_y, fov_size_x):
+    '''
+    Model Figure 2 of https://arxiv.org/abs/2403.08538
+
+    Parameters
+    ----------
+
+    y_px, x_px : float
+        Detector pixel coordinates to project
+    cy, cx : float
+        Detector center in detector pixel coordinates
+    detector_pixel_size, scan_pixel_size : float
+        Physical pixel sizes. This assumes a uniform scan and detector grid in x
+        and y direction
+    camera_length : float
+        Virtual distance from specimen to detector
+    overfocus : float
+        Virtual distance from focus point to specimen. Underfocus is specified
+        as a negative overfocus.
+    transformation_matrix : np.ndarray[float]
+        2x2 transformation matrix for detector coordinates. This is used to
+        specify rotation and handedness change consistent with other methods in
+        LiberTEM. It can be calculated with :fun:`get_transformation_matrix`.
+    fov_size_y, fov_size_x : float
+        Size of the scan area (field of view) in scan pixels. The scan
+        coordinate system is centered in the middle of the field of view.
+    '''
     position_y, position_x = (y_px - cy) * detector_pixel_size, (x_px - cx) * detector_pixel_size
     position_y, position_x = transformation_matrix @ np.array((position_y, position_x))
     specimen_position_y = position_y / (overfocus + camera_length) * overfocus
