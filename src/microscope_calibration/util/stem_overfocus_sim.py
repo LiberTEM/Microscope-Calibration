@@ -114,7 +114,10 @@ def detector_px_to_specimen_px(
         Size of the scan area (field of view) in scan pixels. The scan
         coordinate system is centered in the middle of this field of view,
         meaning that the "straight through" beam (y_px, x_px) == (cy, cx) is
-        mapped to (fov_size_y/2, fov_size_x/2)
+        mapped to (fov_size_y/2, fov_size_x/2). Please note that the actual scan
+        coordinates are not calculated in this function, but added as an offset
+        in :func:`_project`. The field of view specified here is just used to calculate
+        the center of the "straight through" beam in the middle of the scan.
 
     Returns
     -------
