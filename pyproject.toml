@@ -13,7 +13,7 @@ dependencies = [
     "numpy",
     "libertem",
     "typing-extensions",
-    "temgymbasic@git+https://github.com/TemGym/TemGym@03062b098a50ea72f0ae9a2438b861d7a62691ee",
+    "temgymbasic@git+https://github.com/TemGym/TemGym@c7a851ce2d6719acc47d36d31d91df27b1e9590b",
     "numba",
     "scikit-image",
     "scipy",

@@ -440,7 +440,7 @@ tblib==3.0.0
     # via
     #   distributed
     #   libertem
-temgymbasic @ git+https://github.com/TemGym/TemGym@cf07c2bb059f767e5a273e8c4bbaa19e94cfd459
+temgymbasic @ git+https://github.com/TemGym/TemGym@c7a851ce2d6719acc47d36d31d91df27b1e9590b
 terminado==0.18.0
     # via
     #   jupyter-server
