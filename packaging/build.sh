@@ -1,7 +1,7 @@
 #!/bin/sh
 set -e
 (cd .. ; \
-rm -r packaging/Microscope-Calibration; \
+rm -rf packaging/Microscope-Calibration; \
 mkdir packaging/Microscope-Calibration; \
 git archive --format=tar HEAD | tar xvf - -C packaging/Microscope-Calibration \
 )
