@@ -23,7 +23,7 @@ dependencies = [
     # for any future Python release, constrain numba to a recent version,
     # otherwise, version resolution might try to install an ancient version
     # that isn't constrained properly:
-    "numba>=0.61;python_version >= '3.13'",  
+    "numba>=0.61;python_version >= '3.13'",
     "scikit-image",
     "scipy",
 ]
