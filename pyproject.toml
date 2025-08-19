@@ -25,7 +25,11 @@ dependencies = [
     # that isn't constrained properly:
     "numba>=0.61;python_version >= '3.13'",
     "scikit-image",
-    "scipy",
+    # FIXME newer version made tests/test_overfocus.py::test_optimize fail
+    # Temporarily pinning version ahead of major rewrite of modeling and fitting code
+    # to make tests pass for the time being
+    # TODO release pin ASAP
+    "scipy<1.16",
 ]
 classifiers = [
     "Programming Language :: Python :: 3",
