@@ -13,7 +13,7 @@ dependencies = [
     "numpy",
     "libertem",
     "typing-extensions",
-    "temgymbasic@git+https://github.com/TemGym/TemGym@c7a851ce2d6719acc47d36d31d91df27b1e9590b",
+    "temgym_core",
     # Minimum constraints of numba for all Python versions we support
     # See https://numba.readthedocs.io/en/stable/release-notes-overview.html
     "numba>=0.53;python_version < '3.10'",
