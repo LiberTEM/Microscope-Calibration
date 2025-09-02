@@ -78,7 +78,7 @@ class Parameters4DSTEM:
 class ResultSection(NamedTuple):
     component: Union[Component, Source, Propagator]
     ray: Ray
-    sampling: Optional[Dict] = None
+    sampling: Optional[dict] = None
 
 
 # Layer stack, result of tracing a ray through a model
