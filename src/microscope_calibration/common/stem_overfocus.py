@@ -1,23 +1,10 @@
 from typing import TypedDict, TYPE_CHECKING
 
 import numpy as np
-from temgymbasic.model import STEMModel
 import numba
 
 if TYPE_CHECKING:
     from libertem.common import Shape
-
-
-class OverfocusParams(TypedDict):
-    overfocus: float  # m
-    scan_pixel_size: float  # m
-    camera_length: float  # m
-    detector_pixel_size: float  # m
-    semiconv: float  # rad
-    cy: float
-    cx: float
-    scan_rotation: float  # deg
-    flip_y: bool
 
 
 def make_model(params: OverfocusParams, dataset_shape: 'Shape') -> STEMModel:
