@@ -1,6 +1,11 @@
 import pytest
 from numpy.testing import assert_allclose
 
+import jax_dataclasses as jdc
+from libertem.udf.com import guess_corrections
+import numpy as np
+
+from temgym_core.ray import Ray
 from temgym_core.components import DescanError, Component
 from temgym_core.source import Source
 from temgym_core import PixelsYX
@@ -344,7 +349,75 @@ def test_scan_coordinate_shift_scale(scan_cy, scan_cx, scan_pixel_pitch):
         res['detector'].sampling['detector_px'],
         PixelsYX(
             x=res['detector'].ray.x/detector_pixel_pitch + detector_cx,
-            y=flip_factor*(res['detector'].ray.y/detector_pixel_pitch + flip_factor*detector_cy),
+            y=flip_factor*res['detector'].ray.y/detector_pixel_pitch + detector_cy,
         ),
         rtol=1e-6, atol=1e-6
     )
+
+
+@pytest.mark.parametrize(
+    'scan_rotation', (-1.345, 0, 0.987)
+)
+@pytest.mark.parametrize(
+    'flip_y', (False, True)
+)
+@pytest.mark.parametrize(
+    'detector_cy', (-13, 0., 7)
+)
+@pytest.mark.parametrize(
+    'detector_cx', (-11, 0., 5)
+)
+def test_com_validation(scan_rotation, flip_y, detector_cy, detector_cx):
+    @jdc.pytree_dataclass
+    class PointChargeComponent(Component):
+        z: float
+
+        def __call__(self, ray: Ray) -> Ray:
+            distance = np.linalg.norm(np.array((ray.y, ray.x)))
+            if distance > 1e-6:
+                # field strength is 1/distance**2,
+                # additionally normalize displacement to unit vector
+                dx = -ray.x / distance**3 * 1e-2
+                dy = -ray.y / distance**3 * 1e-2
+                return ray.derive(dx=ray.dx+dx, dy=ray.dy+dy)
+            else:
+                return ray
+
+    params = Parameters4DSTEM(
+        overfocus=1,
+        scan_pixel_pitch=1,
+        scan_cy=0.,
+        scan_cx=0.,
+        scan_rotation=scan_rotation,
+        camera_length=1,
+        detector_pixel_pitch=1,
+        detector_cy=detector_cy,
+        detector_cx=detector_cx,
+        semiconv=0.023,
+        flip_y=flip_y,
+        descan_error=DescanError()
+    )
+
+    y_deflections = np.linspace(start=-1, stop=1, num=3)
+    x_deflections = np.linspace(start=-1, stop=1, num=3)
+    com = np.empty((len(y_deflections), len(x_deflections), 2))
+    for y, scan_y in enumerate(y_deflections):
+        for x, scan_x in enumerate(x_deflections):
+            model = Model4DSTEM.build(
+                params=params,
+                scan_pos=PixelsYX(x=float(scan_x), y=float(scan_y)),
+                specimen=PointChargeComponent(z=params.overfocus)
+            )
+            ray = model.make_source_ray(source_dx=0., source_dy=0.).ray
+            res = model.trace(ray)
+            com[y, x, 0] = res['detector'].sampling['detector_px'].y
+            com[y, x, 1] = res['detector'].sampling['detector_px'].x
+
+    guess_result = guess_corrections(
+        y_centers=com[..., 0],
+        x_centers=com[..., 1],
+    )
+    assert_allclose(guess_result.scan_rotation / 180 * np.pi, scan_rotation, atol=5e-2, rtol=5e-2)
+    assert guess_result.flip_y == flip_y
+    assert_allclose(guess_result.cy, detector_cy, atol=5e-3, rtol=1e-3)
+    assert_allclose(guess_result.cx, detector_cx, atol=5e-3, rtol=1e-3)
