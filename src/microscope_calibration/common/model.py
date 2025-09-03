@@ -1,4 +1,4 @@
-from typing import Optional, NamedTuple, Dict, Union
+from typing import Optional, NamedTuple, Union
 from collections import OrderedDict
 
 import jax_dataclasses as jdc
@@ -112,7 +112,10 @@ class Model4DSTEM:
         return self.detector.z - self.specimen.z
 
     def scan_to_real(self, pixels: PixelsYX, _one: float = 1.) -> CoordsXY:
-        (y, x) = self._scan_to_real @ jnp.array((pixels.y - self.scan_cy*_one, pixels.x - self.scan_cx*_one))
+        (y, x) = self._scan_to_real @ jnp.array((
+            pixels.y - self.scan_cy*_one,
+            pixels.x - self.scan_cx*_one
+        ))
         return CoordsXY(y=y, x=x)
 
     def real_to_scan(self, coords: CoordsXY, _one: float = 1.) -> PixelsYX:
@@ -129,14 +132,22 @@ class Model4DSTEM:
         return PixelsYX(y=y + self.detector_cy*_one, x=x + self.detector_cx*_one)
 
     @classmethod
-    def build(cls, params: Parameters4DSTEM, scan_pos: PixelsYX) -> 'Model4DSTEM':
-        scan_to_real = ltcoords.rotate(params.scan_rotation)\
+    def build(
+            cls, params: Parameters4DSTEM, scan_pos: PixelsYX,
+            specimen: Optional[Component] = None) -> 'Model4DSTEM':
+        # Negative sign to match LiberTEM CoM as a reference
+        scan_to_real = ltcoords.rotate(-params.scan_rotation)\
             @ ltcoords.scale(params.scan_pixel_pitch)
         real_to_scan = jnp.linalg.inv(scan_to_real)
         scan_y, scan_x = scan_to_real @ (scan_pos.y, scan_pos.x)
         do_flip = ltcoords.flip_y() if params.flip_y else ltcoords.identity()
         detector_to_real = ltcoords.scale(params.detector_pixel_pitch) @ do_flip
         real_to_detector = jnp.linalg.inv(detector_to_real)
+        if specimen is None:
+            specimen = Plane(z=params.overfocus)
+        else:
+            # FIXME better solution later?
+            assert jnp.allclose(specimen.z, params.overfocus)
 
         return cls(
             source=PointSource(z=0, semi_conv=params.semiconv),
@@ -145,7 +156,7 @@ class Model4DSTEM:
             _detector_to_real=detector_to_real,
             _real_to_detector=real_to_detector,
             scanner=Scanner(z=params.overfocus, scan_pos_x=scan_x, scan_pos_y=scan_y),
-            specimen=Plane(z=params.overfocus),
+            specimen=specimen,
             descanner=Descanner(
                 z=params.overfocus,
                 scan_pos_x=scan_x,
@@ -172,7 +183,8 @@ class Model4DSTEM:
             scan_pixel_pitch=scan_scale,
             scan_cy=self.scan_cy,
             scan_cx=self.scan_cx,
-            scan_rotation=scan_rotation,
+            # Negative sign to match LiberTEM CoM
+            scan_rotation=-scan_rotation,
             camera_length=self.detector.z - self.specimen.z,
             detector_pixel_pitch=detector_scale,
             detector_cy=self.detector_cy,
