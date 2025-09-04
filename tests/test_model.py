@@ -2,7 +2,7 @@ import pytest
 from numpy.testing import assert_allclose
 
 import jax_dataclasses as jdc
-from libertem.udf.com import guess_corrections
+from libertem.udf.com import guess_corrections, apply_correction
 import numpy as np
 
 from temgym_core.ray import Ray
@@ -356,7 +356,9 @@ def test_scan_coordinate_shift_scale(scan_cy, scan_cx, scan_pixel_pitch):
 
 
 @pytest.mark.parametrize(
-    'scan_rotation', (-1.345, 0, 0.987)
+    # work in exact degree values since guess_corrections() can only
+    # find these exactly. Otherwise we have larger residuals
+    'scan_rotation', (73/180*np.pi, 0, 23/180*np.pi)
 )
 @pytest.mark.parametrize(
     'flip_y', (False, True)
@@ -400,7 +402,8 @@ def test_com_validation(scan_rotation, flip_y, detector_cy, detector_cx):
 
     y_deflections = np.linspace(start=-1, stop=1, num=3)
     x_deflections = np.linspace(start=-1, stop=1, num=3)
-    com = np.empty((len(y_deflections), len(x_deflections), 2))
+    com_y = np.empty((len(y_deflections), len(x_deflections)))
+    com_x = np.empty((len(y_deflections), len(x_deflections)))
     for y, scan_y in enumerate(y_deflections):
         for x, scan_x in enumerate(x_deflections):
             model = Model4DSTEM.build(
@@ -410,14 +413,219 @@ def test_com_validation(scan_rotation, flip_y, detector_cy, detector_cx):
             )
             ray = model.make_source_ray(source_dx=0., source_dy=0.).ray
             res = model.trace(ray)
-            com[y, x, 0] = res['detector'].sampling['detector_px'].y
-            com[y, x, 1] = res['detector'].sampling['detector_px'].x
+            # Validate that the ray is deflected towards the center
+            # by the point charge component
+            phys_y = res['detector'].ray.y
+            phys_x = res['detector'].ray.x
+            pass_y = res['specimen'].ray.y
+            pass_x = res['specimen'].ray.x
+            if phys_y != 0 or phys_x != 0:
+                assert_allclose(
+                    # The displacement in the detector plane in corrected pixel
+                    # coordinates is pointing in the opposite direction of the
+                    # displacement from the center when passing through the
+                    # specimen plane, i.e. the beam is deflected towards the
+                    # center
+                    np.array((phys_y, phys_x))/np.linalg.norm((phys_y, phys_x)),
+                    -np.array((pass_y, pass_x))/np.linalg.norm((pass_y, pass_x))
+                )
+            com_y[y, x] = res['detector'].sampling['detector_px'].y
+            com_x[y, x] = res['detector'].sampling['detector_px'].x
 
-    guess_result = guess_corrections(
-        y_centers=com[..., 0],
-        x_centers=com[..., 1],
+    guess_result = guess_corrections(y_centers=com_y, x_centers=com_x)
+    corrected_y, corrected_x = apply_correction(
+        y_centers=com_y-detector_cy, x_centers=com_x-detector_cx,
+        scan_rotation=guess_result.scan_rotation,
+        flip_y=guess_result.flip_y,
     )
-    assert_allclose(guess_result.scan_rotation / 180 * np.pi, scan_rotation, atol=5e-2, rtol=5e-2)
+    # Make sure the correction actually corrected
+    for y, scan_y in enumerate(y_deflections):
+        for x, scan_x in enumerate(x_deflections):
+            if corrected_y[y, x] != 0 or corrected_x[y, x] != 0:
+                assert_allclose(
+                    # The corrected displacement in corrected pixel coordinates
+                    # in the detector plane is pointing in the opposite
+                    # direction of the displacement from the center in scan
+                    # coordinates
+                    np.array((scan_y, scan_x))/np.linalg.norm((scan_y, scan_x)),
+                    -np.array((
+                        corrected_y[y, x], corrected_x[y, x]
+                    ))/np.linalg.norm((
+                        corrected_y[y, x], corrected_x[y, x]
+                    )),
+                    atol=1e-4, rtol=1e-4
+                )
+
+    # See https://github.com/LiberTEM/LiberTEM/issues/1775
+    # Rotation direction is opposite
+    assert_allclose(-guess_result.scan_rotation / 180 * np.pi, scan_rotation, atol=1e-4, rtol=1e-4)
     assert guess_result.flip_y == flip_y
-    assert_allclose(guess_result.cy, detector_cy, atol=5e-3, rtol=1e-3)
-    assert_allclose(guess_result.cx, detector_cx, atol=5e-3, rtol=1e-3)
+    assert_allclose(guess_result.cy, detector_cy, atol=1e-2, rtol=1e-2)
+    assert_allclose(guess_result.cx, detector_cx, atol=1e-2, rtol=1e-2)
+
+
+def test_rotation_direction_0():
+    # Check conformance with
+    # https://libertem.github.io/LiberTEM/concepts.html#coordinate-system: y
+    # points down, x to the right, z away, and therefore positive scan rotation
+    # rotates the scan points to the right.
+    params = Parameters4DSTEM(
+        overfocus=1,
+        scan_pixel_pitch=1,
+        scan_cy=0.,
+        scan_cx=0.,
+        scan_rotation=0.,
+        camera_length=1,
+        detector_pixel_pitch=1,
+        detector_cy=0.,
+        detector_cx=0.,
+        semiconv=0.023,
+        flip_y=False,
+        descan_error=DescanError()
+    )
+    model = Model4DSTEM.build(
+        params=params,
+        scan_pos=PixelsYX(y=0., x=1.)
+    )
+    ray = model.make_source_ray(source_dx=0., source_dy=0.).ray
+    res = model.trace(ray)
+    assert_allclose(res['specimen'].sampling['scan_px'].x, 1., atol=1e-6, rtol=1e-6)
+    assert_allclose(res['specimen'].sampling['scan_px'].y, 0., atol=1e-6, rtol=1e-6)
+    assert_allclose(res['specimen'].ray.x, 1., atol=1e-6, rtol=1e-6)
+    assert_allclose(res['specimen'].ray.y, 0., atol=1e-6, rtol=1e-6)
+
+    model = Model4DSTEM.build(
+        params=params,
+        scan_pos=PixelsYX(y=1., x=0.)
+    )
+    ray = model.make_source_ray(source_dx=0., source_dy=0.).ray
+    res = model.trace(ray)
+    assert_allclose(res['specimen'].sampling['scan_px'].x, 0., atol=1e-6, rtol=1e-6)
+    assert_allclose(res['specimen'].sampling['scan_px'].y, 1., atol=1e-6, rtol=1e-6)
+    assert_allclose(res['specimen'].ray.x, 0., atol=1e-6, rtol=1e-6)
+    assert_allclose(res['specimen'].ray.y, 1., atol=1e-6, rtol=1e-6)
+
+
+def test_rotation_direction_90():
+    # Check conformance with
+    # https://libertem.github.io/LiberTEM/concepts.html#coordinate-system: y
+    # points down, x to the right, z away, and therefore positive scan rotation
+    # rotates the scan points to the right in physical coordinates
+    params = Parameters4DSTEM(
+        overfocus=1,
+        scan_pixel_pitch=1,
+        scan_cy=0.,
+        scan_cx=0.,
+        scan_rotation=np.pi/2,
+        camera_length=1,
+        detector_pixel_pitch=1,
+        detector_cy=0.,
+        detector_cx=0.,
+        semiconv=0.023,
+        flip_y=False,
+        descan_error=DescanError()
+    )
+    model = Model4DSTEM.build(
+        params=params,
+        scan_pos=PixelsYX(y=0., x=1.)
+    )
+    ray = model.make_source_ray(source_dx=0., source_dy=0.).ray
+    res = model.trace(ray)
+
+    assert_allclose(res['specimen'].sampling['scan_px'].x, 1., atol=1e-6, rtol=1e-6)
+    assert_allclose(res['specimen'].sampling['scan_px'].y, 0., atol=1e-6, rtol=1e-6)
+    assert_allclose(res['specimen'].ray.x, 0., atol=1e-6, rtol=1e-6)
+    assert_allclose(res['specimen'].ray.y, 1., atol=1e-6, rtol=1e-6)
+
+    model = Model4DSTEM.build(
+        params=params,
+        scan_pos=PixelsYX(y=1., x=0.)
+    )
+    ray = model.make_source_ray(source_dx=0., source_dy=0.).ray
+    res = model.trace(ray)
+    assert_allclose(res['specimen'].sampling['scan_px'].x, 0., atol=1e-6, rtol=1e-6)
+    assert_allclose(res['specimen'].sampling['scan_px'].y, 1., atol=1e-6, rtol=1e-6)
+    assert_allclose(res['specimen'].ray.x, -1., atol=1e-6, rtol=1e-6)
+    assert_allclose(res['specimen'].ray.y, 0., atol=1e-6, rtol=1e-6)
+
+
+def test_detector_px():
+    # Check conformance with
+    # https://libertem.github.io/LiberTEM/concepts.html#coordinate-system: y
+    # points down, x to the right, z away.
+    params = Parameters4DSTEM(
+        overfocus=1,
+        scan_pixel_pitch=1,
+        scan_cy=0.,
+        scan_cx=0.,
+        scan_rotation=0.,
+        camera_length=1,
+        detector_pixel_pitch=1,
+        detector_cy=0.,
+        detector_cx=0.,
+        semiconv=0.023,
+        flip_y=False,
+        descan_error=DescanError()
+    )
+    model = Model4DSTEM.build(
+        params=params,
+        scan_pos=PixelsYX(y=0., x=0.)
+    )
+    ray = model.make_source_ray(source_dx=0.5, source_dy=0.).ray
+    res = model.trace(ray)
+    assert_allclose(res['detector'].sampling['detector_px'].x, 1., atol=1e-6, rtol=1e-6)
+    assert_allclose(res['detector'].sampling['detector_px'].y, 0., atol=1e-6, rtol=1e-6)
+    assert_allclose(res['detector'].ray.x, 1., atol=1e-6, rtol=1e-6)
+    assert_allclose(res['detector'].ray.y, 0., atol=1e-6, rtol=1e-6)
+
+    model = Model4DSTEM.build(
+        params=params,
+        scan_pos=PixelsYX(y=0., x=0.)
+    )
+    ray = model.make_source_ray(source_dx=0., source_dy=0.5).ray
+    res = model.trace(ray)
+    assert_allclose(res['detector'].sampling['detector_px'].x, 0., atol=1e-6, rtol=1e-6)
+    assert_allclose(res['detector'].sampling['detector_px'].y, 1., atol=1e-6, rtol=1e-6)
+    assert_allclose(res['detector'].ray.x, 0., atol=1e-6, rtol=1e-6)
+    assert_allclose(res['detector'].ray.y, 1., atol=1e-6, rtol=1e-6)
+
+
+def test_detector_px_flipy():
+    # Check conformance with
+    # https://libertem.github.io/LiberTEM/concepts.html#coordinate-system: y
+    # points down, x to the right, z away.
+    params = Parameters4DSTEM(
+        overfocus=1,
+        scan_pixel_pitch=1,
+        scan_cy=0.,
+        scan_cx=0.,
+        scan_rotation=0.,
+        camera_length=1,
+        detector_pixel_pitch=1,
+        detector_cy=0.,
+        detector_cx=0.,
+        semiconv=0.023,
+        flip_y=True,
+        descan_error=DescanError()
+    )
+    model = Model4DSTEM.build(
+        params=params,
+        scan_pos=PixelsYX(y=0., x=0.)
+    )
+    ray = model.make_source_ray(source_dx=0.5, source_dy=0.).ray
+    res = model.trace(ray)
+    assert_allclose(res['detector'].sampling['detector_px'].x, 1., atol=1e-6, rtol=1e-6)
+    assert_allclose(res['detector'].sampling['detector_px'].y, 0., atol=1e-6, rtol=1e-6)
+    assert_allclose(res['detector'].ray.x, 1., atol=1e-6, rtol=1e-6)
+    assert_allclose(res['detector'].ray.y, 0., atol=1e-6, rtol=1e-6)
+
+    model = Model4DSTEM.build(
+        params=params,
+        scan_pos=PixelsYX(y=0., x=0.)
+    )
+    ray = model.make_source_ray(source_dx=0., source_dy=0.5).ray
+    res = model.trace(ray)
+    assert_allclose(res['detector'].sampling['detector_px'].x, 0., atol=1e-6, rtol=1e-6)
+    assert_allclose(res['detector'].sampling['detector_px'].y, -1., atol=1e-6, rtol=1e-6)
+    assert_allclose(res['detector'].ray.x, 0., atol=1e-6, rtol=1e-6)
+    assert_allclose(res['detector'].ray.y, 1., atol=1e-6, rtol=1e-6)
