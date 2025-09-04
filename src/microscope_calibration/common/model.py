@@ -113,8 +113,7 @@ class Model4DSTEM:
 
     def scan_to_real(self, pixels: PixelsYX, _one: float = 1.) -> CoordsXY:
         (y, x) = self._scan_to_real @ jnp.array((
-            pixels.y - self.scan_cy*_one,
-            pixels.x - self.scan_cx*_one
+            pixels.y - self.scan_cy*_one, pixels.x - self.scan_cx*_one
         ))
         return CoordsXY(y=y, x=x)
 
@@ -135,8 +134,7 @@ class Model4DSTEM:
     def build(
             cls, params: Parameters4DSTEM, scan_pos: PixelsYX,
             specimen: Optional[Component] = None) -> 'Model4DSTEM':
-        # Negative sign to match LiberTEM CoM as a reference
-        scan_to_real = ltcoords.rotate(-params.scan_rotation)\
+        scan_to_real = ltcoords.rotate(params.scan_rotation)\
             @ ltcoords.scale(params.scan_pixel_pitch)
         real_to_scan = jnp.linalg.inv(scan_to_real)
         scan_y, scan_x = scan_to_real @ (scan_pos.y, scan_pos.x)
@@ -183,8 +181,7 @@ class Model4DSTEM:
             scan_pixel_pitch=scan_scale,
             scan_cy=self.scan_cy,
             scan_cx=self.scan_cx,
-            # Negative sign to match LiberTEM CoM
-            scan_rotation=-scan_rotation,
+            scan_rotation=scan_rotation,
             camera_length=self.detector.z - self.specimen.z,
             detector_pixel_pitch=detector_scale,
             detector_cy=self.detector_cy,
