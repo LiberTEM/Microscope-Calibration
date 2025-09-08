@@ -7,6 +7,7 @@ import numpy as np
 
 from temgym_core.ray import Ray
 from temgym_core.components import DescanError, Component
+from temgym_core.propagator import Propagator
 from temgym_core.source import Source
 from temgym_core import PixelsYX
 
@@ -26,7 +27,7 @@ def test_params():
         detector_cx=19,
         semiconv=0.023,
         flip_y=True,
-        descan_error=DescanError()
+        descan_error=DescanError(offpxi=.345, pxo_pxi=948)
     )
     model = Model4DSTEM.build(params=params, scan_pos=PixelsYX(y=13, x=7))
     assert model.params == params
@@ -49,10 +50,29 @@ def test_trace_smoke():
     )
     model = Model4DSTEM.build(params=params, scan_pos=PixelsYX(y=13, x=7))
     ray = model.make_source_ray(source_dx=0.034, source_dy=0.042).ray
-    model.trace(ray=ray)
+    res = model.trace(ray=ray)
+    keys = (
+        'source', 'overfocus', 'scanner', 'specimen', 'descanner',
+        'camera_length', 'detector'
+    )
+    for key in keys:
+        assert key in res
+        sect = res[key]
+        assert isinstance(sect.ray, Ray)
+    components = ('scanner', 'specimen', 'descanner', 'detector')
+    propagators = ('camera_length', 'camera_length')
+    for key in components:
+        sect = res[key]
+        assert isinstance(sect.component, Component)
+    for key in propagators:
+        sect = res[key]
+        assert isinstance(sect.component, Propagator)
+    assert isinstance(res['source'].component, Source)
+    assert isinstance(res['specimen'].sampling['scan_px'], PixelsYX)
+    assert isinstance(res['detector'].sampling['detector_px'], PixelsYX)
 
 
-def test_trace_focused_smoke():
+def test_trace_focused():
     params = Parameters4DSTEM(
         overfocus=0.,
         scan_pixel_pitch=0.005,
@@ -68,11 +88,17 @@ def test_trace_focused_smoke():
         descan_error=DescanError()
     )
     model = Model4DSTEM.build(params=params, scan_pos=PixelsYX(y=13, x=7))
-    ray = model.make_source_ray(source_dx=0.034, source_dy=0.042).ray
-    model.trace(ray=ray)
+    ray1 = model.make_source_ray(source_dx=0.034, source_dy=0.042).ray
+    res1 = model.trace(ray=ray1)
+    ray2 = model.make_source_ray(source_dx=0., source_dy=0.).ray
+    res2 = model.trace(ray=ray2)
+    assert_allclose(res1['specimen'].ray.x, res2['specimen'].ray.x)
+    assert_allclose(res1['specimen'].ray.y, res2['specimen'].ray.y)
+    assert_allclose(res1['specimen'].sampling['scan_px'].x, 7)
+    assert_allclose(res1['specimen'].sampling['scan_px'].y, 13)
 
 
-def test_trace_noproject_smoke():
+def test_trace_noproject():
     params = Parameters4DSTEM(
         overfocus=0.123,
         scan_pixel_pitch=0.005,
@@ -212,6 +238,16 @@ def test_scan(dy, dx, scan_y, scan_x):
             y=scan_y + res_straight['specimen'].sampling['scan_px'].y
         )
     )
+    # Check that central ray goes through scan position
+    if dx == 0. and dy == 0.:
+        assert_allclose(
+            res['specimen'].sampling['scan_px'],
+            PixelsYX(
+                x=scan_x,
+                y=scan_y,
+            ),
+            rtol=1e-6, atol=1e-6
+        )
     # check physical coords equals pixel coords
     assert_allclose(
         res['specimen'].sampling['scan_px'],
@@ -236,10 +272,7 @@ def test_scan(dy, dx, scan_y, scan_x):
 
 # detector coordinate systems
 @pytest.mark.parametrize(
-    'detector_cy', (-0.11, 0., 29)
-)
-@pytest.mark.parametrize(
-    'detector_cx', (-0.32, 0., 43)
+    'detector_cycx', ((-0.11, 43.), (0., 0.))
 )
 @pytest.mark.parametrize(
     'detector_pixel_pitch', (0.09, 1., 1.53)
@@ -247,13 +280,16 @@ def test_scan(dy, dx, scan_y, scan_x):
 @pytest.mark.parametrize(
     'flip_y', (True, False)
 )
+@pytest.mark.parametrize(
+    'dydx', ((0., 0.), (-0.2, 0.42))
+)
 def test_detector_coordinate_shift_scale_flip(
-        detector_cy, detector_cx, detector_pixel_pitch, flip_y):
+        detector_cycx, detector_pixel_pitch, flip_y, dydx):
+    detector_cy, detector_cx = detector_cycx
     scan_cy = -0.7
     scan_cx = 23.
     scan_pixel_pitch = 1.34
-    dy = -0.2
-    dx = 0.42
+    dy, dx = dydx
     scan_y = -17
     scan_x = 29
     params = Parameters4DSTEM(
@@ -294,6 +330,16 @@ def test_detector_coordinate_shift_scale_flip(
         ),
         rtol=1e-6, atol=1e-6
     )
+    if dy == 0.:
+        assert_allclose(
+            res['detector'].sampling['detector_px'].y,
+            detector_cy
+        )
+    if dx == 0.:
+        assert_allclose(
+            res['detector'].sampling['detector_px'].x,
+            detector_cx
+        )
 
 
 # scan coordinate systems
@@ -629,3 +675,388 @@ def test_detector_px_flipy():
     assert_allclose(res['detector'].sampling['detector_px'].y, -1., atol=1e-6, rtol=1e-6)
     assert_allclose(res['detector'].ray.x, 0., atol=1e-6, rtol=1e-6)
     assert_allclose(res['detector'].ray.y, 1., atol=1e-6, rtol=1e-6)
+
+
+@pytest.mark.parametrize(
+    'scan', (PixelsYX(y=0., x=0.), PixelsYX(y=-3., x=5.), )
+)
+@pytest.mark.parametrize(
+    'overfocus', (-2., 0., 0.1)
+)
+@pytest.mark.parametrize(
+    'camera_length', (-4., 0., 1.2)
+)
+@pytest.mark.parametrize(
+    'dydx', ((-4., 13.), (0., 0.))
+)
+def test_geometry(scan, overfocus, camera_length, dydx):
+    dy, dx = dydx
+    params = Parameters4DSTEM(
+        overfocus=overfocus,
+        scan_pixel_pitch=1,
+        scan_cy=0.,
+        scan_cx=0.,
+        scan_rotation=0.,
+        camera_length=camera_length,
+        detector_pixel_pitch=1,
+        detector_cy=0.,
+        detector_cx=0.,
+        semiconv=0.023,
+        flip_y=False,
+        descan_error=DescanError()
+    )
+    model = Model4DSTEM.build(
+        params=params,
+        scan_pos=scan
+    )
+    ray = model.make_source_ray(source_dx=dx, source_dy=dy).ray
+    res = model.trace(ray)
+    # No descan error means rays not bent
+    for key, sect in res.items():
+        assert sect.ray.dy == dy
+        assert sect.ray.dx == dx
+        if scan.x == 0. or key not in ('scanner', 'specimen'):
+            assert_allclose(sect.ray.x, dx*sect.ray.z)
+        if scan.y == 0. or key not in ('scanner', 'specimen'):
+            assert_allclose(sect.ray.y, dy*sect.ray.z)
+    assert res['source'].ray.z == 0
+    for key in ('overfocus', 'scanner', 'specimen', 'descanner'):
+        assert_allclose(res[key].ray.z, overfocus)
+    for key in ('camera_length', 'detector'):
+        assert_allclose(res[key].ray.z, overfocus+camera_length)
+
+
+def test_descan_offset():
+    params_ref = Parameters4DSTEM(
+        overfocus=1,
+        scan_pixel_pitch=1,
+        scan_cy=0.,
+        scan_cx=0.,
+        scan_rotation=0.,
+        camera_length=1,
+        detector_pixel_pitch=1,
+        detector_cy=0.,
+        detector_cx=0.,
+        semiconv=0.023,
+        flip_y=False,
+        descan_error=DescanError()
+    )
+    model_ref = Model4DSTEM.build(
+        params=params_ref,
+        scan_pos=PixelsYX(y=23., x=-13.)
+    )
+    ray_ref = model_ref.make_source_ray(source_dx=0.5, source_dy=-0.1).ray
+    res_ref = model_ref.trace(ray_ref)
+
+    offpxi = 0.11
+    offpyi = 0.13
+    offsxi = 0.17
+    offsyi = 0.19
+    params = Parameters4DSTEM(
+        overfocus=1,
+        scan_pixel_pitch=1,
+        scan_cy=0.,
+        scan_cx=0.,
+        scan_rotation=0.,
+        camera_length=1,
+        detector_pixel_pitch=1,
+        detector_cy=0.,
+        detector_cx=0.,
+        semiconv=0.023,
+        flip_y=False,
+        descan_error=DescanError(
+            offpxi=offpxi,
+            offpyi=offpyi,
+            offsxi=offsxi,
+            offsyi=offsyi
+        )
+    )
+    model = Model4DSTEM.build(
+        params=params,
+        scan_pos=PixelsYX(y=23., x=-13.)
+    )
+    ray = model.make_source_ray(source_dx=0.5, source_dy=-0.1).ray
+    res = model.trace(ray)
+
+    for key in ('source', 'overfocus', 'scanner', 'specimen'):
+        sect_ref = res_ref[key]
+        sect = res[key]
+        for attr in ('y', 'x', 'dy', 'dx', 'z'):
+            assert_allclose(
+                getattr(sect.ray, attr),
+                getattr(sect_ref.ray, attr),
+            )
+    sect_ref = res_ref['descanner']
+    sect = res['descanner']
+    assert_allclose(
+        sect.ray.x,
+        sect_ref.ray.x + offpxi
+    )
+    assert_allclose(
+        sect.ray.y,
+        sect_ref.ray.y + offpyi
+    )
+    assert_allclose(
+        sect.ray.dx,
+        sect_ref.ray.dx + offsxi
+    )
+    assert_allclose(
+        sect.ray.dy,
+        sect_ref.ray.dy + offsyi
+    )
+    assert_allclose(
+        sect.ray.z,
+        sect_ref.ray.z
+    )
+    # Straight propagation
+    for key in ('camera_length', 'detector'):
+        start = res['descanner']
+        stop = res[key]
+        assert_allclose(
+            stop.ray.x,
+            start.ray.x + start.ray.dx*(stop.ray.z - start.ray.z)
+        )
+        assert_allclose(
+            stop.ray.y,
+            start.ray.y + start.ray.dy*(stop.ray.z - start.ray.z)
+        )
+        assert_allclose(
+            stop.ray.dx,
+            start.ray.dx
+        )
+        assert_allclose(
+            stop.ray.dy,
+            start.ray.dy
+        )
+
+
+@pytest.mark.parametrize(
+    'scan', (PixelsYX(y=0., x=0.), PixelsYX(y=-3., x=5.), )
+)
+def test_descan_position(scan):
+    params_ref = Parameters4DSTEM(
+        overfocus=1.,
+        scan_pixel_pitch=1.,
+        scan_cy=0.,
+        scan_cx=0.,
+        scan_rotation=0.,
+        camera_length=1.,
+        detector_pixel_pitch=1.,
+        detector_cy=0.,
+        detector_cx=0.,
+        semiconv=0.023,
+        flip_y=False,
+        descan_error=DescanError()
+    )
+    model_ref = Model4DSTEM.build(
+        params=params_ref,
+        scan_pos=scan
+    )
+    ray_ref = model_ref.make_source_ray(source_dx=0.5, source_dy=-0.1).ray
+    res_ref = model_ref.trace(ray_ref)
+
+    pxo_pxi = 0.11
+    pxo_pyi = 0.13
+    pyo_pxi = 0.17
+    pyo_pyi = 0.19
+    params = Parameters4DSTEM(
+        overfocus=1.,
+        scan_pixel_pitch=1.,
+        scan_cy=0.,
+        scan_cx=0.,
+        scan_rotation=0.,
+        camera_length=1.,
+        detector_pixel_pitch=1,
+        detector_cy=0.,
+        detector_cx=0.,
+        semiconv=0.023,
+        flip_y=False,
+        descan_error=DescanError(
+            pxo_pxi=pxo_pxi,
+            pxo_pyi=pxo_pyi,
+            pyo_pxi=pyo_pxi,
+            pyo_pyi=pyo_pyi
+        )
+    )
+    model = Model4DSTEM.build(
+        params=params,
+        scan_pos=scan
+    )
+    ray = model.make_source_ray(source_dx=0.5, source_dy=-0.1).ray
+    res = model.trace(ray)
+
+    # no descan error contribution from p*o_p*i parameters
+    # if beam is not deflected by scanner
+    if scan.x == 0 and scan.y == 0:
+        keys = (
+            'source', 'overfocus', 'scanner', 'specimen',
+            'descanner', 'camera_length', 'detector'
+        )
+    else:
+        keys = ('source', 'overfocus', 'scanner', 'specimen')
+    for key in keys:
+        sect_ref = res_ref[key]
+        sect = res[key]
+        for attr in ('y', 'x', 'dy', 'dx', 'z'):
+            assert_allclose(
+                getattr(sect.ray, attr),
+                getattr(sect_ref.ray, attr),
+            )
+    sect_ref = res_ref['descanner']
+    sect = res['descanner']
+    assert_allclose(
+        sect.ray.x,
+        sect_ref.ray.x + pxo_pxi * scan.x + pxo_pyi * scan.y
+    )
+    assert_allclose(
+        sect.ray.y,
+        sect_ref.ray.y + pyo_pxi * scan.x + pyo_pyi * scan.y
+    )
+    assert_allclose(
+        sect.ray.dx,
+        sect_ref.ray.dx
+    )
+    assert_allclose(
+        sect.ray.dy,
+        sect_ref.ray.dy
+    )
+    assert_allclose(
+        sect.ray.z,
+        sect_ref.ray.z
+    )
+    # Straight propagation
+    for key in ('camera_length', 'detector'):
+        start = res['descanner']
+        stop = res[key]
+        assert_allclose(
+            stop.ray.x,
+            start.ray.x + start.ray.dx*(stop.ray.z - start.ray.z)
+        )
+        assert_allclose(
+            stop.ray.y,
+            start.ray.y + start.ray.dy*(stop.ray.z - start.ray.z)
+        )
+        assert_allclose(
+            stop.ray.dx,
+            start.ray.dx
+        )
+        assert_allclose(
+            stop.ray.dy,
+            start.ray.dy
+        )
+
+
+@pytest.mark.parametrize(
+    'scan', (PixelsYX(y=0., x=0.), PixelsYX(y=-3., x=5.), )
+)
+def test_descan_slope(scan):
+    params_ref = Parameters4DSTEM(
+        overfocus=1.,
+        scan_pixel_pitch=1.,
+        scan_cy=0.,
+        scan_cx=0.,
+        scan_rotation=0.,
+        camera_length=1.,
+        detector_pixel_pitch=1.,
+        detector_cy=0.,
+        detector_cx=0.,
+        semiconv=0.023,
+        flip_y=False,
+        descan_error=DescanError()
+    )
+    model_ref = Model4DSTEM.build(
+        params=params_ref,
+        scan_pos=scan
+    )
+    ray_ref = model_ref.make_source_ray(source_dx=0.5, source_dy=-0.1).ray
+    res_ref = model_ref.trace(ray_ref)
+
+    sxo_pxi = 0.11
+    sxo_pyi = 0.13
+    syo_pxi = 0.17
+    syo_pyi = 0.19
+    params = Parameters4DSTEM(
+        overfocus=1.,
+        scan_pixel_pitch=1.,
+        scan_cy=0.,
+        scan_cx=0.,
+        scan_rotation=0.,
+        camera_length=1.,
+        detector_pixel_pitch=1,
+        detector_cy=0.,
+        detector_cx=0.,
+        semiconv=0.023,
+        flip_y=False,
+        descan_error=DescanError(
+            sxo_pxi=sxo_pxi,
+            sxo_pyi=sxo_pyi,
+            syo_pxi=syo_pxi,
+            syo_pyi=syo_pyi
+        )
+    )
+    model = Model4DSTEM.build(
+        params=params,
+        scan_pos=scan
+    )
+    ray = model.make_source_ray(source_dx=0.5, source_dy=-0.1).ray
+    res = model.trace(ray)
+
+    # no descan error contribution from s*o_p*i parameters
+    # if beam is not deflected by scanner
+    if scan.x == 0 and scan.y == 0:
+        keys = (
+            'source', 'overfocus', 'scanner', 'specimen',
+            'descanner', 'camera_length', 'detector'
+        )
+    else:
+        keys = ('source', 'overfocus', 'scanner', 'specimen')
+    for key in keys:
+        sect_ref = res_ref[key]
+        sect = res[key]
+        for attr in ('y', 'x', 'dy', 'dx', 'z'):
+            assert_allclose(
+                getattr(sect.ray, attr),
+                getattr(sect_ref.ray, attr),
+            )
+    sect_ref = res_ref['descanner']
+    sect = res['descanner']
+    assert_allclose(
+        sect.ray.dx,
+        sect_ref.ray.dx + sxo_pxi * scan.x + sxo_pyi * scan.y
+    )
+    assert_allclose(
+        sect.ray.dy,
+        sect_ref.ray.dy + syo_pxi * scan.x + syo_pyi * scan.y
+    )
+    assert_allclose(
+        sect.ray.x,
+        sect_ref.ray.x
+    )
+    assert_allclose(
+        sect.ray.y,
+        sect_ref.ray.y
+    )
+    assert_allclose(
+        sect.ray.z,
+        sect_ref.ray.z
+    )
+    # Straight propagation
+    for key in ('camera_length', 'detector'):
+        start = res['descanner']
+        stop = res[key]
+        assert_allclose(
+            stop.ray.x,
+            start.ray.x + start.ray.dx*(stop.ray.z - start.ray.z)
+        )
+        assert_allclose(
+            stop.ray.y,
+            start.ray.y + start.ray.dy*(stop.ray.z - start.ray.z)
+        )
+        assert_allclose(
+            stop.ray.dx,
+            start.ray.dx
+        )
+        assert_allclose(
+            stop.ray.dy,
+            start.ray.dy
+        )

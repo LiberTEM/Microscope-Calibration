@@ -137,7 +137,10 @@ class Model4DSTEM:
         scan_to_real = ltcoords.rotate(params.scan_rotation)\
             @ ltcoords.scale(params.scan_pixel_pitch)
         real_to_scan = jnp.linalg.inv(scan_to_real)
-        scan_y, scan_x = scan_to_real @ (scan_pos.y, scan_pos.x)
+        scan_y, scan_x = scan_to_real @ (
+            scan_pos.y - params.scan_cy,
+            scan_pos.x - params.scan_cx,
+        )
         do_flip = ltcoords.flip_y() if params.flip_y else ltcoords.identity()
         detector_to_real = ltcoords.scale(params.detector_pixel_pitch) @ do_flip
         real_to_detector = jnp.linalg.inv(detector_to_real)
@@ -218,27 +221,33 @@ class Model4DSTEM:
         # inserting gaps of zero length manually.
         run_result = list(run_iter(ray=ray, components=components))
 
+        # skip the first propagation, which should be zero distance
+        comp, r = run_result.pop(0)
+        assert isinstance(comp, Propagator)
+        assert comp.distance == 0.
+        assert r == ray
+
         comp, r = run_result.pop(0)
         assert comp == self.source
         assert r == ray
         result['source'] = ResultSection(component=comp, ray=r)
 
-        # Space of length 0 is skipped by run_iter
-        if self.source.z != self.scanner.z:
-            comp, r = run_result.pop(0)
-            assert isinstance(comp, Propagator)
-            assert isinstance(comp.propagator, FreeSpaceParaxial)
-            assert isinstance(r, Ray)
-            result['overforcus'] = ResultSection(component=comp, ray=r)
-        else:
-            comp = Propagator(distance=0, propagator=FreeSpaceParaxial())
-            r = r
-        result['overforcus'] = ResultSection(component=comp, ray=r)
+        comp, r = run_result.pop(0)
+        assert isinstance(comp, Propagator)
+        assert isinstance(comp.propagator, FreeSpaceParaxial)
+        assert isinstance(r, Ray)
+        result['overfocus'] = ResultSection(component=comp, ray=r)
 
         comp, r = run_result.pop(0)
         assert comp == self.scanner
         assert isinstance(r, Ray)
         result['scanner'] = ResultSection(component=comp, ray=r)
+
+        # Skip zero distance propagation between scanner and specimen
+        comp, r = run_result.pop(0)
+        assert isinstance(comp, Propagator)
+        assert comp.distance == 0.
+        assert r == result['scanner'].ray
 
         comp, r = run_result.pop(0)
         assert comp == self.specimen
@@ -250,20 +259,21 @@ class Model4DSTEM:
             sampling={'scan_px': scan_px},
         )
 
+        # Skip zero distance propagation between specimen and descanner
+        comp, r = run_result.pop(0)
+        assert isinstance(comp, Propagator)
+        assert comp.distance == 0.
+        assert r == result['specimen'].ray
+
         comp, r = run_result.pop(0)
         assert comp == self.descanner
         assert isinstance(r, Ray)
         result['descanner'] = ResultSection(component=comp, ray=r)
 
-        # Space of length 0 is skipped by run_iter
-        if self.descanner.z != self.detector.z:
-            comp, r = run_result.pop(0)
-            assert isinstance(comp, Propagator)
-            assert isinstance(comp.propagator, FreeSpaceParaxial)
-            assert isinstance(r, Ray)
-        else:
-            comp = Propagator(distance=0, propagator=FreeSpaceParaxial())
-            r = r
+        comp, r = run_result.pop(0)
+        assert isinstance(comp, Propagator)
+        assert isinstance(comp.propagator, FreeSpaceParaxial)
+        assert isinstance(r, Ray)
         result['camera_length'] = ResultSection(component=comp, ray=r)
 
         comp, r = run_result.pop(0)
