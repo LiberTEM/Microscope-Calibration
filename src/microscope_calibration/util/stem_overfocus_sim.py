@@ -10,7 +10,7 @@ import numba
 
 from libertem.analysis import com as com_analysis
 
-from microscope_calibration.common.stem_overfocus import OverfocusParams
+from microscope_calibration.common.model import Parameters4DSTEM
 
 
 def smiley(size):
@@ -54,7 +54,7 @@ def smiley(size):
     return obj
 
 
-def get_transformation_matrix(sim_params: OverfocusParams):
+def get_transformation_matrix(sim_params: Parameters4DSTEM):
     '''
     Calculate a transformation matrix for :func:`detector_px_to_specimen_px`
     from the provided parameters.
@@ -166,7 +166,7 @@ def _project(
                     result_out[scan_y, scan_x, det_y, det_x] = image[image_px_y, image_px_x]
 
 
-def project(image, scan_shape, detector_shape, sim_params: OverfocusParams):
+def project(image, scan_shape, detector_shape, sim_params: Parameters4DSTEM):
     result = np.zeros(tuple(scan_shape) + tuple(detector_shape), dtype=image.dtype)
     _project(
         image=image,

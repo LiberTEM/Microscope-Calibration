@@ -4,8 +4,6 @@ from collections import OrderedDict
 import jax_dataclasses as jdc
 import jax.numpy as jnp
 
-from libertem.corrections import coordinates as ltcoords
-
 from temgym_core.ray import Ray
 from temgym_core import PixelYX, CoordXY
 from temgym_core.components import (
@@ -15,46 +13,68 @@ from temgym_core.run import run_iter
 from temgym_core.source import Source, PointSource
 from temgym_core.propagator import Propagator, FreeSpaceParaxial
 
-# FIXME workaround until code is released in final location
-try:
-    from libertem.corrections.coordinates import scale_rotate_flip_y
-except ImportError:
-    def scale_rotate_flip_y(mat: jnp.ndarray):
-        '''
-        Deconstruct a matrix generated with scale() @ rotate() @ flip_y()
-        into the individual parameters
-        '''
-        scale_y = jnp.linalg.norm(mat[:, 0])
-        scale_x = jnp.linalg.norm(mat[:, 1])
-        if not jnp.allclose(scale_y, scale_x):
-            raise ValueError(f'y scale {scale_y} and x scale {scale_x} are different.')
 
-        scan_rot_flip = mat / scale_y
-        # 2D cross product
-        flip_factor = (
-            scan_rot_flip[0, 0] * scan_rot_flip[1, 1]
-            - scan_rot_flip[0, 1] * scan_rot_flip[1, 0]
+# Jax-compatible versions of libertem.corrections.coordinates functions
+def scale(factor):
+    return jnp.eye(2) * factor
+
+
+def rotate(radians):
+    # https://en.wikipedia.org/wiki/Rotation_matrix
+    # y, x instead of x, y
+    return jnp.array([
+        (jnp.cos(radians), jnp.sin(radians)),
+        (-jnp.sin(radians), jnp.cos(radians))
+    ])
+
+
+def flip_y():
+    return jnp.array([
+        (-1, 0),
+        (0, 1)
+    ])
+
+
+def identity():
+    return jnp.eye(2)
+
+
+def scale_rotate_flip_y(mat: jnp.ndarray):
+    '''
+    Deconstruct a matrix generated with scale() @ rotate() @ flip_y()
+    into the individual parameters
+    '''
+    scale_y = jnp.linalg.norm(mat[:, 0])
+    scale_x = jnp.linalg.norm(mat[:, 1])
+    if not jnp.allclose(scale_y, scale_x):
+        raise ValueError(f'y scale {scale_y} and x scale {scale_x} are different.')
+
+    scan_rot_flip = mat / scale_y
+    # 2D cross product
+    flip_factor = (
+        scan_rot_flip[0, 0] * scan_rot_flip[1, 1]
+        - scan_rot_flip[0, 1] * scan_rot_flip[1, 0]
+    )
+    # Make sure no scale or shear left
+    if not jnp.allclose(jnp.abs(flip_factor), 1.):
+        raise ValueError(
+            f'Contains shear: flip factor (2D cross product) is {flip_factor}.'
         )
-        # Make sure no scale or shear left
-        if not jnp.allclose(jnp.abs(flip_factor), 1.):
-            raise ValueError(
-                f'Contains shear: flip factor (2D cross product) is {flip_factor}.'
-            )
-        flip_y = bool(flip_factor < 0)
-        # undo flip_y
-        rot = scan_rot_flip.copy()
-        rot[:, 0] *= flip_factor
+    flip_y = bool(flip_factor < 0)
+    # undo flip_y
+    rot = scan_rot_flip.copy()
+    rot[:, 0] *= flip_factor
 
-        angle1 = jnp.arctan2(-rot[1, 0], rot[0, 0])
-        angle2 = jnp.arctan2(rot[0, 1], rot[1, 1])
+    angle1 = jnp.arctan2(-rot[1, 0], rot[0, 0])
+    angle2 = jnp.arctan2(rot[0, 1], rot[1, 1])
 
-        # So far not reached in tests since inconsistencies are caught as shear before
-        if not jnp.allclose((jnp.sin(angle1), jnp.cos(angle1)), (jnp.sin(angle2), jnp.cos(angle2))):
-            raise ValueError(
-                f'Rotation angle 1 {angle1} and rotation angle 2 {angle2} are inconsistent.'
-            )
+    # So far not reached in tests since inconsistencies are caught as shear before
+    if not jnp.allclose((jnp.sin(angle1), jnp.cos(angle1)), (jnp.sin(angle2), jnp.cos(angle2))):
+        raise ValueError(
+            f'Rotation angle 1 {angle1} and rotation angle 2 {angle2} are inconsistent.'
+        )
 
-        return (scale_y, angle1, flip_y)
+    return (scale_y, angle1, flip_y)
 
 
 # TODO use LiberTEM-schema later
@@ -130,15 +150,15 @@ class Model4DSTEM:
     def build(
             cls, params: Parameters4DSTEM, scan_pos: PixelYX,
             specimen: Optional[Component] = None) -> 'Model4DSTEM':
-        scan_to_real = ltcoords.rotate(params.scan_rotation)\
-            @ ltcoords.scale(params.scan_pixel_pitch)
+        scan_to_real = rotate(params.scan_rotation)\
+            @ scale(params.scan_pixel_pitch)
         real_to_scan = jnp.linalg.inv(scan_to_real)
-        scan_y, scan_x = scan_to_real @ (
+        scan_y, scan_x = scan_to_real @ jnp.array((
             scan_pos.y - params.scan_center.y,
             scan_pos.x - params.scan_center.x,
-        )
-        do_flip = ltcoords.flip_y() if params.flip_y else ltcoords.identity()
-        detector_to_real = ltcoords.scale(params.detector_pixel_pitch) @ do_flip
+        ))
+        do_flip = flip_y() if params.flip_y else identity()
+        detector_to_real = scale(params.detector_pixel_pitch) @ do_flip
         real_to_detector = jnp.linalg.inv(detector_to_real)
         if specimen is None:
             specimen = Plane(z=params.overfocus)
@@ -167,9 +187,9 @@ class Model4DSTEM:
 
     @property
     def params(self) -> Parameters4DSTEM:
-        scan_scale, scan_rotation, scan_flip = ltcoords.scale_rotate_flip_y(self._scan_to_real)
+        scan_scale, scan_rotation, scan_flip = scale_rotate_flip_y(self._scan_to_real)
         assert scan_flip is False
-        detector_scale, detector_rotation, detector_flip = ltcoords.scale_rotate_flip_y(
+        detector_scale, detector_rotation, detector_flip = scale_rotate_flip_y(
             self._detector_to_real
         )
         assert jnp.allclose(detector_rotation, 0.)
@@ -239,6 +259,7 @@ class Model4DSTEM:
         comp, r = run_result.pop(0)
         assert isinstance(comp, Propagator)
         assert comp.distance == 0.
+        assert isinstance(r, Ray)
         assert r == result['scanner'].ray
 
         comp, r = run_result.pop(0)
