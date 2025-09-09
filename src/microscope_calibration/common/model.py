@@ -7,7 +7,7 @@ import jax.numpy as jnp
 from libertem.corrections import coordinates as ltcoords
 
 from temgym_core.ray import Ray
-from temgym_core import PixelsYX, CoordsXY
+from temgym_core import PixelYX, CoordXY
 from temgym_core.components import (
     Component, Plane, Descanner, Scanner, DescanError
 )
@@ -111,28 +111,28 @@ class Model4DSTEM:
     def camera_length(self) -> float:
         return self.detector.z - self.specimen.z
 
-    def scan_to_real(self, pixels: PixelsYX, _one: float = 1.) -> CoordsXY:
+    def scan_to_real(self, pixels: PixelYX, _one: float = 1.) -> CoordXY:
         (y, x) = self._scan_to_real @ jnp.array((
             pixels.y - self.scan_cy*_one, pixels.x - self.scan_cx*_one
         ))
-        return CoordsXY(y=y, x=x)
+        return CoordXY(y=y, x=x)
 
-    def real_to_scan(self, coords: CoordsXY, _one: float = 1.) -> PixelsYX:
+    def real_to_scan(self, coords: CoordXY, _one: float = 1.) -> PixelYX:
         (y, x) = self._real_to_scan @ jnp.array((coords.y, coords.x))
-        return PixelsYX(y=y + self.scan_cy*_one, x=x + self.scan_cx*_one)
+        return PixelYX(y=y + self.scan_cy*_one, x=x + self.scan_cx*_one)
 
-    def detector_to_real(self, pixels: PixelsYX, _one: float = 1.) -> CoordsXY:
+    def detector_to_real(self, pixels: PixelYX, _one: float = 1.) -> CoordXY:
         (y, x) = self._detector_to_real @ jnp.array((
             pixels.y - self.detector_cy*_one, pixels.x - self.detector_cx*_one))
-        return CoordsXY(y=y, x=x)
+        return CoordXY(y=y, x=x)
 
-    def real_to_detector(self, coords: CoordsXY, _one: float = 1.) -> PixelsYX:
+    def real_to_detector(self, coords: CoordXY, _one: float = 1.) -> PixelYX:
         (y, x) = self._real_to_detector @ jnp.array((coords.y, coords.x))
-        return PixelsYX(y=y + self.detector_cy*_one, x=x + self.detector_cx*_one)
+        return PixelYX(y=y + self.detector_cy*_one, x=x + self.detector_cx*_one)
 
     @classmethod
     def build(
-            cls, params: Parameters4DSTEM, scan_pos: PixelsYX,
+            cls, params: Parameters4DSTEM, scan_pos: PixelYX,
             specimen: Optional[Component] = None) -> 'Model4DSTEM':
         scan_to_real = ltcoords.rotate(params.scan_rotation)\
             @ ltcoords.scale(params.scan_pixel_pitch)
@@ -252,7 +252,7 @@ class Model4DSTEM:
         comp, r = run_result.pop(0)
         assert comp == self.specimen
         assert isinstance(r, Ray)
-        scan_px = self.real_to_scan(CoordsXY(x=r.x, y=r.y), _one=ray._one)
+        scan_px = self.real_to_scan(CoordXY(x=r.x, y=r.y), _one=ray._one)
         result['specimen'] = ResultSection(
             component=comp,
             ray=r,
@@ -279,7 +279,7 @@ class Model4DSTEM:
         comp, r = run_result.pop(0)
         assert comp == self.detector
         assert isinstance(r, Ray)
-        detector_px = self.real_to_detector(CoordsXY(x=r.x, y=r.y), _one=ray._one)
+        detector_px = self.real_to_detector(CoordXY(x=r.x, y=r.y), _one=ray._one)
         result['detector'] = ResultSection(
             component=comp,
             ray=r,
