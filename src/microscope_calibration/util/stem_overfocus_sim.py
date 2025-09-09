@@ -8,9 +8,7 @@ This can then be used to test the UDF that performs the inverse projection.
 import numpy as np
 import numba
 
-from libertem.analysis import com as com_analysis
-
-from microscope_calibration.common.model import Parameters4DSTEM
+from microscope_calibration.common.model import Parameters4DSTEM, Model4DSTEM, PixelYX
 
 
 def smiley(size):
@@ -54,129 +52,146 @@ def smiley(size):
     return obj
 
 
-def get_transformation_matrix(sim_params: Parameters4DSTEM):
+def get_forward_transformation_matrix(sim_params: Parameters4DSTEM):
     '''
-    Calculate a transformation matrix for :func:`detector_px_to_specimen_px`
-    from the provided parameters.
+    Calculate a transformation matrix that maps from scan position in scan pixel
+    coordinates and detector pixel coordinates to specimen coordinates in scan
+    pixel coordinates and tilt of the ray at the source.
 
-    Internally this uses :func:`libertem.analysis.com.apply_correction` to
-    transform unit vectors in order to determine the matrix.
+    Using a matrix multiplication instead of solving for ray solutions for each
+    pixel greatly improves performance.
+
+    The input values for that matrix correspond to the pixel indices in a 4D
+    STEM dataset.
+
+    The specimen position from the output can be used to pick the right value
+    from an object. The tilt can be used to determine if the beam passes through
+    through the microscope or if it is blocked by the beam-shaping aperture.
+
+    It may be possible to derive this matrix from partial derivatives of the
+    model. However, this is postponed for now since this matrix mixes input and
+    output values with respect of the model, so one may have to work with a
+    combination of forward and inverse derivatives.
+
+    For the time being this method traces a number of sample rays and deduces the
+    mapping matrix from these samples.
     '''
-    transformation_matrix = np.array(com_analysis.apply_correction(
-        y_centers=np.array((1, 0)),
-        x_centers=np.array((0, 1)),
-        scan_rotation=sim_params['scan_rotation'],
-        flip_y=sim_params['flip_y'],
+
+    # scan position y/x, source tilt y/x
+    test_parameters = np.array((
+        [0., 0., 0., 0.],
+        [1., 0., 0., 0.],
+        [0., 1., 0., 0.],
+        [0., 0., 1., 0.],
+        [0., 0., 0., 1.],
+        [1., 1., 1., 1.],
+        [1., 2., 3., 4.],
     ))
-    return transformation_matrix
 
+    input_samples = []
+    output_samples = []
 
-@numba.njit(inline='always', cache=True)
-def detector_px_to_specimen_px(
-        y_px, x_px, cy, cx, detector_pixel_size, scan_pixel_size, camera_length,
-        overfocus, transformation_matrix, fov_size_y, fov_size_x):
-    '''
-    Model Figure 2 of https://arxiv.org/abs/2403.08538
-
-    The pixel coordinates refer to the center of a pixel: In :func:`_project`
-    they are rounded to the nearest integer. This function is just transforming
-    coordinates independent of actual scan and detector sizes. Rounding and
-    bounds checks are performed in :func:`_project`.
-
-    The specimen pixel coordinates calculated by this function are combined with
-    the scan coordinates in :func:`_project` to model the scan.
-
-    Parameters
-    ----------
-
-    y_px, x_px : float
-        Detector pixel coordinates to project. They are relative to (cy, cx),
-        where specifying pixel coordinates (0.0, 0.0) maps to physical
-        coordinates (-cy * detector_pixel_size, -cx *detector_pixel_size), and
-        pixel coordinates (cy, cx) map to physical coordinates (0.0. 0.0).
-    cy, cx : float
-        Detector center in detector pixel coordinates. This defines the position
-        of the "straight through" beam on the detector.
-    detector_pixel_size, scan_pixel_size : float
-        Physical pixel sizes in m. This assumes a uniform scan and detector grid
-        in x and y direction
-    camera_length : float
-        Virtual distance from specimen to detector in m
-    overfocus : float
-        Virtual distance from focus point to specimen in m. Underfocus is
-        specified as a negative overfocus.
-    transformation_matrix : np.ndarray[float]
-        2x2 transformation matrix for detector coordinates. It acts around (cy,
-        cx). This is used to specify rotation and handedness change consistent
-        with other methods in LiberTEM. It can be calculated with
-        :fun:`get_transformation_matrix`.
-    fov_size_y, fov_size_x : float
-        Size of the scan area (field of view) in scan pixels. The scan
-        coordinate system is centered in the middle of this field of view,
-        meaning that the "straight through" beam (y_px, x_px) == (cy, cx) is
-        mapped to (fov_size_y/2, fov_size_x/2). Please note that the actual scan
-        coordinates are not calculated in this function, but added as an offset
-        in :func:`_project`. The field of view specified here is just used to calculate
-        the center of the "straight through" beam in the middle of the scan.
-
-    Returns
-    -------
-    specimen_px_y, specimen_px_x : float
-        Beam position on the specimen in scan pixel coordinates.
-    '''
-    position_y, position_x = (y_px - cy) * detector_pixel_size, (x_px - cx) * detector_pixel_size
-    position_y, position_x = transformation_matrix @ np.array((position_y, position_x))
-    specimen_position_y = position_y / (overfocus + camera_length) * overfocus
-    specimen_position_x = position_x / (overfocus + camera_length) * overfocus
-    specimen_px_x = specimen_position_x / scan_pixel_size + fov_size_x / 2
-    specimen_px_y = specimen_position_y / scan_pixel_size + fov_size_y / 2
-    return specimen_px_y, specimen_px_x
-
-
-@numba.njit(cache=True)
-def _project(
-        image, cy, cx, detector_pixel_size, scan_pixel_size, camera_length,
-        overfocus, transformation_matrix, result_out):
-    scan_shape = result_out.shape[:2]
-    for det_y in range(result_out.shape[2]):
-        for det_x in range(result_out.shape[3]):
-            specimen_px_y, specimen_px_x = detector_px_to_specimen_px(
-                y_px=det_y,
-                x_px=det_x,
-                cy=cy,
-                cx=cx,
-                detector_pixel_size=detector_pixel_size,
-                scan_pixel_size=scan_pixel_size,
-                camera_length=camera_length,
-                overfocus=overfocus,
-                transformation_matrix=transformation_matrix,
-                fov_size_y=image.shape[0],
-                fov_size_x=image.shape[1],
+    for test_param_raw in test_parameters:
+        # We are paranoid and confirm that the model is linear
+        for factor in (1., 2.):
+            test_param = test_param_raw * factor
+            scan_pos = PixelYX(x=test_param[0], y=test_param[1])
+            source_dy = test_param[2]
+            source_dx = test_param[3]
+            model = Model4DSTEM.build(params=sim_params, scan_pos=scan_pos)
+            ray = model.make_source_ray(source_dy=source_dy, source_dx=source_dx).ray
+            res = model.trace(ray)
+            input_sample = (
+                scan_pos.y,
+                scan_pos.x,
+                res['detector'].sampling['detector_px'].y,
+                res['detector'].sampling['detector_px'].x,
+                1.
             )
-            for scan_y in range(scan_shape[0]):
-                for scan_x in range(scan_shape[1]):
-                    offset_y = scan_y - scan_shape[0] // 2
-                    offset_x = scan_x - scan_shape[1] // 2
-                    image_px_y = int(np.round(specimen_px_y + offset_y))
-                    image_px_x = int(np.round(specimen_px_x + offset_x))
-                    if image_px_y < 0 or image_px_y >= image.shape[0]:
-                        continue
-                    if image_px_x < 0 or image_px_x >= image.shape[1]:
-                        continue
-                    result_out[scan_y, scan_x, det_y, det_x] = image[image_px_y, image_px_x]
+            output_sample = (
+                res['specimen'].sampling['scan_px'].y,
+                res['specimen'].sampling['scan_px'].x,
+                source_dy,
+                source_dx,
+                1.,
+            )
+            output_samples.append(output_sample)
+            input_samples.append(input_sample)
+
+    output_samples = np.array(output_samples)
+    input_samples = np.array(input_samples)
+
+    x, residuals, rank, s = np.linalg.lstsq(np.array(input_samples), np.array(output_samples))
+
+    # FIXME include test also based on singular values
+    # FIXME confirm correct operation with realistic TEM parameters
+    assert len(residuals) == rank
+    # Confirm that the solution is exact, in particular that
+    # the model is linear
+    assert np.allclose(residuals, 0.)
+    assert rank == 5
+
+    for i in range(len(input_samples)):
+        assert np.allclose(
+            output_samples[i],
+            input_samples[i] @ x,
+            rtol=1e-6,
+            atol=1e-6
+        )
+    return x
+
+
+@numba.njit
+def project_frame_forward(obj, source_semiconv, mat, scan_y, scan_x, out):
+    limit = np.abs(source_semiconv)**2
+    for det_y in range(out.shape[0]):
+        for det_x in range(out.shape[1]):
+            # Manually unrolled matrix-vector product to allow skipping before
+            # calculating all values and facilitate auto-vectorization of the
+            # loop
+
+            # _one = (
+            #       scan_y * mat[0, 4] + scan_x * mat[1, 4]
+            #       + det_y * mat[2, 4] + det_x * mat[3, 4] + mat[4, 4]
+            # )
+            # assert np.allclose(_one, 1)
+            tilt_y = (
+                scan_y * mat[0, 2] + scan_x * mat[1, 2]
+                + det_y * mat[2, 2] + det_x * mat[3, 2] + mat[4, 2]
+            )
+            tilt_x = (
+                scan_y * mat[0, 3] + scan_x * mat[1, 3]
+                + det_y * mat[2, 3] + det_x * mat[3, 3] + mat[4, 3]
+            )
+            if np.abs(tilt_y)**2 + np.abs(tilt_x)**2 < limit:
+                spec_y = (
+                    scan_y * mat[0, 0] + scan_x * mat[1, 0]
+                    + det_y * mat[2, 0] + det_x * mat[3, 0] + mat[4, 0]
+                )
+                spec_x = (
+                    scan_y * mat[0, 1] + scan_x * mat[1, 1]
+                    + det_y * mat[2, 1] + det_x * mat[3, 1] + mat[4, 1]
+                )
+                spec_y = int(np.round(spec_y))
+                spec_x = int(np.round(spec_x))
+                if spec_y >= 0 and spec_y < obj.shape[0] and spec_x >= 0 and spec_x < obj.shape[1]:
+                    out[det_y, det_x] = obj[spec_y, spec_x]
+                else:
+                    out[det_y, det_x] = 0.
 
 
 def project(image, scan_shape, detector_shape, sim_params: Parameters4DSTEM):
     result = np.zeros(tuple(scan_shape) + tuple(detector_shape), dtype=image.dtype)
-    _project(
-        image=image,
-        cy=sim_params['cy'],
-        cx=sim_params['cx'],
-        detector_pixel_size=sim_params['detector_pixel_size'],
-        scan_pixel_size=sim_params['scan_pixel_size'],
-        camera_length=sim_params['camera_length'],
-        overfocus=sim_params['overfocus'],
-        transformation_matrix=get_transformation_matrix(sim_params),
-        result_out=result
-    )
+    mat = get_forward_transformation_matrix(sim_params=sim_params)
+    model = Model4DSTEM.build(params=sim_params, scan_pos=PixelYX(x=0., y=0.))
+    for scan_y in range(result.shape[0]):
+        for scan_x in range(result.shape[1]):
+            project_frame_forward(
+                obj=image,
+                source_semiconv=model.source.semi_conv,
+                mat=mat,
+                scan_y=scan_y,
+                scan_x=scan_x,
+                out=result[scan_y, scan_x]
+            )
     return result
