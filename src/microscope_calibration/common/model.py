@@ -62,13 +62,11 @@ except ImportError:
 class Parameters4DSTEM:
     overfocus: float  # m
     scan_pixel_pitch: float  # m
-    scan_cy: float  # px
-    scan_cx: float  # px
+    scan_center: PixelYX
     scan_rotation: float  # rad
     camera_length: float  # m
     detector_pixel_pitch: float  # m
-    detector_cy: float  # px
-    detector_cx: float  # px
+    detector_center: PixelYX
     semiconv: float  # rad
     flip_y: bool
     descan_error: DescanError = DescanError()
@@ -98,10 +96,8 @@ class Model4DSTEM:
     _detector_to_real: jnp.ndarray  # 2x2 matrix from libertem.corrections.coordinates
     _real_to_detector: jnp.ndarray  # 2x2 matrix from libertem.corrections.coordinates
 
-    scan_cy: float
-    scan_cx: float
-    detector_cy: float
-    detector_cx: float
+    scan_center: PixelYX
+    detector_center: PixelYX
 
     @property
     def overfocus(self) -> float:
@@ -113,22 +109,22 @@ class Model4DSTEM:
 
     def scan_to_real(self, pixels: PixelYX, _one: float = 1.) -> CoordXY:
         (y, x) = self._scan_to_real @ jnp.array((
-            pixels.y - self.scan_cy*_one, pixels.x - self.scan_cx*_one
+            pixels.y - self.scan_center.y*_one, pixels.x - self.scan_center.x*_one
         ))
         return CoordXY(y=y, x=x)
 
     def real_to_scan(self, coords: CoordXY, _one: float = 1.) -> PixelYX:
         (y, x) = self._real_to_scan @ jnp.array((coords.y, coords.x))
-        return PixelYX(y=y + self.scan_cy*_one, x=x + self.scan_cx*_one)
+        return PixelYX(y=y + self.scan_center.y*_one, x=x + self.scan_center.x*_one)
 
     def detector_to_real(self, pixels: PixelYX, _one: float = 1.) -> CoordXY:
         (y, x) = self._detector_to_real @ jnp.array((
-            pixels.y - self.detector_cy*_one, pixels.x - self.detector_cx*_one))
+            pixels.y - self.detector_center.y*_one, pixels.x - self.detector_center.x*_one))
         return CoordXY(y=y, x=x)
 
     def real_to_detector(self, coords: CoordXY, _one: float = 1.) -> PixelYX:
         (y, x) = self._real_to_detector @ jnp.array((coords.y, coords.x))
-        return PixelYX(y=y + self.detector_cy*_one, x=x + self.detector_cx*_one)
+        return PixelYX(y=y + self.detector_center.y*_one, x=x + self.detector_center.x*_one)
 
     @classmethod
     def build(
@@ -138,8 +134,8 @@ class Model4DSTEM:
             @ ltcoords.scale(params.scan_pixel_pitch)
         real_to_scan = jnp.linalg.inv(scan_to_real)
         scan_y, scan_x = scan_to_real @ (
-            scan_pos.y - params.scan_cy,
-            scan_pos.x - params.scan_cx,
+            scan_pos.y - params.scan_center.y,
+            scan_pos.x - params.scan_center.x,
         )
         do_flip = ltcoords.flip_y() if params.flip_y else ltcoords.identity()
         detector_to_real = ltcoords.scale(params.detector_pixel_pitch) @ do_flip
@@ -165,10 +161,8 @@ class Model4DSTEM:
                 descan_error=params.descan_error
             ),
             detector=Plane(z=params.overfocus + params.camera_length),
-            scan_cy=params.scan_cy,
-            scan_cx=params.scan_cx,
-            detector_cy=params.detector_cy,
-            detector_cx=params.detector_cx,
+            scan_center=params.scan_center,
+            detector_center=params.detector_center
         )
 
     @property
@@ -182,13 +176,11 @@ class Model4DSTEM:
         return Parameters4DSTEM(
             overfocus=self.specimen.z - self.source.z,
             scan_pixel_pitch=scan_scale,
-            scan_cy=self.scan_cy,
-            scan_cx=self.scan_cx,
+            scan_center=self.scan_center,
             scan_rotation=scan_rotation,
             camera_length=self.detector.z - self.specimen.z,
             detector_pixel_pitch=detector_scale,
-            detector_cy=self.detector_cy,
-            detector_cx=self.detector_cx,
+            detector_center=self.detector_center,
             semiconv=self.source.semi_conv,
             flip_y=detector_flip,
             descan_error=self.descanner.descan_error,
