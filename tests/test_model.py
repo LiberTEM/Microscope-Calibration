@@ -4,6 +4,8 @@ from numpy.testing import assert_allclose
 import jax_dataclasses as jdc
 from libertem.udf.com import guess_corrections, apply_correction
 import numpy as np
+import jax.numpy as jnp
+import jax
 
 from temgym_core.ray import Ray
 from temgym_core.components import DescanError, Component
@@ -1018,3 +1020,36 @@ def test_descan_slope(scan):
             stop.ray.dy,
             start.ray.dy
         )
+
+
+def test_jax_smoke():
+    params = Parameters4DSTEM(
+        overfocus=0.7,
+        scan_pixel_pitch=0.005,
+        scan_center=PixelYX(y=17, x=13),
+        scan_rotation=1.234,
+        camera_length=2.3,
+        detector_pixel_pitch=0.0247,
+        detector_center=PixelYX(y=11, x=19),
+        semiconv=0.023,
+        flip_y=True,
+        descan_error=DescanError(offpxi=.345, pxo_pxi=948)
+    )
+
+    def test_func(arr):
+        scan_y, scan_x, tilt_y, tilt_x, _one = arr
+        scan_pos = PixelYX(x=scan_x, y=scan_y)
+        model = Model4DSTEM.build(params=params, scan_pos=scan_pos)
+        ray = model.make_source_ray(source_dy=tilt_y, source_dx=tilt_x, _one=_one).ray
+        res = model.trace(ray)
+        return jnp.array((
+            res['specimen'].sampling['scan_px'].y,
+            res['specimen'].sampling['scan_px'].x,
+            res['detector'].sampling['detector_px'].y,
+            res['detector'].sampling['detector_px'].x,
+            res['detector'].ray._one
+        ))
+
+    sample = jnp.array((0., 0., 0., 0., 1.))
+    test_func(sample)
+    jax.jacobian(test_func)(sample)
