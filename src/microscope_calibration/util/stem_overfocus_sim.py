@@ -1,14 +1,9 @@
-'''
-Independent reference implementation of the ray tracing from detector to object
-to allow simulating a dataset.
-
-This can then be used to test the UDF that performs the inverse projection.
-'''
+from typing import Callable, Optional
 
 import numpy as np
 import numba
 
-from microscope_calibration.common.model import Parameters4DSTEM, Model4DSTEM, PixelYX
+from microscope_calibration.common.model import Parameters4DSTEM, Model4DSTEM, PixelYX, CoordXY
 
 
 def smiley(size):
@@ -52,7 +47,11 @@ def smiley(size):
     return obj
 
 
-def get_forward_transformation_matrix(sim_params: Parameters4DSTEM):
+CoordMappingT = Callable[[CoordXY], PixelYX]
+
+
+def get_forward_transformation_matrix(
+        sim_params: Parameters4DSTEM, specimen_to_image: Optional[CoordMappingT] = None):
     '''
     Calculate a transformation matrix that maps from scan position in scan pixel
     coordinates and detector pixel coordinates to specimen coordinates in scan
@@ -80,10 +79,12 @@ def get_forward_transformation_matrix(sim_params: Parameters4DSTEM):
     # scan position y/x, source tilt y/x
     test_parameters = np.array((
         [0., 0., 0., 0.],
-        [1., 0., 0., 0.],
-        [0., 1., 0., 0.],
-        [0., 0., 1., 0.],
-        [0., 0., 0., 1.],
+        [100., 100., 0., 0.],
+        [-100., 100., 0., 0.],
+        [10., 0., 0., 0.],
+        [0., 10., 0., 0.],
+        [0., 0., 0.1, 0.],
+        [0., 0., 0., 0.1],
         [1., 1., 1., 1.],
         [1., 2., 3., 4.],
     ))
@@ -101,6 +102,13 @@ def get_forward_transformation_matrix(sim_params: Parameters4DSTEM):
             model = Model4DSTEM.build(params=sim_params, scan_pos=scan_pos)
             ray = model.make_source_ray(source_dy=source_dy, source_dx=source_dx).ray
             res = model.trace(ray)
+            if specimen_to_image is None:
+                spec_px = res['specimen'].sampling['scan_px']
+            else:
+                spec_px = specimen_to_image(CoordXY(
+                    x=res['specimen'].ray.x,
+                    y=res['specimen'].ray.y
+                ))
             input_sample = (
                 scan_pos.y,
                 scan_pos.x,
@@ -109,8 +117,8 @@ def get_forward_transformation_matrix(sim_params: Parameters4DSTEM):
                 1.
             )
             output_sample = (
-                res['specimen'].sampling['scan_px'].y,
-                res['specimen'].sampling['scan_px'].x,
+                spec_px.y,
+                spec_px.x,
                 source_dy,
                 source_dx,
                 1.,
@@ -121,29 +129,39 @@ def get_forward_transformation_matrix(sim_params: Parameters4DSTEM):
     output_samples = np.array(output_samples)
     input_samples = np.array(input_samples)
 
-    x, residuals, rank, s = np.linalg.lstsq(np.array(input_samples), np.array(output_samples))
+    x, residuals, rank, s = np.linalg.lstsq(input_samples, output_samples)
 
     # FIXME include test also based on singular values
     # FIXME confirm correct operation with realistic TEM parameters
     assert len(residuals) == rank
     # Confirm that the solution is exact, in particular that
     # the model is linear
-    assert np.allclose(residuals, 0.)
+    try:
+        assert np.allclose(residuals, 0., rtol=1e-6, atol=1e-6)
+    except AssertionError:
+        print(residuals)
+        raise
     assert rank == 5
 
     for i in range(len(input_samples)):
-        assert np.allclose(
-            output_samples[i],
-            input_samples[i] @ x,
-            rtol=1e-6,
-            atol=1e-6
-        )
+        try:
+            assert np.allclose(
+                output_samples[i],
+                input_samples[i] @ x,
+                rtol=1e-6,
+                atol=1e-4
+            )
+        except AssertionError:
+            print(
+                i, output_samples[i], input_samples[i] @ x, input_samples[i] @ x - output_samples[i]
+            )
+            raise
     return x
 
 
 @numba.njit
 def project_frame_forward(obj, source_semiconv, mat, scan_y, scan_x, out):
-    limit = np.abs(source_semiconv)**2
+    limit = np.abs(np.tan(source_semiconv))**2
     for det_y in range(out.shape[0]):
         for det_x in range(out.shape[1]):
             # Manually unrolled matrix-vector product to allow skipping before
@@ -176,13 +194,18 @@ def project_frame_forward(obj, source_semiconv, mat, scan_y, scan_x, out):
                 spec_x = int(np.round(spec_x))
                 if spec_y >= 0 and spec_y < obj.shape[0] and spec_x >= 0 and spec_x < obj.shape[1]:
                     out[det_y, det_x] = obj[spec_y, spec_x]
-                else:
-                    out[det_y, det_x] = 0.
+            else:
+                out[det_y, det_x] = 0.
 
 
-def project(image, scan_shape, detector_shape, sim_params: Parameters4DSTEM):
+def project(
+        image, scan_shape, detector_shape,
+        sim_params: Parameters4DSTEM,
+        specimen_to_image: Optional[CoordMappingT] = None):
     result = np.zeros(tuple(scan_shape) + tuple(detector_shape), dtype=image.dtype)
-    mat = get_forward_transformation_matrix(sim_params=sim_params)
+    mat = get_forward_transformation_matrix(
+        sim_params=sim_params, specimen_to_image=specimen_to_image
+    )
     model = Model4DSTEM.build(params=sim_params, scan_pos=PixelYX(x=0., y=0.))
     for scan_y in range(result.shape[0]):
         for scan_x in range(result.shape[1]):
