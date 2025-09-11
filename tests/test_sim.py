@@ -226,8 +226,9 @@ def test_no_precision(monkeypatch):
         name='Model4DSTEM',
         value=BadModel
     )
+    import microscope_calibration.common.stem_overfocus
     monkeypatch.setattr(
-        target=microscope_calibration.util.stem_overfocus_sim,
+        target=microscope_calibration.common.stem_overfocus,
         name='target_dtype',
         value=jnp.float32
     )
@@ -354,6 +355,31 @@ def test_project_flip():
         sim_params=params,
     )
     assert_allclose(obj, np.flip(res[15, 16], axis=0))
+
+
+def test_project_detector_rotate():
+    # 1:1 size mapping between detector and specimen
+    params = Parameters4DSTEM(
+        overfocus=1,
+        scan_pixel_pitch=1,
+        camera_length=1,
+        detector_pixel_pitch=2,
+        semiconv=np.pi/2,
+        scan_center=PixelYX(x=16, y=16.),
+        scan_rotation=0.,
+        flip_y=False,
+        detector_center=PixelYX(x=16, y=16.),
+        detector_rotation=np.pi/2,
+        descan_error=DescanError()
+    )
+    obj = np.random.random((32, 32))
+    res = project(
+        image=obj,
+        detector_shape=(32, 32),
+        scan_shape=(32, 32),
+        sim_params=params,
+    )
+    assert_allclose(obj, np.rot90(res[16, 15], k=-1))
 
 
 def test_project_map_identity():

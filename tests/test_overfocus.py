@@ -3,318 +3,175 @@ import pytest
 from numpy.testing import assert_allclose
 from skimage.measure import blur_effect
 
-from microscope_calibration.util.stem_overfocus_sim import (
-    get_transformation_matrix, detector_px_to_specimen_px, project, smiley
-)
 from microscope_calibration.common.stem_overfocus import (
-    OverfocusParams, make_model, get_translation_matrix
+    get_backward_transformation_matrix, get_detector_correction_matrix,
+    project_frame_backwards, correct_frame
 )
-from microscope_calibration.util.optimize import make_overfocus_loss_function, optimize
-
 from microscope_calibration.udf.stem_overfocus import OverfocusUDF
-from libertem.api import Context
-from libertem.common import Shape
-
-
-@pytest.mark.parametrize(
-    'params', [
-        ({'scan_rotation':   0, 'flip_y': False}, ((1, 0), (0, 1))),
-        ({'scan_rotation': 180, 'flip_y': False}, ((-1, 0), (0, -1))),
-        ({'scan_rotation':  90, 'flip_y': True}, ((0, 1), (1, 0))),
-        ({'scan_rotation':  0, 'flip_y': True}, ((-1, 0), (0, 1))),
-        (
-            {'scan_rotation':  45, 'flip_y': False},
-            ((1/np.sqrt(2), 1/np.sqrt(2)), (-1/np.sqrt(2), 1/np.sqrt(2)))
-        ),
-    ]
+from microscope_calibration.common.model import (
+    Parameters4DSTEM, Model4DSTEM, PixelYX, DescanError, Result4DSTEM, ResultSection,
+    identity, scale, rotate, flip_y
 )
-def test_get_transformation_matrix(params):
-    inp, ref = params
-    sim_params = OverfocusParams(
-        overfocus=1,
-        scan_pixel_size=1,
-        camera_length=1,
-        detector_pixel_size=2,
-        semiconv=0.004,
-        cy=8,
-        cx=8,
-        scan_rotation=0,
-        flip_y=False
+
+
+def test_model_consistency_backproject():
+    params = Parameters4DSTEM(
+        overfocus=0.123,
+        scan_pixel_pitch=0.234,
+        camera_length=0.73,
+        detector_pixel_pitch=0.0321,
+        semiconv=0.023,
+        scan_center=PixelYX(x=0.13, y=0.23),
+        scan_rotation=0.752,
+        flip_y=True,
+        detector_center=PixelYX(x=23, y=42),
+        detector_rotation=2.134,
+        descan_error=DescanError(
+            pxo_pxi=0.2,
+            pxo_pyi=0.3,
+            pyo_pxi=0.5,
+            pyo_pyi=0.7,
+            sxo_pxi=0.11,
+            sxo_pyi=0.13,
+            syo_pxi=0.17,
+            syo_pyi=0.19,
+            offpxi=0.23,
+            offpyi=0.29,
+            offsxi=0.31,
+            offsyi=0.37
+        )
     )
-    sim_params.update(inp)
-    res = get_transformation_matrix(sim_params)
-    assert_allclose(res, ref, atol=1e-8)
-    for vec in res:
-        assert_allclose(np.linalg.norm(vec), 1)
+    mat = get_backward_transformation_matrix(rec_params=params)
+
+    inp = np.array((2, 3, 5, 7, 1))
+    out = inp @ mat
+    scan_pos = PixelYX(
+        y=inp[0],
+        x=inp[1],
+    )
+    source_dy = out[2]
+    source_dx = out[3]
+
+    assert_allclose(out[4], 1)
+    model = Model4DSTEM.build(params=params, scan_pos=scan_pos)
+    ray = model.make_source_ray(source_dx=source_dx, source_dy=source_dy).ray
+    res = model.trace(ray)
+    assert_allclose(out[0], res['detector'].sampling['detector_px'].y, rtol=1e-12, atol=1e-12)
+    assert_allclose(out[1], res['detector'].sampling['detector_px'].x, rtol=1e-12, atol=1e-12)
+    assert_allclose(inp[2], res['specimen'].sampling['scan_px'].y, rtol=1e-12, atol=1e-12)
+    assert_allclose(inp[3], res['specimen'].sampling['scan_px'].x, rtol=1e-12, atol=1e-12)
 
 
-@pytest.mark.parametrize(
-    # params are relative to default parameters in function below
-    'params', [
-        (
-            {
-                'overfocus': 1,
-                'scan_pixel_size': 1,
-                'camera_length': 1,
-                'detector_pixel_size': 1,
-                'cy': 0,
-                'cx': 0,
-                'y_px': 0.,
-                'x_px': 0.,
-                # fov_size_* == 0 means that (0, 0) in scan coordinates is
-                # (0, 0) in physical coordinates.
-                'fov_size_y': 0,
-                'fov_size_x': 0,
-                'transformation_matrix': np.array(((1., 0.), (0., 1.))),
-            },
-            # Straight through central beam
-            (0, 0)
-        ),
-        (
-            {
-                'overfocus': 0.1234,
-                'scan_pixel_size': 0.987,
-                'camera_length': 2.34,
-                'detector_pixel_size': 0.71,
-                'cy': 13,
-                'cx': 14,
-                'y_px': 13.,
-                'x_px': 14.,
-                'fov_size_y': 5,
-                'fov_size_x': 6,
-                'transformation_matrix': np.array(((0., 1.), (-1., 0.))),
-            },
-            # Straight through central beam goes through center of fov. The
-            # straight through beam is not affected by scan rotation, flip_y,
-            # overfocus, scan pixel size, detector pixel size, or camera length
-            # fov_size_y/2, fov_size_x/2
-            (2.5, 3)
-        ),
-        (
-            {
-                'overfocus': 1,
-                'scan_pixel_size': 1,
-                'camera_length': 0,
-                'detector_pixel_size': 1,
-                'cy': 0,
-                'cx': 0,
-                'y_px': 3.,
-                'x_px': -7.,
-                'fov_size_y': 0,
-                'fov_size_x': 0,
-                'transformation_matrix': np.array(((1., 0.), (0., 1.))),
-            },
-            # Camera length 0, same grid and not transformation means detector
-            # and scan pixels are the same
-            (3., -7.)
-        ),
-        (
-            {
-                'overfocus': 1,
-                'scan_pixel_size': 1,
-                'camera_length': 1,
-                'detector_pixel_size': 1,
-                'cy': 0,
-                'cx': 0,
-                'y_px': 3.,
-                'x_px': -7.,
-                'fov_size_y': 0,
-                'fov_size_x': 0,
-                'transformation_matrix': np.array(((1., 0.), (0., 1.))),
-            },
-            # 2x demagnification from detector to specimen
-            (1.5, -3.5)
-        ),
-        (
-            {
-                'overfocus': -1,
-                'scan_pixel_size': 1,
-                'camera_length': 2,
-                'detector_pixel_size': 1,
-                'cy': 0,
-                'cx': 0,
-                'y_px': 3.,
-                'x_px': -7.,
-                'fov_size_y': 0,
-                'fov_size_x': 0,
-                'transformation_matrix': np.array(((1., 0.), (0., 1.))),
-            },
-            # Negative overfocus means coordinates are inverted compared to positive
-            # overfocus
-            # Magnification overfocus/(overfocus + camera_length) is -1 here
-            (-3, 7)
-        ),
-        (
-            {
-                'overfocus': 1,
-                'scan_pixel_size': 1,
-                'camera_length': 1,
-                'detector_pixel_size': 1,
-                'cy': 0,
-                'cx': 0,
-                'y_px': 3.,
-                'x_px': -7.,
-                'fov_size_y': 0,
-                'fov_size_x': 0,
-                'transformation_matrix': np.array(((-1., 0.), (0., -1.))),
-            },
-            # Transformation inverts both axes, 180 deg rotation
-            (-1.5, 3.5)
-        ),
-        (
-            {
-                'overfocus': 1,
-                'scan_pixel_size': 1,
-                'camera_length': 1,
-                'detector_pixel_size': 2,
-                'cy': 0,
-                'cx': 0,
-                'y_px': 3.,
-                'x_px': -7.,
-                'fov_size_y': 0,
-                'fov_size_x': 0,
-                'transformation_matrix': np.array(((1., 0.), (0., 1.))),
-            },
-            # 2x demagnification and half the pixel size from detector to scan
-            (3, -7)
-        ),
-        (
-            {
-                'overfocus': 1,
-                'scan_pixel_size': 0.5,
-                'camera_length': 2,
-                'detector_pixel_size': 1,
-                'cy': 0,
-                'cx': 0,
-                'y_px': 3.,
-                'x_px': -7.,
-                'fov_size_y': 0,
-                'fov_size_x': 0,
-                'transformation_matrix': np.array(((1., 0.), (0., 1.))),
-            },
-            # Factor 2 magnification from pixel size ratio, factor 3
-            # demagnification from overfocus / (camera length + overfocus)
-            (3*2/3, -7*2/3)
-        ),
-        (
-            {
-                'overfocus': 0.1,
-                'scan_pixel_size': 0.1,
-                'camera_length': 1,
-                'detector_pixel_size': 1,
-                'cy': 0,
-                'cx': 0,
-                'y_px': 3.,
-                'x_px': -7.,
-                'fov_size_y': 0,
-                'fov_size_x': 0,
-                'transformation_matrix': np.array(((1., 0.), (0., 1.))),
-            },
-            # Factor 10 magnification from pixel size ratio, factor 0.11
-            # demagnification from overfocus / (camera length + overfocus)
-            (3*10*0.1/1.1, -7*10*0.1/1.1)
-        ),
-        (
-            {
-                'overfocus': 1,
-                'scan_pixel_size': 1,
-                'camera_length': 1,
-                'detector_pixel_size': 1,
-                'cy': 1,
-                'cx': 5,
-                'y_px': 3.,
-                'x_px': -7.,
-                'fov_size_y': 0,
-                'fov_size_x': 0,
-                'transformation_matrix': np.array(((1., 0.), (0., 1.))),
-            },
-            # (y_px - cy) * overfocus / (camera length + overfocus)
-            ((3 - 1)*1/(1 + 1), (-7 - 5)*1/(1 + 1))
-        ),
-        (
-            {
-                'overfocus': 1,
-                'scan_pixel_size': 1,
-                'camera_length': 1,
-                'detector_pixel_size': 1,
-                'cy': 0,
-                'cx': 0,
-                'y_px': 3.,
-                'x_px': -7.,
-                'fov_size_y': 4,
-                'fov_size_x': 6,
-                'transformation_matrix': np.array(((1., 0.), (0., 1.))),
-            },
-            # y_px * overfocus / (camera length + overfocus) + fov_size / 2
-            (3/2 + 4/2, -7/2 + 6/2)
-        ),
-        (
-            {
-                'overfocus': 1,
-                'scan_pixel_size': 0.5,
-                'camera_length': 1,
-                'detector_pixel_size': 1,
-                'cy': 17,
-                'cx': 19,
-                'y_px': 3.,
-                'x_px': -7.,
-                'fov_size_y': 4,
-                'fov_size_x': 10,
-                'transformation_matrix': np.array(((-1., 0.), (0., -1.))),
-            },
-            # (y_px + cy) * detector_pixel_size / scan_pixel_size * \
-            # overfocus / (camera length + overfocus) + fov_size / 2
-            ((-3 + 17) * 2/2 + 2, (7 + 19) * 2/2 + 5)
-        ),
-        (
-            {
-                'overfocus': 0.1,
-                'scan_pixel_size': 0.1,
-                'camera_length': 1,
-                'detector_pixel_size': 1,
-                'cy': 0,
-                'cx': 0,
-                'y_px': 3.,
-                'x_px': -7.,
-                'fov_size_y': 0,
-                'fov_size_x': 0,
-                'transformation_matrix': np.array(((-1., 0.), (0., 1.))),
-            },
-            # flip_y: y axis inverted
-            # -1 * y_px * detector_pixel_size / scan_pixel_size * \
-            # overfocus / (camera length + overfocus)
-            (-1 * 3 * 1/0.1 * 0.1/1.1, 1 * -7 * 1/0.1 * 0.1/1.1)
-        ),
-        (
-            {
-                'overfocus': 0.1,
-                'scan_pixel_size': 0.1,
-                'camera_length': 1,
-                'detector_pixel_size': 1,
-                'cy': 6,
-                'cx': 5,
-                'y_px': 3.,
-                'x_px': -7.,
-                'fov_size_y': 4,
-                'fov_size_x': 10,
-                'transformation_matrix': np.array(((-1., 0.), (0., 1.))),
-            },
-            # flip_y: y axis inverted
-            # -1 * (y_px - cy) * detector_pixel_size / scan_pixel_size * \
-            # overfocus / (camera length + overfocus) + fov_size / 2
-            (-1 * (3 - 6) * 1/0.1 * 0.1/1.1 + 4/2, 1 * (-7 - 5) * 1/0.1 * 0.1 / 1.1 + 10/2),
-        ),
-    ]
-)
-def test_detector_specimen_px(params):
-    inp, ref = params
-    res = detector_px_to_specimen_px(**inp)
-    assert_allclose(res, ref, atol=1e-8)
+def test_model_consistency_correct():
+    params = Parameters4DSTEM(
+        overfocus=0.123,
+        scan_pixel_pitch=0.234,
+        camera_length=0.73,
+        detector_pixel_pitch=0.0321,
+        semiconv=0.023,
+        scan_center=PixelYX(x=0.13, y=0.23),
+        scan_rotation=0.752,
+        flip_y=True,
+        detector_center=PixelYX(x=23, y=42),
+        detector_rotation=2.134,
+        descan_error=DescanError(
+            pxo_pxi=0.2,
+            pxo_pyi=0.3,
+            pyo_pxi=0.5,
+            pyo_pyi=0.7,
+            sxo_pxi=0.11,
+            sxo_pyi=0.13,
+            syo_pxi=0.17,
+            syo_pyi=0.19,
+            offpxi=0.23,
+            offpyi=0.29,
+            offsxi=0.31,
+            offsyi=0.37
+        )
+    )
+    ref_params = Parameters4DSTEM(
+        overfocus=1.1523,
+        scan_pixel_pitch=0.4234,
+        camera_length=0.7453,
+        detector_pixel_pitch=0.03421,
+        semiconv=0.042,
+        scan_center=PixelYX(x=0.4, y=0.345),
+        scan_rotation=0.75,
+        flip_y=False,
+        detector_center=PixelYX(x=2, y=4),
+        detector_rotation=2.4134,
+        descan_error=DescanError(
+            pxo_pxi=0.234,
+            pxo_pyi=0.3345,
+            pyo_pxi=0.534,
+            pyo_pyi=0.735,
+            sxo_pxi=0.1134,
+            sxo_pyi=0.134,
+            syo_pxi=0.173,
+            syo_pyi=0.194,
+            offpxi=0.234,
+            offpyi=0.293,
+            offsxi=0.313,
+            offsyi=0.373
+        )
+    )
+    mat = get_detector_correction_matrix(rec_params=params, ref_params=ref_params)
+
+    inp = np.array((2, 3, 5, 7, 1))
+    out = inp @ mat
+    scan_pos = PixelYX(
+        y=inp[0],
+        x=inp[1],
+    )
+    source_dy = out[2]
+    source_dx = out[3]
+
+    assert_allclose(out[4], 1)
+    model = Model4DSTEM.build(params=params, scan_pos=scan_pos)
+    ray = model.make_source_ray(source_dx=source_dx, source_dy=source_dy).ray
+    res = model.trace(ray)
+
+    ref_model = Model4DSTEM.build(params=ref_params, scan_pos=scan_pos)
+    ref_ray = ref_model.make_source_ray(source_dx=source_dx, source_dy=source_dy).ray
+    ref_res = ref_model.trace(ref_ray)
+
+    assert_allclose(inp[2], ref_res['detector'].sampling['detector_px'].y, rtol=1e-12, atol=1e-12)
+    assert_allclose(inp[3], ref_res['detector'].sampling['detector_px'].x, rtol=1e-12, atol=1e-12)
+    assert_allclose(out[0], res['detector'].sampling['detector_px'].y, rtol=1e-12, atol=1e-12)
+    assert_allclose(out[1], res['detector'].sampling['detector_px'].x, rtol=1e-12, atol=1e-12)
+
+
+def test_project_identity():
+    # 1:1 size mapping between detector and specimen
+    params = Parameters4DSTEM(
+        overfocus=1,
+        scan_pixel_pitch=1,
+        camera_length=1,
+        detector_pixel_pitch=2,
+        semiconv=np.pi/2,
+        scan_center=PixelYX(x=7.1, y=16.),
+        scan_rotation=0.,
+        flip_y=False,
+        detector_center=PixelYX(x=7.1, y=16.),
+        descan_error=DescanError()
+    )
+    obj = np.random.random((32, 13))
+    res = np.zeros_like(obj)
+    mat = get_backward_transformation_matrix(rec_params=params)
+    project_frame_backwards(
+        frame=obj,
+        source_semiconv=np.pi/2,
+        mat=mat,
+        scan_y=7,
+        scan_x=16,
+        image_out=res,
+    )
+    assert_allclose(obj, res)
 
 
 def test_project():
     size = 16
-    params = OverfocusParams(
+    params = Parameters4DSTEM(
         overfocus=1,
         scan_pixel_size=0.5,
         camera_length=1,
@@ -339,7 +196,7 @@ def test_project():
 def test_project_zerocl():
     # Camera length is zero, 1:1 match of scan and detector
     size = 16
-    params = OverfocusParams(
+    params = Parameters4DSTEM(
         overfocus=1,
         scan_pixel_size=1,
         camera_length=0,
@@ -367,7 +224,7 @@ def test_project_scale():
     # second detector pixel maps to a single scan pixel
     size = 16
     detector_size = 2 * size
-    params = OverfocusParams(
+    params = Parameters4DSTEM(
         overfocus=1,
         scan_pixel_size=1,
         camera_length=1,
@@ -393,7 +250,7 @@ def test_project_scale():
 
 def test_project_2():
     size = 16
-    params = OverfocusParams(
+    params = Parameters4DSTEM(
         overfocus=1,
         scan_pixel_size=0.5,
         camera_length=1,
@@ -417,7 +274,7 @@ def test_project_2():
 
 def test_project_3():
     size = 16
-    params = OverfocusParams(
+    params = Parameters4DSTEM(
         overfocus=1,
         scan_pixel_size=0.5,
         camera_length=1,
@@ -444,7 +301,7 @@ def test_project_3():
 
 def test_project_rotate():
     size = 16
-    params = OverfocusParams(
+    params = Parameters4DSTEM(
         overfocus=1,
         scan_pixel_size=0.5,
         camera_length=1,
@@ -475,7 +332,7 @@ def test_project_odd():
     obj_y = 19
     obj_x = 23
     size = 32
-    params = OverfocusParams(
+    params = Parameters4DSTEM(
         overfocus=0.01,
         scan_pixel_size=0.01,
         camera_length=1.,
@@ -501,7 +358,7 @@ def test_project_odd():
     assert_allclose(obj, projected[scan_y//2, scan_x//2, dy:obj_y+dy, dx:obj_x+dx])
 
 
-def get_ref_translation_matrix(params: OverfocusParams, nav_shape):
+def get_ref_translation_matrix(params: Parameters4DSTEM, nav_shape):
     a = []
     b = []
 
@@ -565,7 +422,7 @@ def test_translation_ref(fail):
     nav_shape = (8, 8)
     sig_shape = (8, 8)
 
-    params = OverfocusParams(
+    params = Parameters4DSTEM(
         overfocus=0.0001,
         scan_pixel_size=0.00000001,
         camera_length=1,
@@ -600,7 +457,7 @@ def test_translation_ref(fail):
 
 
 def test_udf_ref():
-    params = OverfocusParams(
+    params = Parameters4DSTEM(
         overfocus=0.0001,
         scan_pixel_size=0.00000001,
         camera_length=1,
@@ -628,7 +485,7 @@ def test_udf_ref():
 
 
 def test_optimize():
-    params = OverfocusParams(
+    params = Parameters4DSTEM(
         overfocus=0.0001,
         scan_pixel_size=0.00000001,
         camera_length=1,

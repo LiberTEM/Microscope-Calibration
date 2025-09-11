@@ -42,6 +42,7 @@ def test_inverse():
         camera_length=2.3,
         detector_pixel_pitch=0.0247,
         detector_center=PixelYX(y=11, x=19),
+        detector_rotation=2.134,
         semiconv=0.023,
         flip_y=True,
         descan_error=DescanError(offpxi=.345, pxo_pxi=948)
@@ -556,7 +557,10 @@ def test_rotation_direction_0():
     assert_allclose(res['specimen'].ray.y, 1., atol=1e-12, rtol=1e-12)
 
 
-def test_rotation_direction_90():
+@pytest.mark.parametrize(
+    'flip_y', (False, True)
+)
+def test_rotation_direction_90(flip_y):
     # Check conformance with
     # https://libertem.github.io/LiberTEM/concepts.html#coordinate-system: y
     # points down, x to the right, z away, and therefore positive scan rotation
@@ -570,7 +574,7 @@ def test_rotation_direction_90():
         detector_pixel_pitch=1,
         detector_center=PixelYX(y=0., x=0.),
         semiconv=0.023,
-        flip_y=False,
+        flip_y=flip_y,
         descan_error=DescanError()
     )
     model = Model4DSTEM.build(
@@ -648,6 +652,7 @@ def test_detector_px_flipy():
         camera_length=1,
         detector_pixel_pitch=1,
         detector_center=PixelYX(y=0., x=0.),
+        detector_rotation=0.,
         semiconv=0.023,
         flip_y=True,
         descan_error=DescanError()
@@ -671,6 +676,86 @@ def test_detector_px_flipy():
     res = model.trace(ray)
     assert_allclose(res['detector'].sampling['detector_px'].x, 0., atol=1e-12, rtol=1e-12)
     assert_allclose(res['detector'].sampling['detector_px'].y, -1., atol=1e-12, rtol=1e-12)
+    assert_allclose(res['detector'].ray.x, 0., atol=1e-12, rtol=1e-12)
+    assert_allclose(res['detector'].ray.y, 1., atol=1e-12, rtol=1e-12)
+
+
+def test_detector_px_rotate():
+    # Check conformance with
+    # https://libertem.github.io/LiberTEM/concepts.html#coordinate-system: y
+    # points down, x to the right, z away.
+    params = Parameters4DSTEM(
+        overfocus=1,
+        scan_pixel_pitch=1,
+        scan_center=PixelYX(y=0., x=0.),
+        scan_rotation=0.,
+        camera_length=1,
+        detector_pixel_pitch=1,
+        detector_center=PixelYX(y=0., x=0.),
+        detector_rotation=np.pi/2,
+        semiconv=0.023,
+        flip_y=False,
+        descan_error=DescanError()
+    )
+    model = Model4DSTEM.build(
+        params=params,
+        scan_pos=PixelYX(y=0., x=0.)
+    )
+    ray = model.make_source_ray(source_dx=0.5, source_dy=0.).ray
+    res = model.trace(ray)
+    assert_allclose(res['detector'].sampling['detector_px'].x, 0., atol=1e-12, rtol=1e-12)
+    assert_allclose(res['detector'].sampling['detector_px'].y, -1., atol=1e-12, rtol=1e-12)
+    assert_allclose(res['detector'].ray.x, 1., atol=1e-12, rtol=1e-12)
+    assert_allclose(res['detector'].ray.y, 0., atol=1e-12, rtol=1e-12)
+
+    model = Model4DSTEM.build(
+        params=params,
+        scan_pos=PixelYX(y=0., x=0.)
+    )
+    ray = model.make_source_ray(source_dx=0., source_dy=0.5).ray
+    res = model.trace(ray)
+    assert_allclose(res['detector'].sampling['detector_px'].x, 1., atol=1e-12, rtol=1e-12)
+    assert_allclose(res['detector'].sampling['detector_px'].y, 0., atol=1e-12, rtol=1e-12)
+    assert_allclose(res['detector'].ray.x, 0., atol=1e-12, rtol=1e-12)
+    assert_allclose(res['detector'].ray.y, 1., atol=1e-12, rtol=1e-12)
+
+
+def test_detector_px_rotate_flipy():
+    # Check conformance with
+    # https://libertem.github.io/LiberTEM/concepts.html#coordinate-system: y
+    # points down, x to the right, z away.
+    params = Parameters4DSTEM(
+        overfocus=1,
+        scan_pixel_pitch=1,
+        scan_center=PixelYX(y=0., x=0.),
+        scan_rotation=0.,
+        camera_length=1,
+        detector_pixel_pitch=1,
+        detector_center=PixelYX(y=0., x=0.),
+        detector_rotation=np.pi/2,
+        semiconv=0.023,
+        flip_y=True,
+        descan_error=DescanError()
+    )
+    model = Model4DSTEM.build(
+        params=params,
+        scan_pos=PixelYX(y=0., x=0.)
+    )
+    ray = model.make_source_ray(source_dx=0.5, source_dy=0.).ray
+    res = model.trace(ray)
+    assert_allclose(res['detector'].sampling['detector_px'].x, 0., atol=1e-12, rtol=1e-12)
+    assert_allclose(res['detector'].sampling['detector_px'].y, 1., atol=1e-12, rtol=1e-12)
+    assert_allclose(res['detector'].ray.x, 1., atol=1e-12, rtol=1e-12)
+    assert_allclose(res['detector'].ray.y, 0., atol=1e-12, rtol=1e-12)
+
+    model = Model4DSTEM.build(
+        params=params,
+        scan_pos=PixelYX(y=0., x=0.)
+    )
+    ray = model.make_source_ray(source_dx=0., source_dy=0.5).ray
+    res = model.trace(ray)
+    assert_allclose(res['detector'].sampling['detector_px'].x, 1., atol=1e-12, rtol=1e-12)
+    assert_allclose(res['detector'].sampling['detector_px'].y, 0., atol=1e-12, rtol=1e-12)
     assert_allclose(res['detector'].ray.x, 0., atol=1e-12, rtol=1e-12)
     assert_allclose(res['detector'].ray.y, 1., atol=1e-12, rtol=1e-12)
 
