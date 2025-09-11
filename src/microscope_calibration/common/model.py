@@ -1,6 +1,7 @@
 from typing import Optional, NamedTuple, Union
 from collections import OrderedDict
 
+import jax; jax.config.update("jax_enable_x64", True)  # noqa: E702
 import jax_dataclasses as jdc
 import jax.numpy as jnp
 
@@ -22,6 +23,7 @@ def scale(factor):
 def rotate(radians):
     # https://en.wikipedia.org/wiki/Rotation_matrix
     # y, x instead of x, y
+    radians = jnp.astype(radians, jnp.float64)
     return jnp.array([
         (jnp.cos(radians), jnp.sin(radians)),
         (-jnp.sin(radians), jnp.cos(radians))
@@ -32,11 +34,11 @@ def flip_y():
     return jnp.array([
         (-1, 0),
         (0, 1)
-    ])
+    ], dtype=jnp.float64)
 
 
 def identity():
-    return jnp.eye(2)
+    return jnp.eye(2, dtype=jnp.float64)
 
 
 def scale_rotate_flip_y(mat: jnp.ndarray):
@@ -63,13 +65,16 @@ def scale_rotate_flip_y(mat: jnp.ndarray):
     flip_y = bool(flip_factor < 0)
     # undo flip_y
     rot = scan_rot_flip.copy()
-    rot[:, 0] *= flip_factor
+    rot = rot.at[:, 0].set(rot[:, 0] * flip_factor)
 
     angle1 = jnp.arctan2(-rot[1, 0], rot[0, 0])
     angle2 = jnp.arctan2(rot[0, 1], rot[1, 1])
 
     # So far not reached in tests since inconsistencies are caught as shear before
-    if not jnp.allclose((jnp.sin(angle1), jnp.cos(angle1)), (jnp.sin(angle2), jnp.cos(angle2))):
+    if not jnp.allclose(
+        jnp.array((jnp.sin(angle1), jnp.cos(angle1))),
+        jnp.array((jnp.sin(angle2), jnp.cos(angle2)))
+    ):
         raise ValueError(
             f'Rotation angle 1 {angle1} and rotation angle 2 {angle2} are inconsistent.'
         )
@@ -152,14 +157,14 @@ class Model4DSTEM:
             specimen: Optional[Component] = None) -> 'Model4DSTEM':
         scan_to_real = rotate(params.scan_rotation)\
             @ scale(params.scan_pixel_pitch)
-        real_to_scan = jnp.linalg.inv(scan_to_real)
+        real_to_scan = scale(1/params.scan_pixel_pitch) @ rotate(-params.scan_rotation)
         scan_y, scan_x = scan_to_real @ jnp.array((
             scan_pos.y - params.scan_center.y,
             scan_pos.x - params.scan_center.x,
         ))
         do_flip = flip_y() if params.flip_y else identity()
         detector_to_real = scale(params.detector_pixel_pitch) @ do_flip
-        real_to_detector = jnp.linalg.inv(detector_to_real)
+        real_to_detector = do_flip @ scale(1/params.detector_pixel_pitch)
         if specimen is None:
             specimen = Plane(z=params.overfocus)
         else:
