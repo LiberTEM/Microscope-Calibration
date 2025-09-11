@@ -1,14 +1,12 @@
 import numpy as np
 from libertem.udf.base import UDF
 
-from microscope_calibration.common.stem_overfocus import (
-    get_translation_matrix, OverfocusParams, make_model, project_frame
-)
+from microscope_calibration.common.model import Parameters4DSTEM, Model4DSTEM, PixelYX, CoordXY
 
 
 class OverfocusUDF(UDF):
     def __init__(
-            self, overfocus_params: OverfocusParams):
+            self, overfocus_params: Parameters4DSTEM):
         super().__init__(
             overfocus_params=overfocus_params,
         )

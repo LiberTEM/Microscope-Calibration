@@ -95,6 +95,47 @@ class Parameters4DSTEM:
     semiconv: float  # rad
     flip_y: bool
     descan_error: DescanError = DescanError()
+    detector_rotation: float = 0.  # rad
+
+    def derive(
+            self,
+            overfocus: float | None = None,  # m
+            scan_pixel_pitch: float | None = None,  # m
+            scan_center: PixelYX | None = None,
+            scan_rotation: float | None = None,  # rad
+            camera_length: float | None = None,  # m
+            detector_pixel_pitch: float | None = None,  # m
+            detector_center: PixelYX | None = None,
+            detector_rotation: float | None = None,  # rad
+            semiconv: float | None = None,  # rad
+            flip_y: bool | None = None,
+            descan_error: DescanError | None = None,
+    ) -> 'Parameters4DSTEM':
+        return Parameters4DSTEM(
+            overfocus=overfocus if overfocus is not None else self.overfocus,
+            scan_pixel_pitch=(
+                scan_pixel_pitch if scan_pixel_pitch is not None
+                else self.scan_pixel_pitch
+            ),
+            scan_center=scan_center if scan_center is not None else self.scan_center,
+            scan_rotation=scan_rotation if scan_rotation is not None else self.scan_rotation,
+            camera_length=camera_length if camera_length is not None else self.camera_length,
+            detector_pixel_pitch=(
+                detector_pixel_pitch if detector_pixel_pitch is not None
+                else self.detector_pixel_pitch
+            ),
+            detector_center=(
+                detector_center if detector_center is not None
+                else self.detector_center
+            ),
+            detector_rotation=(
+                detector_rotation if detector_rotation is not None
+                else self.detector_rotation
+            ),
+            semiconv=semiconv if semiconv is not None else self.semiconv,
+            flip_y=flip_y if flip_y is not None else self.flip_y,
+            descan_error=descan_error if descan_error is not None else self.descan_error,
+        )
 
 
 # "Layer" of a beam passing through a model
@@ -163,8 +204,10 @@ class Model4DSTEM:
             scan_pos.x - params.scan_center.x,
         ))
         do_flip = flip_y() if params.flip_y else identity()
-        detector_to_real = scale(params.detector_pixel_pitch) @ do_flip
-        real_to_detector = do_flip @ scale(1/params.detector_pixel_pitch)
+        detector_to_real = scale(params.detector_pixel_pitch) @ \
+            rotate(params.detector_rotation) @ do_flip
+        real_to_detector = do_flip @ rotate(-params.detector_rotation) @ \
+            scale(1/params.detector_pixel_pitch)
         if specimen is None:
             specimen = Plane(z=params.overfocus)
         else:

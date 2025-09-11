@@ -1,17 +1,13 @@
 from typing import Callable, Optional
+from copy import copy
 
 import jax; jax.config.update("jax_enable_x64", True)  # noqa: E702
 import jax.numpy as jnp
 import numpy as np
 import numba
 
+from microscope_calibration.common.stem_overfocus import CoordMappingT, _do_lstsq
 from microscope_calibration.common.model import Parameters4DSTEM, Model4DSTEM, PixelYX, CoordXY
-
-
-# Define here to facilitate mocking in order to test
-# the code that checks for float64 support in JAX as a probable cause
-# for discrepancies
-target_dtype = jnp.float64
 
 
 def smiley(size):
@@ -53,9 +49,6 @@ def smiley(size):
 
     obj = np.abs(obj)
     return obj
-
-
-CoordMappingT = Callable[[CoordXY], PixelYX]
 
 
 def get_forward_transformation_matrix(
@@ -137,54 +130,7 @@ def get_forward_transformation_matrix(
     output_samples = np.array(output_samples)
     input_samples = np.array(input_samples)
 
-    x, residuals, rank, s = np.linalg.lstsq(input_samples, output_samples)
-
-    # FIXME include test also based on singular values
-    # FIXME confirm correct operation with realistic TEM parameters
-    assert len(residuals) == rank
-    # Confirm that the solution is exact, in particular that
-    # the model is linear
-    assert rank == 5
-
-    no_residuals = np.allclose(residuals, 0., rtol=1e-12, atol=1e-12)
-
-    test_samples = np.empty_like(output_samples)
-    for i in range(len(input_samples)):
-        test_samples[i] = input_samples[i] @ x
-
-    reproduced = np.allclose(
-        output_samples,
-        test_samples,
-        rtol=1e-12,
-        atol=1e-12
-    )
-
-    if not (no_residuals and reproduced):
-        test = jnp.array((1, 2, 3), dtype=jnp.float64)
-        if test.dtype != target_dtype:
-            raise RuntimeError(
-                f"No float64 support activated in JAX. Downcasting to {test.dtype} is "
-                "leading to inaccuracies that are "
-                "much larger than permissible for electron optics calculations."
-            )
-        else:
-            if not no_residuals:
-                raise RuntimeError(
-                    f"Model seems not linear: Residuals {residuals} exceeding tolerance of 1e-12"
-                )
-            # Currently not sure if this can be reached in tests without also having residuals
-            elif not reproduced:                                             # pragma: no cover
-                raise RuntimeError(                                          # pragma: no cover
-                    f"Discrepancies between model output {output_samples} "  # pragma: no cover
-                    f"and equivalent linear transformation {test_samples} "  # pragma: no cover
-                    "exceed tolerance of 1e-12."                             # pragma: no cover
-                )                                                            # pragma: no cover
-            else:                                                            # pragma: no cover
-                raise RuntimeError(                                          # pragma: no cover
-                    "If this code is reached, logic is broken."              # pragma: no cover
-                    )                                                        # pragma: no cover
-
-    return x
+    return _do_lstsq(input_samples, output_samples)
 
 
 @numba.njit
