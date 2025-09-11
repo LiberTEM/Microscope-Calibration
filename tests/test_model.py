@@ -1,11 +1,11 @@
 import pytest
 from numpy.testing import assert_allclose
 
+import jax; jax.config.update("jax_enable_x64", True)  # noqa: E702
 import jax_dataclasses as jdc
 from libertem.udf.com import guess_corrections, apply_correction
 import numpy as np
 import jax.numpy as jnp
-import jax
 
 from temgym_core.ray import Ray
 from temgym_core.components import DescanError, Component
@@ -31,6 +31,30 @@ def test_params():
     )
     model = Model4DSTEM.build(params=params, scan_pos=PixelYX(y=13, x=7))
     assert model.params == params
+
+
+def test_inverse():
+    params = Parameters4DSTEM(
+        overfocus=0.7,
+        scan_pixel_pitch=0.005,
+        scan_center=PixelYX(y=17, x=13),
+        scan_rotation=1.234,
+        camera_length=2.3,
+        detector_pixel_pitch=0.0247,
+        detector_center=PixelYX(y=11, x=19),
+        semiconv=0.023,
+        flip_y=True,
+        descan_error=DescanError(offpxi=.345, pxo_pxi=948)
+    )
+    model = Model4DSTEM.build(params=params, scan_pos=PixelYX(y=13, x=7))
+    assert_allclose(
+        model._scan_to_real,
+        jnp.linalg.inv(model._real_to_scan)
+    )
+    assert_allclose(
+        model._detector_to_real,
+        jnp.linalg.inv(model._real_to_detector)
+    )
 
 
 def test_trace_smoke():
@@ -234,7 +258,7 @@ def test_scan(dy, dx, scan_y, scan_x):
                 x=scan_x,
                 y=scan_y,
             ),
-            rtol=1e-6, atol=1e-6
+            rtol=1e-12, atol=1e-12
         )
     # check physical coords equals pixel coords
     assert_allclose(
@@ -304,7 +328,7 @@ def test_detector_coordinate_shift_scale_flip(
             x=res['specimen'].ray.x/scan_pixel_pitch + scan_cx,
             y=res['specimen'].ray.y/scan_pixel_pitch + scan_cy,
         ),
-        rtol=1e-6, atol=1e-6
+        rtol=1e-12, atol=1e-12
     )
     flip_factor = -1. if flip_y else 1.
     # check physical coords vs pixel coords scale and shift
@@ -314,7 +338,7 @@ def test_detector_coordinate_shift_scale_flip(
             x=res['detector'].ray.x/detector_pixel_pitch + detector_cx,
             y=flip_factor*(res['detector'].ray.y/detector_pixel_pitch + flip_factor*detector_cy),
         ),
-        rtol=1e-6, atol=1e-6
+        rtol=1e-12, atol=1e-12
     )
     if dy == 0.:
         assert_allclose(
@@ -371,7 +395,7 @@ def test_scan_coordinate_shift_scale(scan_cy, scan_cx, scan_pixel_pitch):
             x=res['specimen'].ray.x/scan_pixel_pitch + scan_cx,
             y=res['specimen'].ray.y/scan_pixel_pitch + scan_cy,
         ),
-        rtol=1e-6, atol=1e-6
+        rtol=1e-12, atol=1e-12
     )
     flip_factor = -1. if flip_y else 1.
     # check physical coords vs pixel coords scale and shift
@@ -381,7 +405,7 @@ def test_scan_coordinate_shift_scale(scan_cy, scan_cx, scan_pixel_pitch):
             x=res['detector'].ray.x/detector_pixel_pitch + detector_cx,
             y=flip_factor*res['detector'].ray.y/detector_pixel_pitch + detector_cy,
         ),
-        rtol=1e-6, atol=1e-6
+        rtol=1e-12, atol=1e-12
     )
 
 
@@ -481,12 +505,12 @@ def test_com_validation(scan_rotation, flip_y, detector_cy, detector_cx):
                     ))/np.linalg.norm((
                         corrected_y[y, x], corrected_x[y, x]
                     )),
-                    atol=1e-4, rtol=1e-4
+                    atol=1e-12, rtol=1e-12
                 )
 
     # See https://github.com/LiberTEM/LiberTEM/issues/1775
     # Rotation direction is opposite
-    assert_allclose(-guess_result.scan_rotation / 180 * np.pi, scan_rotation, atol=1e-4, rtol=1e-4)
+    assert_allclose(-guess_result.scan_rotation / 180 * np.pi, scan_rotation, atol=1e-12, rtol=1e-4)
     assert guess_result.flip_y == flip_y
     assert_allclose(guess_result.cy, detector_cy, atol=1e-2, rtol=1e-2)
     assert_allclose(guess_result.cx, detector_cx, atol=1e-2, rtol=1e-2)
@@ -515,10 +539,10 @@ def test_rotation_direction_0():
     )
     ray = model.make_source_ray(source_dx=0., source_dy=0.).ray
     res = model.trace(ray)
-    assert_allclose(res['specimen'].sampling['scan_px'].x, 1., atol=1e-6, rtol=1e-6)
-    assert_allclose(res['specimen'].sampling['scan_px'].y, 0., atol=1e-6, rtol=1e-6)
-    assert_allclose(res['specimen'].ray.x, 1., atol=1e-6, rtol=1e-6)
-    assert_allclose(res['specimen'].ray.y, 0., atol=1e-6, rtol=1e-6)
+    assert_allclose(res['specimen'].sampling['scan_px'].x, 1., atol=1e-12, rtol=1e-12)
+    assert_allclose(res['specimen'].sampling['scan_px'].y, 0., atol=1e-12, rtol=1e-12)
+    assert_allclose(res['specimen'].ray.x, 1., atol=1e-12, rtol=1e-12)
+    assert_allclose(res['specimen'].ray.y, 0., atol=1e-12, rtol=1e-12)
 
     model = Model4DSTEM.build(
         params=params,
@@ -526,10 +550,10 @@ def test_rotation_direction_0():
     )
     ray = model.make_source_ray(source_dx=0., source_dy=0.).ray
     res = model.trace(ray)
-    assert_allclose(res['specimen'].sampling['scan_px'].x, 0., atol=1e-6, rtol=1e-6)
-    assert_allclose(res['specimen'].sampling['scan_px'].y, 1., atol=1e-6, rtol=1e-6)
-    assert_allclose(res['specimen'].ray.x, 0., atol=1e-6, rtol=1e-6)
-    assert_allclose(res['specimen'].ray.y, 1., atol=1e-6, rtol=1e-6)
+    assert_allclose(res['specimen'].sampling['scan_px'].x, 0., atol=1e-12, rtol=1e-12)
+    assert_allclose(res['specimen'].sampling['scan_px'].y, 1., atol=1e-12, rtol=1e-12)
+    assert_allclose(res['specimen'].ray.x, 0., atol=1e-12, rtol=1e-12)
+    assert_allclose(res['specimen'].ray.y, 1., atol=1e-12, rtol=1e-12)
 
 
 def test_rotation_direction_90():
@@ -556,10 +580,10 @@ def test_rotation_direction_90():
     ray = model.make_source_ray(source_dx=0., source_dy=0.).ray
     res = model.trace(ray)
 
-    assert_allclose(res['specimen'].sampling['scan_px'].x, 1., atol=1e-6, rtol=1e-6)
-    assert_allclose(res['specimen'].sampling['scan_px'].y, 0., atol=1e-6, rtol=1e-6)
-    assert_allclose(res['specimen'].ray.x, 0., atol=1e-6, rtol=1e-6)
-    assert_allclose(res['specimen'].ray.y, 1., atol=1e-6, rtol=1e-6)
+    assert_allclose(res['specimen'].sampling['scan_px'].x, 1., atol=1e-12, rtol=1e-12)
+    assert_allclose(res['specimen'].sampling['scan_px'].y, 0., atol=1e-12, rtol=1e-12)
+    assert_allclose(res['specimen'].ray.x, 0., atol=1e-12, rtol=1e-12)
+    assert_allclose(res['specimen'].ray.y, 1., atol=1e-12, rtol=1e-12)
 
     model = Model4DSTEM.build(
         params=params,
@@ -567,10 +591,10 @@ def test_rotation_direction_90():
     )
     ray = model.make_source_ray(source_dx=0., source_dy=0.).ray
     res = model.trace(ray)
-    assert_allclose(res['specimen'].sampling['scan_px'].x, 0., atol=1e-6, rtol=1e-6)
-    assert_allclose(res['specimen'].sampling['scan_px'].y, 1., atol=1e-6, rtol=1e-6)
-    assert_allclose(res['specimen'].ray.x, -1., atol=1e-6, rtol=1e-6)
-    assert_allclose(res['specimen'].ray.y, 0., atol=1e-6, rtol=1e-6)
+    assert_allclose(res['specimen'].sampling['scan_px'].x, 0., atol=1e-12, rtol=1e-12)
+    assert_allclose(res['specimen'].sampling['scan_px'].y, 1., atol=1e-12, rtol=1e-12)
+    assert_allclose(res['specimen'].ray.x, -1., atol=1e-12, rtol=1e-12)
+    assert_allclose(res['specimen'].ray.y, 0., atol=1e-12, rtol=1e-12)
 
 
 def test_detector_px():
@@ -595,10 +619,10 @@ def test_detector_px():
     )
     ray = model.make_source_ray(source_dx=0.5, source_dy=0.).ray
     res = model.trace(ray)
-    assert_allclose(res['detector'].sampling['detector_px'].x, 1., atol=1e-6, rtol=1e-6)
-    assert_allclose(res['detector'].sampling['detector_px'].y, 0., atol=1e-6, rtol=1e-6)
-    assert_allclose(res['detector'].ray.x, 1., atol=1e-6, rtol=1e-6)
-    assert_allclose(res['detector'].ray.y, 0., atol=1e-6, rtol=1e-6)
+    assert_allclose(res['detector'].sampling['detector_px'].x, 1., atol=1e-12, rtol=1e-12)
+    assert_allclose(res['detector'].sampling['detector_px'].y, 0., atol=1e-12, rtol=1e-12)
+    assert_allclose(res['detector'].ray.x, 1., atol=1e-12, rtol=1e-12)
+    assert_allclose(res['detector'].ray.y, 0., atol=1e-12, rtol=1e-12)
 
     model = Model4DSTEM.build(
         params=params,
@@ -606,10 +630,10 @@ def test_detector_px():
     )
     ray = model.make_source_ray(source_dx=0., source_dy=0.5).ray
     res = model.trace(ray)
-    assert_allclose(res['detector'].sampling['detector_px'].x, 0., atol=1e-6, rtol=1e-6)
-    assert_allclose(res['detector'].sampling['detector_px'].y, 1., atol=1e-6, rtol=1e-6)
-    assert_allclose(res['detector'].ray.x, 0., atol=1e-6, rtol=1e-6)
-    assert_allclose(res['detector'].ray.y, 1., atol=1e-6, rtol=1e-6)
+    assert_allclose(res['detector'].sampling['detector_px'].x, 0., atol=1e-12, rtol=1e-12)
+    assert_allclose(res['detector'].sampling['detector_px'].y, 1., atol=1e-12, rtol=1e-12)
+    assert_allclose(res['detector'].ray.x, 0., atol=1e-12, rtol=1e-12)
+    assert_allclose(res['detector'].ray.y, 1., atol=1e-12, rtol=1e-12)
 
 
 def test_detector_px_flipy():
@@ -634,10 +658,10 @@ def test_detector_px_flipy():
     )
     ray = model.make_source_ray(source_dx=0.5, source_dy=0.).ray
     res = model.trace(ray)
-    assert_allclose(res['detector'].sampling['detector_px'].x, 1., atol=1e-6, rtol=1e-6)
-    assert_allclose(res['detector'].sampling['detector_px'].y, 0., atol=1e-6, rtol=1e-6)
-    assert_allclose(res['detector'].ray.x, 1., atol=1e-6, rtol=1e-6)
-    assert_allclose(res['detector'].ray.y, 0., atol=1e-6, rtol=1e-6)
+    assert_allclose(res['detector'].sampling['detector_px'].x, 1., atol=1e-12, rtol=1e-12)
+    assert_allclose(res['detector'].sampling['detector_px'].y, 0., atol=1e-12, rtol=1e-12)
+    assert_allclose(res['detector'].ray.x, 1., atol=1e-12, rtol=1e-12)
+    assert_allclose(res['detector'].ray.y, 0., atol=1e-12, rtol=1e-12)
 
     model = Model4DSTEM.build(
         params=params,
@@ -645,10 +669,10 @@ def test_detector_px_flipy():
     )
     ray = model.make_source_ray(source_dx=0., source_dy=0.5).ray
     res = model.trace(ray)
-    assert_allclose(res['detector'].sampling['detector_px'].x, 0., atol=1e-6, rtol=1e-6)
-    assert_allclose(res['detector'].sampling['detector_px'].y, -1., atol=1e-6, rtol=1e-6)
-    assert_allclose(res['detector'].ray.x, 0., atol=1e-6, rtol=1e-6)
-    assert_allclose(res['detector'].ray.y, 1., atol=1e-6, rtol=1e-6)
+    assert_allclose(res['detector'].sampling['detector_px'].x, 0., atol=1e-12, rtol=1e-12)
+    assert_allclose(res['detector'].sampling['detector_px'].y, -1., atol=1e-12, rtol=1e-12)
+    assert_allclose(res['detector'].ray.x, 0., atol=1e-12, rtol=1e-12)
+    assert_allclose(res['detector'].ray.y, 1., atol=1e-12, rtol=1e-12)
 
 
 @pytest.mark.parametrize(
