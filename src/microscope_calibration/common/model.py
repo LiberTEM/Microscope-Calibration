@@ -269,17 +269,20 @@ class Model4DSTEM:
         )
         return ResultSection(component=self.source, ray=ray)
 
+    @property
+    def components(self):
+        return (self.source, self.scanner, self.specimen, self.descanner, self.detector)
+
     def trace(self, ray: Ray) -> Result4DSTEM:
         result = OrderedDict()
 
-        components = (self.source, self.scanner, self.specimen, self.descanner, self.detector)
         # run_iter() currently inserts a propagation if two subsequent
         # components have a non-zero distance, but skips for equal z. We
         # therefore check meticulously that we are actually getting the
         # components and rays we expect. Furthermore, we make sure that our
         # result ALWAYS has the same schema independent of parameters by
         # inserting gaps of zero length manually.
-        run_result = list(run_iter(ray=ray, components=components))
+        run_result = list(run_iter(ray=ray, components=self.components))
 
         # skip the first propagation, which should be zero distance
         comp, r = run_result.pop(0)

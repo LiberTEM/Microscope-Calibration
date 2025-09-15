@@ -4,7 +4,7 @@ from skimage.measure import blur_effect
 from typing import TYPE_CHECKING, Callable, Optional
 from collections.abc import Iterable
 
-from microscope_calibration.common.stem_overfocus import OverfocusParams
+from microscope_calibration.common.model import Parameters4DSTEM
 
 if TYPE_CHECKING:
     from libertem.udf.base import UDF
@@ -15,7 +15,7 @@ if TYPE_CHECKING:
 
 
 def make_overfocus_loss_function(
-        params: OverfocusParams,
+        params: Parameters4DSTEM,
         ctx: 'Context',
         dataset: 'DataSet',
         overfocus_udf: 'OverfocusUDF',
@@ -73,16 +73,16 @@ def make_overfocus_loss_function(
     '''
     # Rotate and scale the angle so that the optimizer works between +-10,
     # corresponding to +- 5 deg
-    rotation_diff = params['scan_rotation']
+    rotation_diff = params.scan_rotation * 180 / np.pi
     rotation_scale = 1
     # Values to shift and scale the overfocus so that the optimizer works between +-10
-    overfocus_diff = params['overfocus']
-    overfocus_scale = 40 / np.abs(params['overfocus'])
+    overfocus_diff = params.overfocus
+    overfocus_scale = 40 / np.abs(params.overfocus)
 
     if blur_function is None:
         blur_function = blur_effect
 
-    def make_new_params(args) -> OverfocusParams:
+    def make_new_params(args) -> Parameters4DSTEM:
         '''
         Map parameters from +-10 to original range
 
@@ -95,10 +95,10 @@ def make_overfocus_loss_function(
         transformed_rotation, transformed_overfocus = args
         rotation = transformed_rotation / rotation_scale + rotation_diff
         overfocus = transformed_overfocus / overfocus_scale + overfocus_diff
-        param_copy = params.copy()
-        param_copy['overfocus'] = overfocus
-        param_copy['scan_rotation'] = rotation
-        return param_copy
+        return params.derive(
+            overfocus=overfocus,
+            scan_rotation=rotation / 180 * np.pi,
+        )
 
     def loss(args) -> float:
         '''
@@ -115,12 +115,13 @@ def make_overfocus_loss_function(
         args
             (scan_rotation, overfocused) mapped to +-10 range
         '''
-        param_copy = make_new_params(args)
-        overfocus_udf.params.overfocus_params.update(param_copy)
+        params = make_new_params(args)
+        # Hack to make parameter update work
+        overfocus_udf.params.overfocus_params['params'] = params
         res = ctx.run_udf(dataset=dataset, udf=[overfocus_udf] + list(extra_udfs), **kwargs)
         blur = blur_function(res[0]['shifted_sum'].data)
         if callback is not None:
-            callback(args, overfocus_udf.params.overfocus_params, res, blur)
+            callback(args, overfocus_udf.params.overfocus_params['params'], res, blur)
         return blur
 
     return make_new_params, loss
