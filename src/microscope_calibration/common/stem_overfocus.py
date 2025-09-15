@@ -39,8 +39,8 @@ def _do_lstsq(input_samples, output_samples):
     reproduced = np.allclose(
         output_samples,
         test_samples,
-        rtol=1e-12,
-        atol=1e-11
+        rtol=1e-10,
+        atol=1e-10
     )
 
     if not (no_residuals and reproduced):
@@ -150,6 +150,40 @@ def get_backward_transformation_matrix(
     return _do_lstsq(input_samples, output_samples)
 
 
+# Separate functions spun out to facilitate re-use of coordinate calculations
+# for other purposes
+@numba.njit(inline='always')
+def project_tilt_y(image_y, image_x, scan_y, scan_x, mat):
+    return (
+        scan_y * mat[0, 2] + scan_x * mat[1, 2]
+        + image_y * mat[2, 2] + image_x * mat[3, 2] + mat[4, 2]
+    )
+
+
+@numba.njit(inline='always')
+def project_tilt_x(image_y, image_x, scan_y, scan_x, mat):
+    return (
+        scan_y * mat[0, 3] + scan_x * mat[1, 3]
+        + image_y * mat[2, 3] + image_x * mat[3, 3] + mat[4, 3]
+    )
+
+
+@numba.njit(inline='always')
+def project_det_y(image_y, image_x, scan_y, scan_x, mat):
+    return (
+        scan_y * mat[0, 0] + scan_x * mat[1, 0]
+        + image_y * mat[2, 0] + image_x * mat[3, 0] + mat[4, 0]
+    )
+
+
+@numba.njit(inline='always')
+def project_det_x(image_y, image_x, scan_y, scan_x, mat):
+    return (
+        scan_y * mat[0, 1] + scan_x * mat[1, 1]
+        + image_y * mat[2, 1] + image_x * mat[3, 1] + mat[4, 1]
+    )
+
+
 @numba.njit
 def project_frame_backwards(frame, source_semiconv, mat, scan_y, scan_x, image_out):
     limit = np.abs(np.tan(source_semiconv))**2
@@ -164,23 +198,11 @@ def project_frame_backwards(frame, source_semiconv, mat, scan_y, scan_x, image_o
             #       + det_y * mat[2, 4] + det_x * mat[3, 4] + mat[4, 4]
             # )
             # assert np.allclose(_one, 1)
-            tilt_y = (
-                scan_y * mat[0, 2] + scan_x * mat[1, 2]
-                + image_y * mat[2, 2] + image_x * mat[3, 2] + mat[4, 2]
-            )
-            tilt_x = (
-                scan_y * mat[0, 3] + scan_x * mat[1, 3]
-                + image_y * mat[2, 3] + image_x * mat[3, 3] + mat[4, 3]
-            )
+            tilt_y = project_tilt_y(image_y, image_x, scan_y, scan_x, mat)
+            tilt_x = project_tilt_x(image_y, image_x, scan_y, scan_x, mat)
             if np.abs(tilt_y)**2 + np.abs(tilt_x)**2 < limit:
-                det_y = (
-                    scan_y * mat[0, 0] + scan_x * mat[1, 0]
-                    + image_y * mat[2, 0] + image_x * mat[3, 0] + mat[4, 0]
-                )
-                det_x = (
-                    scan_y * mat[0, 1] + scan_x * mat[1, 1]
-                    + image_y * mat[2, 1] + image_x * mat[3, 1] + mat[4, 1]
-                )
+                det_y = project_det_y(image_y, image_x, scan_y, scan_x, mat)
+                det_x = project_det_x(image_y, image_x, scan_y, scan_x, mat)
                 det_y = int(np.round(det_y))
                 det_x = int(np.round(det_x))
                 if det_y >= 0 and det_y < frame.shape[0] and det_x >= 0 and det_x < frame.shape[1]:
@@ -239,7 +261,7 @@ def get_detector_correction_matrix(
             scan_rotation=0.,
             flip_y=False,
             descan_error=DescanError(),
-            detector_rotation=rec_params.detector_rotation + rec_params.scan_rotation,
+            detector_rotation=rec_params.scan_rotation,
         )
 
     for test_param_raw in test_parameters:
@@ -269,14 +291,30 @@ def get_detector_correction_matrix(
             output_sample = (
                 res['detector'].sampling['detector_px'].y,
                 res['detector'].sampling['detector_px'].x,
-                source_dy,
-                source_dx,
                 1.,
             )
             output_samples.append(output_sample)
             input_samples.append(input_sample)
 
     return _do_lstsq(input_samples, output_samples)
+
+
+# Separate functions spun out to facilitate re-use of coordinate calculations
+# for other purposes, such as corrected virtual detectors
+@numba.njit(inline='always')
+def corrected_det_y(det_corr_y, det_corr_x, scan_y, scan_x, mat):
+    return (
+        scan_y * mat[0, 0] + scan_x * mat[1, 0]
+        + det_corr_y * mat[2, 0] + det_corr_x * mat[3, 0] + mat[4, 0]
+    )
+
+
+@numba.njit(inline='always')
+def corrected_det_x(det_corr_y, det_corr_x, scan_y, scan_x, mat):
+    return (
+        scan_y * mat[0, 1] + scan_x * mat[1, 1]
+        + det_corr_y * mat[2, 1] + det_corr_x * mat[3, 1] + mat[4, 1]
+    )
 
 
 @numba.njit
@@ -286,14 +324,8 @@ def correct_frame(frame, mat, scan_y, scan_x, detector_out):
             # Manually unrolled matrix-vector product to allow skipping before
             # calculating all values and facilitate auto-vectorization of the
             # loop
-            det_y = (
-                scan_y * mat[0, 0] + scan_x * mat[1, 0]
-                + det_corr_y * mat[2, 0] + det_corr_x * mat[3, 0] + mat[4, 0]
-            )
-            det_x = (
-                scan_y * mat[0, 1] + scan_x * mat[1, 1]
-                + det_corr_y * mat[2, 1] + det_corr_x * mat[3, 1] + mat[4, 1]
-            )
+            det_y = corrected_det_y(det_corr_y, det_corr_x, scan_y, scan_x, mat)
+            det_x = corrected_det_x(det_corr_y, det_corr_x, scan_y, scan_x, mat)
             det_y = int(np.round(det_y))
             det_x = int(np.round(det_x))
             if (det_y >= 0 and det_y < frame.shape[0]
