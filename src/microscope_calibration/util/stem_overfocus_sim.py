@@ -1,8 +1,6 @@
-from typing import Callable, Optional
-from copy import copy
+from typing import Optional
 
 import jax; jax.config.update("jax_enable_x64", True)  # noqa: E702
-import jax.numpy as jnp
 import numpy as np
 import numba
 
@@ -133,7 +131,7 @@ def get_forward_transformation_matrix(
     return _do_lstsq(input_samples, output_samples)
 
 
-@numba.njit
+@numba.njit(cache=True)
 def project_frame_forward(obj, source_semiconv, mat, scan_y, scan_x, out):
     limit = np.abs(np.tan(source_semiconv))**2
     for det_y in range(out.shape[0]):
