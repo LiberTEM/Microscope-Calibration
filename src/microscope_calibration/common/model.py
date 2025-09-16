@@ -4,6 +4,7 @@ from collections import OrderedDict
 import jax; jax.config.update("jax_enable_x64", True)  # noqa: E702
 import jax_dataclasses as jdc
 import jax.numpy as jnp
+from jax.errors import TracerBoolConversionError
 
 from temgym_core.ray import Ray
 from temgym_core import PixelYX, CoordXY
@@ -308,10 +309,13 @@ class Model4DSTEM:
 
         # Skip zero distance propagation between scanner and specimen
         comp, r = run_result.pop(0)
-        assert isinstance(comp, Propagator)
-        assert comp.distance == 0.
-        assert isinstance(r, Ray)
-        assert r == result['scanner'].ray
+        try:
+            assert isinstance(comp, Propagator)
+            assert comp.distance == 0.
+            assert isinstance(r, Ray)
+            assert r == result['scanner'].ray
+        except TracerBoolConversionError:
+            pass
 
         comp, r = run_result.pop(0)
         assert comp == self.specimen
@@ -325,10 +329,12 @@ class Model4DSTEM:
 
         # Skip zero distance propagation between specimen and descanner
         comp, r = run_result.pop(0)
-        assert isinstance(comp, Propagator)
-        assert comp.distance == 0.
-        assert r == result['specimen'].ray
-
+        try:
+            assert isinstance(comp, Propagator)
+            assert comp.distance == 0.
+            assert r == result['specimen'].ray
+        except TracerBoolConversionError:
+            pass
         comp, r = run_result.pop(0)
         assert comp == self.descanner
         assert isinstance(r, Ray)

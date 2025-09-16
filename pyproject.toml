@@ -30,6 +30,7 @@ dependencies = [
     # to make tests pass for the time being
     # TODO release pin ASAP
     "scipy<1.16",
+    'jax',
 ]
 classifiers = [
     "Programming Language :: Python :: 3",
