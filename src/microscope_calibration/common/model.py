@@ -287,13 +287,19 @@ class Model4DSTEM:
 
         # skip the first propagation, which should be zero distance
         comp, r = run_result.pop(0)
-        assert isinstance(comp, Propagator)
-        assert comp.distance == 0.
-        assert r == ray
+        try:
+            assert isinstance(comp, Propagator)
+            assert comp.distance == 0.
+            assert r == ray
+        except TracerBoolConversionError:
+            pass
 
         comp, r = run_result.pop(0)
-        assert comp == self.source
-        assert r == ray
+        try:
+            assert comp == self.source
+            assert r == ray
+        except TracerBoolConversionError:
+            pass
         result['source'] = ResultSection(component=comp, ray=r)
 
         comp, r = run_result.pop(0)
@@ -303,8 +309,11 @@ class Model4DSTEM:
         result['overfocus'] = ResultSection(component=comp, ray=r)
 
         comp, r = run_result.pop(0)
-        assert comp == self.scanner
-        assert isinstance(r, Ray)
+        try:
+            assert comp == self.scanner
+            assert isinstance(r, Ray)
+        except TracerBoolConversionError:
+            pass
         result['scanner'] = ResultSection(component=comp, ray=r)
 
         # Skip zero distance propagation between scanner and specimen
@@ -318,8 +327,11 @@ class Model4DSTEM:
             pass
 
         comp, r = run_result.pop(0)
-        assert comp == self.specimen
-        assert isinstance(r, Ray)
+        try:
+            assert comp == self.specimen
+            assert isinstance(r, Ray)
+        except TracerBoolConversionError:
+            pass
         scan_px = self.real_to_scan(CoordXY(x=r.x, y=r.y), _one=ray._one)
         result['specimen'] = ResultSection(
             component=comp,
@@ -336,8 +348,11 @@ class Model4DSTEM:
         except TracerBoolConversionError:
             pass
         comp, r = run_result.pop(0)
-        assert comp == self.descanner
-        assert isinstance(r, Ray)
+        try:
+            assert comp == self.descanner
+            assert isinstance(r, Ray)
+        except TracerBoolConversionError:
+            pass
         result['descanner'] = ResultSection(component=comp, ray=r)
 
         comp, r = run_result.pop(0)
@@ -347,8 +362,11 @@ class Model4DSTEM:
         result['camera_length'] = ResultSection(component=comp, ray=r)
 
         comp, r = run_result.pop(0)
-        assert comp == self.detector
-        assert isinstance(r, Ray)
+        try:
+            assert comp == self.detector
+            assert isinstance(r, Ray)
+        except TracerBoolConversionError:
+            pass
         detector_px = self.real_to_detector(CoordXY(x=r.x, y=r.y), _one=ray._one)
         result['detector'] = ResultSection(
             component=comp,
