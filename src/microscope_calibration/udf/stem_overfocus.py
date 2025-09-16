@@ -1,5 +1,6 @@
 import numpy as np
 from libertem.udf.base import UDF
+from functools import lru_cache
 
 from microscope_calibration.common.model import Parameters4DSTEM
 from microscope_calibration.common.stem_overfocus import (
@@ -12,10 +13,30 @@ from microscope_calibration.common.stem_overfocus import (
 
 class OverfocusUDF(UDF):
     def __init__(
-            self, overfocus_params: dict):
-        super().__init__(
+            self, overfocus_params: dict, back_mat=None, corr_mat=None, ref_params=None):
+        if overfocus_params['params'] != ref_params:
+            back_mat = self._back_mat(
+                rec_params=overfocus_params['params'],
+            )
+            corr_mat = self._corr_mat(
+                rec_params=overfocus_params['params'],
+            )
+        return super().__init__(
             overfocus_params=overfocus_params,
+            back_mat=back_mat,
+            corr_mat=corr_mat,
+            ref_params=overfocus_params['params'],
         )
+
+    @staticmethod
+    @lru_cache
+    def _back_mat(*args, **kwargs):
+        return get_backward_transformation_matrix(*args, **kwargs)
+
+    @staticmethod
+    @lru_cache
+    def _corr_mat(*args, **kwargs):
+        return get_detector_correction_matrix(*args, **kwargs)
 
     def _get_fov(self):
         fov_size_y = int(self.meta.dataset_shape.nav[0])
@@ -23,19 +44,10 @@ class OverfocusUDF(UDF):
         return fov_size_y, fov_size_x
 
     def get_task_data(self):
-        overfocus_params = self.params.overfocus_params['params']
-        backprojection_matrix = get_backward_transformation_matrix(
-            rec_params=overfocus_params,
-        )
-        correction_matrix = get_detector_correction_matrix(
-            rec_params=overfocus_params,
-        )
         select_roi = np.zeros(self.meta.dataset_shape.nav, dtype=bool)
         nav_y, nav_x = self.meta.dataset_shape.nav
         select_roi[nav_y//2, nav_x//2] = True
         return {
-            'backprojection_matrix': backprojection_matrix,
-            'correction_matrix': correction_matrix,
             'select_roi': select_roi
         }
 
@@ -48,7 +60,7 @@ class OverfocusUDF(UDF):
             'selected': self.buffer(
                 kind='single', dtype=dtype, extra_shape=fov, where='device'
             ),
-            'corrected_sum': self.buffer(kind='single', dtype=dtype, extra_shape=fov, where='device'),
+            'corrected_sum': self.buffer(kind='sig', dtype=dtype, where='device'),
         }
 
     def process_frame(self, frame):
@@ -61,7 +73,7 @@ class OverfocusUDF(UDF):
                 source_semiconv=overfocus_params.semiconv,
                 scan_y=scan_y,
                 scan_x=scan_x,
-                mat=self.task_data.backprojection_matrix,
+                mat=self.params.back_mat,
                 image_out=buf
             )
             self.results.shifted_sum += buf
@@ -72,7 +84,7 @@ class OverfocusUDF(UDF):
                 source_semiconv=overfocus_params.semiconv,
                 scan_y=scan_y,
                 scan_x=scan_x,
-                mat=self.task_data.backprojection_matrix,
+                mat=self.params.back_mat,
                 image_out=self.results.shifted_sum
             )
         center = overfocus_params.detector_center
@@ -82,7 +94,7 @@ class OverfocusUDF(UDF):
             frame=frame,
             scan_y=scan_y,
             scan_x=scan_x,
-            mat=self.task_data.correction_matrix,
+            mat=self.params.corr_mat,
             detector_out=self.results.corrected_sum
         )
 
