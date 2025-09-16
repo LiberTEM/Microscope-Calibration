@@ -4,7 +4,11 @@ from skimage.measure import blur_effect
 from typing import TYPE_CHECKING, Callable, Optional
 from collections.abc import Iterable
 
-from microscope_calibration.common.model import Parameters4DSTEM
+import jax; jax.config.update("jax_enable_x64", True)  # noqa: E702
+import jax.numpy as jnp
+import optax
+
+from microscope_calibration.common.model import Parameters4DSTEM, Model4DSTEM, PixelYX
 
 if TYPE_CHECKING:
     from libertem.udf.base import UDF
@@ -148,3 +152,94 @@ def optimize(loss, bounds=None, minimizer_kwargs=None, **kwargs):
         **kwargs
     )
     return res
+
+
+def _solve(start: jnp.array, loss: Callable[[jnp.array], float], limit=1e-12):
+    solver = optax.lbfgs()
+    optargs = start.copy()
+    opt_state = solver.init(optargs)
+    value_and_grad = optax.value_and_grad_from_state(loss)
+
+    @jax.jit
+    def optstep(optargs, opt_state):
+        value, grad = value_and_grad(optargs, state=opt_state)
+        updates, opt_state = solver.update(
+            grad, opt_state, optargs, value=value, grad=grad, value_fn=loss
+        )
+        optargs = optax.apply_updates(optargs, updates)
+        return optargs, opt_state, jnp.linalg.norm(updates)
+
+    while True:
+        optargs, opt_state, change = optstep(optargs, opt_state)
+        if change < limit:
+            break
+
+    return optargs
+
+
+# FIXME include wavelength calculation etc for more practical
+# input parameters
+def solve_camera_length(ref_params: Parameters4DSTEM, diffraction_angle, radius_px):
+    test_dx = jnp.tan(diffraction_angle)
+
+    @jax.jit
+    def loss(optargs):
+        opt_params = ref_params.derive(
+            camera_length=optargs[0],
+            overfocus=0.
+        )
+        opt_model = Model4DSTEM.build(params=opt_params, scan_pos=PixelYX(y=0., x=0.))
+        opt_ray_1 = opt_model.make_source_ray(source_dx=test_dx, source_dy=0.).ray
+        opt_res_1 = opt_model.trace(opt_ray_1)
+        opt_ray_2 = opt_model.make_source_ray(source_dx=-test_dx, source_dy=0.).ray
+        opt_res_2 = opt_model.trace(opt_ray_2)
+        px_1 = opt_res_1['detector'].sampling['detector_px']
+        px_2 = opt_res_2['detector'].sampling['detector_px']
+        distance = jnp.linalg.norm(jnp.array(px_2) - jnp.array(px_1))
+        return jnp.abs(distance - 2*radius_px)
+
+    start = jnp.array((ref_params.camera_length, ))
+    opt_res = _solve(
+        start=start,
+        loss=loss,
+    )
+    # The loss function has minima at camera_length and -camera_length.
+    # we take the positive side since a negative camera length doesn't make sense
+    # for a classical TEM, only for reflection.
+    return ref_params.derive(
+        camera_length=jnp.abs(opt_res[0]),
+    )
+
+
+def solve_scan_pixel_pitch(
+        ref_params: Parameters4DSTEM,
+        point_1: PixelYX, point_2: PixelYX,
+        physical_distance: float):
+    @jax.jit
+    def loss(optargs):
+        opt_params = ref_params.derive(
+            scan_pixel_pitch=optargs[0],
+            overfocus=0.
+        )
+        opt_model_1 = Model4DSTEM.build(params=opt_params, scan_pos=point_1)
+        opt_ray_1 = opt_model_1.make_source_ray(source_dx=0., source_dy=0.).ray
+        opt_res_1 = opt_model_1.trace(opt_ray_1)
+        opt_model_2 = Model4DSTEM.build(params=opt_params, scan_pos=point_2)
+        opt_ray_2 = opt_model_2.make_source_ray(source_dx=0., source_dy=0.).ray
+        opt_res_2 = opt_model_2.trace(opt_ray_2)
+        dx = opt_res_2['specimen'].ray.x - opt_res_1['specimen'].ray.x
+        dy = opt_res_2['specimen'].ray.y - opt_res_1['specimen'].ray.y
+        opt_distance = jnp.linalg.norm(jnp.array((dy, dx)))
+        return jnp.abs(opt_distance - physical_distance)
+
+    start = jnp.array((ref_params.scan_pixel_pitch, ))
+    opt_res = _solve(
+        start=start,
+        loss=loss,
+    )
+    # The loss function has minima at scan_pixel_pitch and -scan_pixel_pitch. we
+    # take the positive side since the inversion can be better expressed with a
+    # scan rotation.
+    return ref_params.derive(
+        scan_pixel_pitch=jnp.abs(opt_res[0]),
+    )
