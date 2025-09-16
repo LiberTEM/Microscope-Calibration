@@ -152,7 +152,7 @@ def get_backward_transformation_matrix(
 
 # Separate functions spun out to facilitate re-use of coordinate calculations
 # for other purposes
-@numba.njit(inline='always')
+@numba.njit(inline='always', cache=True)
 def project_tilt_y(image_y, image_x, scan_y, scan_x, mat):
     return (
         scan_y * mat[0, 2] + scan_x * mat[1, 2]
@@ -160,7 +160,7 @@ def project_tilt_y(image_y, image_x, scan_y, scan_x, mat):
     )
 
 
-@numba.njit(inline='always')
+@numba.njit(inline='always', cache=True)
 def project_tilt_x(image_y, image_x, scan_y, scan_x, mat):
     return (
         scan_y * mat[0, 3] + scan_x * mat[1, 3]
@@ -168,7 +168,7 @@ def project_tilt_x(image_y, image_x, scan_y, scan_x, mat):
     )
 
 
-@numba.njit(inline='always')
+@numba.njit(inline='always', cache=True)
 def project_det_y(image_y, image_x, scan_y, scan_x, mat):
     return (
         scan_y * mat[0, 0] + scan_x * mat[1, 0]
@@ -176,7 +176,7 @@ def project_det_y(image_y, image_x, scan_y, scan_x, mat):
     )
 
 
-@numba.njit(inline='always')
+@numba.njit(inline='always', cache=True)
 def project_det_x(image_y, image_x, scan_y, scan_x, mat):
     return (
         scan_y * mat[0, 1] + scan_x * mat[1, 1]
@@ -184,7 +184,7 @@ def project_det_x(image_y, image_x, scan_y, scan_x, mat):
     )
 
 
-@numba.njit
+@numba.njit(cache=True)
 def project_frame_backwards(frame, source_semiconv, mat, scan_y, scan_x, image_out):
     limit = np.abs(np.tan(source_semiconv))**2
     for image_y in range(image_out.shape[0]):
@@ -291,6 +291,8 @@ def get_detector_correction_matrix(
             output_sample = (
                 res['detector'].sampling['detector_px'].y,
                 res['detector'].sampling['detector_px'].x,
+                source_dy,
+                source_dx,
                 1.,
             )
             output_samples.append(output_sample)
@@ -301,7 +303,7 @@ def get_detector_correction_matrix(
 
 # Separate functions spun out to facilitate re-use of coordinate calculations
 # for other purposes, such as corrected virtual detectors
-@numba.njit(inline='always')
+@numba.njit(inline='always', cache=True)
 def corrected_det_y(det_corr_y, det_corr_x, scan_y, scan_x, mat):
     return (
         scan_y * mat[0, 0] + scan_x * mat[1, 0]
@@ -309,7 +311,7 @@ def corrected_det_y(det_corr_y, det_corr_x, scan_y, scan_x, mat):
     )
 
 
-@numba.njit(inline='always')
+@numba.njit(inline='always', cache=True)
 def corrected_det_x(det_corr_y, det_corr_x, scan_y, scan_x, mat):
     return (
         scan_y * mat[0, 1] + scan_x * mat[1, 1]
@@ -317,7 +319,7 @@ def corrected_det_x(det_corr_y, det_corr_x, scan_y, scan_x, mat):
     )
 
 
-@numba.njit
+@numba.njit(cache=True)
 def correct_frame(frame, mat, scan_y, scan_x, detector_out):
     for det_corr_y in range(detector_out.shape[0]):
         for det_corr_x in range(detector_out.shape[1]):
