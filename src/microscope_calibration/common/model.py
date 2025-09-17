@@ -255,6 +255,21 @@ class Model4DSTEM:
             descan_error=self.descanner.descan_error,
         )
 
+    @property
+    def scan_pos(self):
+        y = self.scanner.scan_pos_y
+        x = self.scanner.scan_pos_x
+
+        assert self.scanner.scan_tilt_y == 0.
+        assert self.scanner.scan_tilt_x == 0.
+
+        assert self.scanner.scan_pos_y == self.descanner.scan_pos_y
+        assert self.scanner.scan_pos_x == self.descanner.scan_pos_x
+        assert self.descanner.scan_tilt_y == 0.
+        assert self.descanner.scan_tilt_x == 0.
+
+        return self.real_to_scan(CoordXY(x=x, y=y))
+
     def make_source_ray(
             self,
             source_dx: float, source_dy: float,
@@ -376,3 +391,179 @@ class Model4DSTEM:
 
         assert len(run_result) == 0
         return result
+
+    @staticmethod
+    def rotate_scan(params: Parameters4DSTEM, angle: float) -> Parameters4DSTEM:
+        de = params.descan_error
+        # Rotate the input direction
+        pxo_pyi, pxo_pxi = rotate(angle) @ jnp.array((de.pxo_pyi, de.pxo_pxi))
+        pyo_pyi, pyo_pxi = rotate(angle) @ jnp.array((de.pyo_pyi, de.pyo_pxi))
+        sxo_pyi, sxo_pxi = rotate(angle) @ jnp.array((de.sxo_pyi, de.sxo_pxi))
+        syo_pyi, syo_pxi = rotate(angle) @ jnp.array((de.syo_pyi, de.syo_pxi))
+        new_de = DescanError(
+            pxo_pyi=pxo_pyi,
+            pyo_pyi=pyo_pyi,
+            pxo_pxi=pxo_pxi,
+            pyo_pxi=pyo_pxi,
+            sxo_pyi=sxo_pyi,
+            syo_pyi=syo_pyi,
+            sxo_pxi=sxo_pxi,
+            syo_pxi=syo_pxi,
+            offpxi=de.offpxi,
+            offpyi=de.offpyi,
+            offsxi=de.offsxi,
+            offsyi=de.offsyi,
+        )
+        return params.derive(
+            scan_rotation=params.scan_rotation + angle,
+            descan_error=new_de,
+        )
+
+    @staticmethod
+    def set_scan_pixel_pitch(params: Parameters4DSTEM, scan_pixel_pitch: float) -> Parameters4DSTEM:
+        de = params.descan_error
+        ratio = params.scan_pixel_pitch / scan_pixel_pitch
+
+        new_de = DescanError(
+            pxo_pyi=de.pxo_pyi * ratio,
+            pyo_pyi=de.pyo_pyi * ratio,
+            pxo_pxi=de.pxo_pxi * ratio,
+            pyo_pxi=de.pyo_pxi * ratio,
+            sxo_pyi=de.sxo_pyi * ratio,
+            syo_pyi=de.syo_pyi * ratio,
+            sxo_pxi=de.sxo_pxi * ratio,
+            syo_pxi=de.syo_pxi * ratio,
+            offpxi=de.offpxi,
+            offpyi=de.offpyi,
+            offsxi=de.offsxi,
+            offsyi=de.offsyi,
+        )
+        return params.derive(
+            scan_pixel_pitch=scan_pixel_pitch,
+            descan_error=new_de,
+        )
+
+    @staticmethod
+    def rotate_detector(params: Parameters4DSTEM, angle: float) -> Parameters4DSTEM:
+        de = params.descan_error
+        # rotate the output direction
+        pyo_pyi, pxo_pyi = rotate(angle) @ jnp.array((de.pyo_pyi, de.pxo_pyi))
+        pyo_pxi, pxo_pxi = rotate(angle) @ jnp.array((de.pyo_pxi, de.pxo_pxi))
+        syo_pyi, sxo_pyi = rotate(angle) @ jnp.array((de.syo_pyi, de.sxo_pyi))
+        syo_pxi, sxo_pxi = rotate(angle) @ jnp.array((de.syo_pxi, de.sxo_pxi))
+        offpyi, offpxi = rotate(angle) @ jnp.array((de.offpyi, de.offpxi))
+        offsyi, offsxi = rotate(angle) @ jnp.array((de.offsyi, de.offsxi))
+        new_de = DescanError(
+            pxo_pyi=pxo_pyi,
+            pyo_pyi=pyo_pyi,
+            pxo_pxi=pxo_pxi,
+            pyo_pxi=pyo_pxi,
+            sxo_pyi=sxo_pyi,
+            syo_pyi=syo_pyi,
+            sxo_pxi=sxo_pxi,
+            syo_pxi=syo_pxi,
+            offpxi=offpxi,
+            offpyi=offpyi,
+            offsxi=offsxi,
+            offsyi=offsyi,
+        )
+        return params.derive(
+            detector_rotation=params.detector_rotation + angle,
+            descan_error=new_de,
+        )
+
+    @staticmethod
+    def flip_detector_y(params: Parameters4DSTEM) -> Parameters4DSTEM:
+        de = params.descan_error
+        angle = params.detector_rotation
+        # Rotate into detector directions, flip, then rotate back
+        trans = rotate(angle) @ flip_y() @ rotate(-angle)
+        # transform the output direction
+        pyo_pyi, pxo_pyi = trans @ jnp.array((de.pyo_pyi, de.pxo_pyi))
+        pyo_pxi, pxo_pxi = trans @ jnp.array((de.pyo_pxi, de.pxo_pxi))
+        syo_pyi, sxo_pyi = trans @ jnp.array((de.syo_pyi, de.sxo_pyi))
+        syo_pxi, sxo_pxi = trans @ jnp.array((de.syo_pxi, de.sxo_pxi))
+        offpyi, offpxi = trans @ jnp.array((de.offpyi, de.offpxi))
+        offsyi, offsxi = trans @ jnp.array((de.offsyi, de.offsxi))
+        new_de = DescanError(
+            pxo_pyi=pxo_pyi,
+            pyo_pyi=pyo_pyi,
+            pxo_pxi=pxo_pxi,
+            pyo_pxi=pyo_pxi,
+            sxo_pyi=sxo_pyi,
+            syo_pyi=syo_pyi,
+            sxo_pxi=sxo_pxi,
+            syo_pxi=syo_pxi,
+            offpxi=offpxi,
+            offpyi=offpyi,
+            offsxi=offsxi,
+            offsyi=offsyi,
+        )
+        return params.derive(
+            flip_y=not params.flip_y,
+            descan_error=new_de,
+        )
+
+    @classmethod
+    def shift_detector(cls, params: Parameters4DSTEM, shift: PixelYX) -> Parameters4DSTEM:
+        de = params.descan_error
+        model1 = cls.build(params=params, scan_pos=PixelYX(0, 0))
+        model2 = cls.build(
+            params=params.derive(
+                detector_center=PixelYX(
+                    y=params.detector_center.y + shift.y,
+                    x=params.detector_center.x + shift.x,
+                ),
+            ),
+            scan_pos=PixelYX(0, 0),
+        )
+        zero = PixelYX(0, 0)
+        physical_1 = model1.detector_to_real(zero)
+        physical_2 = model2.detector_to_real(zero)
+        offpyi = de.offpyi + physical_2.y - physical_1.y
+        offpxi = de.offpxi + physical_2.x - physical_1.x
+        new_de = DescanError(
+            pxo_pyi=de.pxo_pyi,
+            pyo_pyi=de.pyo_pyi,
+            pxo_pxi=de.pxo_pxi,
+            pyo_pxi=de.pyo_pxi,
+            sxo_pyi=de.sxo_pyi,
+            syo_pyi=de.syo_pyi,
+            sxo_pxi=de.sxo_pxi,
+            syo_pxi=de.syo_pxi,
+            offpxi=offpxi,
+            offpyi=offpyi,
+            offsxi=de.offsxi,
+            offsyi=de.offsyi,
+        )
+        return params.derive(
+            detector_center=PixelYX(
+                y=params.detector_center.y + shift.y,
+                x=params.detector_center.x + shift.x,
+            ),
+            descan_error=new_de,
+        )
+
+    @staticmethod
+    def set_camera_length(params: Parameters4DSTEM, camera_length: float) -> Parameters4DSTEM:
+        de = params.descan_error
+        ratio = params.camera_length / camera_length
+
+        new_de = DescanError(
+            pxo_pyi=de.pxo_pyi,
+            pyo_pyi=de.pyo_pyi,
+            pxo_pxi=de.pxo_pxi,
+            pyo_pxi=de.pyo_pxi,
+            sxo_pyi=de.sxo_pyi * ratio,
+            syo_pyi=de.syo_pyi * ratio,
+            sxo_pxi=de.sxo_pxi * ratio,
+            syo_pxi=de.syo_pxi * ratio,
+            offpxi=de.offpxi,
+            offpyi=de.offpyi,
+            offsxi=de.offsxi * ratio,
+            offsyi=de.offsyi * ratio,
+        )
+        return params.derive(
+            camera_length=camera_length,
+            descan_error=new_de,
+        )

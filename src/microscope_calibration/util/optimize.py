@@ -154,7 +154,7 @@ def optimize(loss, bounds=None, minimizer_kwargs=None, **kwargs):
     return res
 
 
-def _solve(start: jnp.array, loss: Callable[[jnp.array], float], limit=1e-12):
+def _solve(start: jnp.array, loss: Callable[[jnp.array], float], limit=1e-12, debug=False):
     solver = optax.lbfgs()
     optargs = start.copy()
     opt_state = solver.init(optargs)
@@ -170,11 +170,17 @@ def _solve(start: jnp.array, loss: Callable[[jnp.array], float], limit=1e-12):
         return optargs, opt_state, jnp.linalg.norm(updates)
 
     while True:
+        if debug:
+            print(f'Args: {optargs}, objective function: {loss(optargs)}')
         optargs, opt_state, change = optstep(optargs, opt_state)
+        if debug:
+            print(f'Change: {change}')
         if change < limit:
             break
+    if debug:
+        print(f'Args: {optargs}, objective function: {loss(optargs)}')
 
-    return optargs
+    return optargs, loss(optargs)
 
 
 # FIXME include wavelength calculation etc for more practical
@@ -199,7 +205,7 @@ def solve_camera_length(ref_params: Parameters4DSTEM, diffraction_angle, radius_
         return jnp.abs(distance - 2*radius_px)
 
     start = jnp.array((ref_params.camera_length, ))
-    opt_res = _solve(
+    opt_res, residual = _solve(
         start=start,
         loss=loss,
     )
@@ -208,13 +214,14 @@ def solve_camera_length(ref_params: Parameters4DSTEM, diffraction_angle, radius_
     # for a classical TEM, only for reflection.
     return ref_params.derive(
         camera_length=jnp.abs(opt_res[0]),
-    )
+    ), residual
 
 
 def solve_scan_pixel_pitch(
         ref_params: Parameters4DSTEM,
         point_1: PixelYX, point_2: PixelYX,
         physical_distance: float):
+
     @jax.jit
     def loss(optargs):
         opt_params = ref_params.derive(
@@ -233,7 +240,7 @@ def solve_scan_pixel_pitch(
         return jnp.abs(opt_distance - physical_distance)
 
     start = jnp.array((ref_params.scan_pixel_pitch, ))
-    opt_res = _solve(
+    opt_res, residual = _solve(
         start=start,
         loss=loss,
     )
@@ -242,4 +249,4 @@ def solve_scan_pixel_pitch(
     # scan rotation.
     return ref_params.derive(
         scan_pixel_pitch=jnp.abs(opt_res[0]),
-    )
+    ), residual
