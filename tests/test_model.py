@@ -509,10 +509,15 @@ def test_com_validation(scan_rotation, flip_y, detector_cy, detector_cx):
                     atol=1e-12, rtol=1e-12
                 )
 
-    # See https://github.com/LiberTEM/LiberTEM/issues/1775
-    # Rotation direction is opposite
-    assert_allclose(-guess_result.scan_rotation / 180 * np.pi, scan_rotation, atol=1e-12, rtol=1e-4)
+    assert_allclose(
+        -guess_result.scan_rotation / 180 * np.pi,
+        scan_rotation,
+        atol=1e-12,
+        rtol=1e-4
+    )
     assert guess_result.flip_y == flip_y
+    assert_allclose(guess_result.cy, detector_cy, atol=1e-2, rtol=1e-2)
+    assert_allclose(guess_result.cx, detector_cx, atol=1e-2, rtol=1e-2)
     assert_allclose(guess_result.cy, detector_cy, atol=1e-2, rtol=1e-2)
     assert_allclose(guess_result.cx, detector_cx, atol=1e-2, rtol=1e-2)
 
@@ -1162,3 +1167,211 @@ def test_jax_smoke():
     sample = jnp.array((0., 0., 0., 0., 1.))
     test_func(sample)
     jax.jacobian(test_func)(sample)
+
+
+@pytest.fixture
+def random_params() -> Parameters4DSTEM:
+    return Parameters4DSTEM(
+        overfocus=np.random.uniform(0.1, 2),
+        scan_pixel_pitch=np.random.uniform(0.01, 2),
+        scan_center=PixelYX(
+            y=np.random.uniform(-10, 10),
+            x=np.random.uniform(-10, 10),
+        ),
+        scan_rotation=np.random.uniform(-np.pi, np.pi),
+        camera_length=np.random.uniform(0.1, 2),
+        detector_pixel_pitch=np.random.uniform(0.01, 2),
+        detector_center=PixelYX(
+            y=np.random.uniform(-10, 10),
+            x=np.random.uniform(-10, 10),
+        ),
+        semiconv=np.random.uniform(0.0001, np.pi/2),
+        flip_y=np.random.choice([True, False]),
+        descan_error=DescanError(
+            *np.random.uniform(-1, 1, size=len(DescanError()))
+        ),
+        detector_rotation=np.random.uniform(-np.pi, np.pi),
+    )
+
+
+def measure_descan_deviation(params, target_params):
+    distances = []
+    for scan_y in (0, 1):
+        for scan_x in (0, 1):
+            for cl in (0, 1):
+                ref_params = params.derive(
+                    camera_length=cl
+                )
+                ref_model = Model4DSTEM.build(
+                    params=ref_params, scan_pos=PixelYX(y=scan_y, x=scan_x))
+                ref_ray = ref_model.make_source_ray(source_dy=0., source_dx=0.).ray
+                ref = ref_model.trace(ref_ray)
+                opt_params = target_params.derive(
+                    camera_length=cl,
+                )
+                opt_model = Model4DSTEM.build(
+                    params=opt_params, scan_pos=PixelYX(y=scan_y, x=scan_x))
+                opt_ray = opt_model.make_source_ray(source_dy=0., source_dx=0.).ray
+                opt = opt_model.trace(opt_ray)
+                distances.append((
+                    opt['detector'].sampling['detector_px'].y
+                    - ref['detector'].sampling['detector_px'].y,
+                    opt['detector'].sampling['detector_px'].x
+                    - ref['detector'].sampling['detector_px'].x,
+                ))
+    return jnp.linalg.norm(jnp.array(distances))
+
+
+def test_adjust_scan_rotation(random_params: Parameters4DSTEM):
+    scan_rotation = np.random.uniform(-np.pi, np.pi)
+    modified = random_params.adjust_scan_rotation(
+        scan_rotation=scan_rotation,
+    )
+    print(random_params, scan_rotation, modified)
+    assert_allclose(0,
+        measure_descan_deviation(
+            random_params,
+            modified,
+        ),
+        atol=1e-12,
+    )
+    assert modified.scan_rotation == scan_rotation
+
+
+def test_adjust_scan_pixel_pitch(random_params):
+    scan_pixel_pitch = np.random.uniform(0.0001, 2)
+    modified = random_params.adjust_scan_pixel_pitch(
+        scan_pixel_pitch=scan_pixel_pitch,
+    )
+    print(random_params, scan_pixel_pitch, modified)
+    assert_allclose(0,
+        measure_descan_deviation(
+            random_params,
+            modified,
+        ),
+        atol=1e-12,
+    )
+    assert modified.scan_pixel_pitch == scan_pixel_pitch
+
+
+def test_adjust_scan_center(random_params):
+    scan_center = PixelYX(
+        y=np.random.uniform(-10, 10),
+        x=np.random.uniform(-10, 10),
+    )
+    modified = random_params.adjust_scan_center(
+        scan_center=scan_center,
+    )
+    print(random_params, scan_center, modified)
+    assert_allclose(0,
+        measure_descan_deviation(
+            random_params,
+            modified,
+        ),
+        atol=1e-12,
+    )
+    assert modified.scan_center == scan_center
+
+
+def test_adjust_detector_rotation(random_params):
+    detector_rotation = np.random.uniform(-np.pi, np.pi)
+    modified = random_params.adjust_detector_rotation(
+        detector_rotation=detector_rotation,
+    )
+    print(random_params, detector_rotation, modified)
+    assert_allclose(0,
+        measure_descan_deviation(
+            random_params,
+            modified,
+        ),
+        atol=1e-12,
+    )
+    assert modified.detector_rotation == detector_rotation
+
+
+def test_adjust_flip_y(random_params):
+    for flip_y in (True, False):
+        modified = random_params.adjust_flip_y(
+            flip_y=flip_y,
+        )
+        print(random_params, flip_y, modified)
+        assert_allclose(0,
+            measure_descan_deviation(
+                random_params,
+                modified,
+            ),
+            atol=1e-12,
+        )
+        assert modified.flip_y == flip_y
+
+
+def test_adjust_detector_center(random_params):
+    detector_center = PixelYX(
+        y=np.random.uniform(-10, 10),
+        x=np.random.uniform(-10, 10),
+    )
+    modified = random_params.adjust_detector_center(
+        detector_center=detector_center,
+    )
+    print(random_params, detector_center, modified)
+    assert_allclose(0,
+        measure_descan_deviation(
+            random_params,
+            modified,
+        ),
+        atol=1e-12,
+    )
+    assert modified.detector_center == detector_center
+
+
+def test_adjust_detector_pixel_pitch(random_params):
+    detector_pixel_pitch = np.random.uniform(0.0001, 2)
+    modified = random_params.adjust_detector_pixel_pitch(
+        detector_pixel_pitch=detector_pixel_pitch,
+    )
+    print(random_params, detector_pixel_pitch, modified)
+    assert_allclose(0,
+        measure_descan_deviation(
+            random_params,
+            modified,
+        ),
+        atol=1e-12,
+    )
+    assert modified.detector_pixel_pitch == detector_pixel_pitch
+
+
+def test_adjust_camera_length(random_params):
+    camera_length = np.random.uniform(0.0001, 2)
+    modified = random_params.adjust_camera_length(camera_length)
+    ratio = modified.camera_length / random_params.camera_length
+    print(random_params, camera_length, modified)
+
+    distances = []
+    # We check that the model produces the same pixel offsets
+    # at the camera length scaled by `ratio`
+    for scan_y in (0, 1):
+        for scan_x in (0, 1):
+            for cl in (0, 1):
+                ref_params = random_params.derive(
+                    camera_length=cl
+                )
+                ref_model = Model4DSTEM.build(
+                    params=ref_params, scan_pos=PixelYX(y=scan_y, x=scan_x))
+                ref_ray = ref_model.make_source_ray(source_dy=0., source_dx=0.).ray
+                ref = ref_model.trace(ref_ray)
+                # Scale by `ratio`
+                opt_params = modified.derive(
+                    camera_length=cl * ratio,
+                )
+                opt_model = Model4DSTEM.build(
+                    params=opt_params, scan_pos=PixelYX(y=scan_y, x=scan_x))
+                opt_ray = opt_model.make_source_ray(source_dy=0., source_dx=0.).ray
+                opt = opt_model.trace(opt_ray)
+                distances.append((
+                    opt['detector'].sampling['detector_px'].y
+                    - ref['detector'].sampling['detector_px'].y,
+                    opt['detector'].sampling['detector_px'].x
+                    - ref['detector'].sampling['detector_px'].x,
+                ))
+    assert_allclose(0, np.linalg.norm(distances), atol=1e-12)
+    assert modified.camera_length == camera_length
