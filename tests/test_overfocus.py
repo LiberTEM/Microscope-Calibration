@@ -11,7 +11,7 @@ from microscope_calibration.common.stem_overfocus import (
 from microscope_calibration.util.stem_overfocus_sim import project
 from microscope_calibration.common.model import (
     Parameters4DSTEM, Model4DSTEM, PixelYX, DescanError,
-    scale, rotate
+    scale, rotate, trace
 )
 
 
@@ -54,9 +54,8 @@ def test_model_consistency_backproject():
     source_dx = out[3]
 
     assert_allclose(out[4], 1)
-    model = Model4DSTEM.build(params=params, scan_pos=scan_pos)
-    ray = model.make_source_ray(source_dx=source_dx, source_dy=source_dy).ray
-    res = model.trace(ray)
+    res = trace(
+        params=params, scan_pos=scan_pos, source_dx=source_dx, source_dy=source_dy)
     assert_allclose(out[0], res['detector'].sampling['detector_px'].y, rtol=1e-12, atol=1e-12)
     assert_allclose(out[1], res['detector'].sampling['detector_px'].x, rtol=1e-12, atol=1e-12)
     assert_allclose(inp[2], res['specimen'].sampling['scan_px'].y, rtol=1e-12, atol=1e-12)

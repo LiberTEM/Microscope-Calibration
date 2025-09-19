@@ -13,7 +13,7 @@ from temgym_core.propagator import Propagator
 from temgym_core.source import Source
 from temgym_core import PixelYX
 
-from microscope_calibration.common.model import Parameters4DSTEM, Model4DSTEM
+from microscope_calibration.common.model import Parameters4DSTEM, Model4DSTEM, trace
 
 
 def test_params():
@@ -71,9 +71,7 @@ def test_trace_smoke():
         flip_y=True,
         descan_error=DescanError()
     )
-    model = Model4DSTEM.build(params=params, scan_pos=PixelYX(y=13, x=7))
-    ray = model.make_source_ray(source_dx=0.034, source_dy=0.042).ray
-    res = model.trace(ray=ray)
+    res = trace(params=params, scan_pos=PixelYX(y=13, x=7), source_dx=0.034, source_dy=0.042)
     keys = (
         'source', 'overfocus', 'scanner', 'specimen', 'descanner',
         'camera_length', 'detector'
@@ -108,11 +106,8 @@ def test_trace_focused():
         flip_y=True,
         descan_error=DescanError()
     )
-    model = Model4DSTEM.build(params=params, scan_pos=PixelYX(y=13, x=7))
-    ray1 = model.make_source_ray(source_dx=0.034, source_dy=0.042).ray
-    res1 = model.trace(ray=ray1)
-    ray2 = model.make_source_ray(source_dx=0., source_dy=0.).ray
-    res2 = model.trace(ray=ray2)
+    res1 = trace(params=params, scan_pos=PixelYX(y=13, x=7), source_dx=0.034, source_dy=0.042)
+    res2 = trace(params=params, scan_pos=PixelYX(y=13, x=7), source_dx=0., source_dy=0.)
     assert_allclose(res1['specimen'].ray.x, res2['specimen'].ray.x)
     assert_allclose(res1['specimen'].ray.y, res2['specimen'].ray.y)
     assert_allclose(res1['specimen'].sampling['scan_px'].x, 7)
@@ -132,9 +127,7 @@ def test_trace_noproject():
         flip_y=True,
         descan_error=DescanError()
     )
-    model = Model4DSTEM.build(params=params, scan_pos=PixelYX(y=13, x=7))
-    ray = model.make_source_ray(source_dx=0.034, source_dy=0.042).ray
-    model.trace(ray=ray)
+    trace(params=params, scan_pos=PixelYX(y=13, x=7), source_dx=0.034, source_dy=0.042)
 
 
 def test_trace_underfocused_smoke():
@@ -150,9 +143,7 @@ def test_trace_underfocused_smoke():
         flip_y=True,
         descan_error=DescanError()
     )
-    model = Model4DSTEM.build(params=params, scan_pos=PixelYX(y=13, x=7))
-    ray = model.make_source_ray(source_dx=0.034, source_dy=0.042).ray
-    model.trace(ray=ray)
+    trace(params=params, scan_pos=PixelYX(y=13, x=7), source_dx=0.034, source_dy=0.042)
 
 
 # Beam straight along the optical axis, no scan deflection, scan and detector
@@ -170,9 +161,7 @@ def test_straight():
         flip_y=False,
         descan_error=DescanError()
     )
-    model = Model4DSTEM.build(params=params, scan_pos=PixelYX(y=0., x=0.))
-    ray = model.make_source_ray(source_dx=0., source_dy=0.).ray
-    res = model.trace(ray=ray)
+    res = trace(params=params, scan_pos=PixelYX(y=0., x=0.), source_dx=0., source_dy=0.)
 
     for key, sect in res.items():
         if isinstance(sect.component, Component) or isinstance(sect.component, Source):
@@ -212,15 +201,8 @@ def test_scan(dy, dx, scan_y, scan_x):
         flip_y=False,
         descan_error=DescanError()
     )
-    model_straight = Model4DSTEM.build(params=params, scan_pos=PixelYX(y=0., x=0.))
-    model = Model4DSTEM.build(params=params, scan_pos=PixelYX(y=scan_y, x=scan_x))
-
-    ray_straight = model_straight.make_source_ray(source_dx=dx, source_dy=dy).ray
-    ray = model.make_source_ray(source_dx=dx, source_dy=dy).ray
-    assert ray == ray_straight
-
-    res_straight = model_straight.trace(ray=ray)
-    res = model.trace(ray=ray)
+    res_straight = trace(params=params, scan_pos=PixelYX(y=0., x=0.), source_dx=dx, source_dy=dy)
+    res = trace(params=params, scan_pos=PixelYX(y=scan_y, x=scan_x), source_dx=dx, source_dy=dy)
 
     for key in res.keys():
         sect = res[key]
@@ -317,11 +299,7 @@ def test_detector_coordinate_shift_scale_flip(
         flip_y=flip_y,
         descan_error=DescanError()
     )
-    model = Model4DSTEM.build(params=params, scan_pos=PixelYX(y=scan_y, x=scan_x))
-
-    ray = model.make_source_ray(source_dx=dx, source_dy=dy).ray
-
-    res = model.trace(ray=ray)
+    res = trace(params=params, scan_pos=PixelYX(y=scan_y, x=scan_x), source_dx=dx, source_dy=dy)
     # check physical coords vs pixel coords scale and shift
     assert_allclose(
         res['specimen'].sampling['scan_px'],
@@ -384,11 +362,7 @@ def test_scan_coordinate_shift_scale(scan_cy, scan_cx, scan_pixel_pitch):
         flip_y=flip_y,
         descan_error=DescanError()
     )
-    model = Model4DSTEM.build(params=params, scan_pos=PixelYX(y=scan_y, x=scan_x))
-
-    ray = model.make_source_ray(source_dx=dx, source_dy=dy).ray
-
-    res = model.trace(ray=ray)
+    res = trace(params=params, scan_pos=PixelYX(y=scan_y, x=scan_x), source_dx=dx, source_dy=dy)
     # check physical coords vs pixel coords scale and shift
     assert_allclose(
         res['specimen'].sampling['scan_px'],
@@ -539,23 +513,13 @@ def test_rotation_direction_0():
         flip_y=False,
         descan_error=DescanError()
     )
-    model = Model4DSTEM.build(
-        params=params,
-        scan_pos=PixelYX(y=0., x=1.)
-    )
-    ray = model.make_source_ray(source_dx=0., source_dy=0.).ray
-    res = model.trace(ray)
+    res = trace(params=params, scan_pos=PixelYX(y=0., x=1.), source_dx=0., source_dy=0.)
     assert_allclose(res['specimen'].sampling['scan_px'].x, 1., atol=1e-12, rtol=1e-12)
     assert_allclose(res['specimen'].sampling['scan_px'].y, 0., atol=1e-12, rtol=1e-12)
     assert_allclose(res['specimen'].ray.x, 1., atol=1e-12, rtol=1e-12)
     assert_allclose(res['specimen'].ray.y, 0., atol=1e-12, rtol=1e-12)
 
-    model = Model4DSTEM.build(
-        params=params,
-        scan_pos=PixelYX(y=1., x=0.)
-    )
-    ray = model.make_source_ray(source_dx=0., source_dy=0.).ray
-    res = model.trace(ray)
+    res = trace(params=params, scan_pos=PixelYX(y=1., x=0.), source_dx=0., source_dy=0.)
     assert_allclose(res['specimen'].sampling['scan_px'].x, 0., atol=1e-12, rtol=1e-12)
     assert_allclose(res['specimen'].sampling['scan_px'].y, 1., atol=1e-12, rtol=1e-12)
     assert_allclose(res['specimen'].ray.x, 0., atol=1e-12, rtol=1e-12)
@@ -582,24 +546,14 @@ def test_rotation_direction_90(flip_y):
         flip_y=flip_y,
         descan_error=DescanError()
     )
-    model = Model4DSTEM.build(
-        params=params,
-        scan_pos=PixelYX(y=0., x=1.)
-    )
-    ray = model.make_source_ray(source_dx=0., source_dy=0.).ray
-    res = model.trace(ray)
+    res = trace(params=params, scan_pos=PixelYX(y=0., x=1.), source_dx=0., source_dy=0.)
 
     assert_allclose(res['specimen'].sampling['scan_px'].x, 1., atol=1e-12, rtol=1e-12)
     assert_allclose(res['specimen'].sampling['scan_px'].y, 0., atol=1e-12, rtol=1e-12)
     assert_allclose(res['specimen'].ray.x, 0., atol=1e-12, rtol=1e-12)
     assert_allclose(res['specimen'].ray.y, 1., atol=1e-12, rtol=1e-12)
 
-    model = Model4DSTEM.build(
-        params=params,
-        scan_pos=PixelYX(y=1., x=0.)
-    )
-    ray = model.make_source_ray(source_dx=0., source_dy=0.).ray
-    res = model.trace(ray)
+    res = trace(params=params, scan_pos=PixelYX(y=1., x=0.), source_dx=0., source_dy=0.)
     assert_allclose(res['specimen'].sampling['scan_px'].x, 0., atol=1e-12, rtol=1e-12)
     assert_allclose(res['specimen'].sampling['scan_px'].y, 1., atol=1e-12, rtol=1e-12)
     assert_allclose(res['specimen'].ray.x, -1., atol=1e-12, rtol=1e-12)
@@ -622,23 +576,17 @@ def test_detector_px():
         flip_y=False,
         descan_error=DescanError()
     )
-    model = Model4DSTEM.build(
-        params=params,
-        scan_pos=PixelYX(y=0., x=0.)
-    )
-    ray = model.make_source_ray(source_dx=0.5, source_dy=0.).ray
-    res = model.trace(ray)
+    res = trace(params=params, scan_pos=PixelYX(y=0., x=0.), source_dx=0.5, source_dy=0.)
     assert_allclose(res['detector'].sampling['detector_px'].x, 1., atol=1e-12, rtol=1e-12)
     assert_allclose(res['detector'].sampling['detector_px'].y, 0., atol=1e-12, rtol=1e-12)
     assert_allclose(res['detector'].ray.x, 1., atol=1e-12, rtol=1e-12)
     assert_allclose(res['detector'].ray.y, 0., atol=1e-12, rtol=1e-12)
 
-    model = Model4DSTEM.build(
+    res = trace(
         params=params,
-        scan_pos=PixelYX(y=0., x=0.)
+        scan_pos=PixelYX(y=0., x=0.),
+        source_dx=0., source_dy=0.5
     )
-    ray = model.make_source_ray(source_dx=0., source_dy=0.5).ray
-    res = model.trace(ray)
     assert_allclose(res['detector'].sampling['detector_px'].x, 0., atol=1e-12, rtol=1e-12)
     assert_allclose(res['detector'].sampling['detector_px'].y, 1., atol=1e-12, rtol=1e-12)
     assert_allclose(res['detector'].ray.x, 0., atol=1e-12, rtol=1e-12)
@@ -1167,31 +1115,6 @@ def test_jax_smoke():
     sample = jnp.array((0., 0., 0., 0., 1.))
     test_func(sample)
     jax.jacobian(test_func)(sample)
-
-
-@pytest.fixture
-def random_params() -> Parameters4DSTEM:
-    return Parameters4DSTEM(
-        overfocus=np.random.uniform(0.1, 2),
-        scan_pixel_pitch=np.random.uniform(0.01, 2),
-        scan_center=PixelYX(
-            y=np.random.uniform(-10, 10),
-            x=np.random.uniform(-10, 10),
-        ),
-        scan_rotation=np.random.uniform(-np.pi, np.pi),
-        camera_length=np.random.uniform(0.1, 2),
-        detector_pixel_pitch=np.random.uniform(0.01, 2),
-        detector_center=PixelYX(
-            y=np.random.uniform(-10, 10),
-            x=np.random.uniform(-10, 10),
-        ),
-        semiconv=np.random.uniform(0.0001, np.pi/2),
-        flip_y=np.random.choice([True, False]),
-        descan_error=DescanError(
-            *np.random.uniform(-1, 1, size=len(DescanError()))
-        ),
-        detector_rotation=np.random.uniform(-np.pi, np.pi),
-    )
 
 
 def measure_descan_deviation(params, target_params):

@@ -182,9 +182,9 @@ def test_nonlinear_model(monkeypatch):
         )
     )
 
-    import microscope_calibration.util.stem_overfocus_sim
+    import microscope_calibration.common.model
     monkeypatch.setattr(
-        target=microscope_calibration.util.stem_overfocus_sim,
+        target=microscope_calibration.common.model,
         name='Model4DSTEM',
         value=BadModel
     )
@@ -220,9 +220,9 @@ def test_no_precision(monkeypatch):
     )
     # We cause discrepancies and "blame" it on lack of precision
     # to test this code path
-    import microscope_calibration.util.stem_overfocus_sim
+    import microscope_calibration.common.model
     monkeypatch.setattr(
-        target=microscope_calibration.util.stem_overfocus_sim,
+        target=microscope_calibration.common.model,
         name='Model4DSTEM',
         value=BadModel
     )
