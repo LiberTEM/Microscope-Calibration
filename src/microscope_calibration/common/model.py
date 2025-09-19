@@ -31,9 +31,10 @@ def rotate(radians):
     ])
 
 
-def flip_y():
+# The flip_factor is introduced to make it differentiable
+def flip_y(flip_factor: float = -1.):
     return jnp.array([
-        (-1, 0),
+        (flip_factor, 0),
         (0, 1)
     ], dtype=jnp.float64)
 
@@ -204,14 +205,8 @@ class Parameters4DSTEM:
         # Compensate effect of different scan centers with
         # constant offsets of the descanner. We simply measure how much these offsets should be
         # by comparing rays along the optical axis
-        cls = Model4DSTEM
-        model1 = cls.build(params=self, scan_pos=self.scan_center)
-        ray1 = model1.make_source_ray(0., 0.).ray
-        res1 = model1.trace(ray1)
-
-        model2 = cls.build(params=self, scan_pos=scan_center)
-        ray2 = model2.make_source_ray(0., 0.).ray
-        res2 = model2.trace(ray2)
+        res1 = trace(self, scan_pos=self.scan_center, source_dx=0., source_dy=0.)
+        res2 = trace(self, scan_pos=scan_center, source_dx=0., source_dy=0.)
 
         de = self.descan_error
         offpxi = de.offpxi + res2['descanner'].ray.x - res1['descanner'].ray.x
@@ -268,7 +263,7 @@ class Parameters4DSTEM:
             descan_error=new_de,
         )
 
-    def adjust_flip_y(self, flip_y: bool):
+    def adjust_flip_y(self, flip_y: bool) -> 'Parameters4DSTEM':
         # Some import gymnastic to keep the naming clean
         from .model import flip_y as fl
         de = self.descan_error
@@ -304,7 +299,7 @@ class Parameters4DSTEM:
         else:
             return self
 
-    def adjust_detector_center(self, detector_center: PixelYX):
+    def adjust_detector_center(self, detector_center: PixelYX) -> 'Parameters4DSTEM':
         cls = Model4DSTEM
         de = self.descan_error
         zero = PixelYX(0, 0)
@@ -361,7 +356,7 @@ class Parameters4DSTEM:
             descan_error=new_de,
         )
 
-    def adjust_camera_length(self, camera_length: float):
+    def adjust_camera_length(self, camera_length: float) -> 'Parameters4DSTEM':
         de = self.descan_error
         ratio = self.camera_length / camera_length
 
@@ -450,7 +445,7 @@ class Model4DSTEM:
             scan_pos.y - params.scan_center.y,
             scan_pos.x - params.scan_center.x,
         ))
-        do_flip = flip_y() if params.flip_y else identity()
+        do_flip = flip_y((-1)**params.flip_y)
         detector_to_real = scale(params.detector_pixel_pitch) @ \
             rotate(params.detector_rotation) @ do_flip
         real_to_detector = do_flip @ rotate(-params.detector_rotation) @ \
@@ -637,3 +632,13 @@ class Model4DSTEM:
 
         assert len(run_result) == 0
         return result
+
+
+def trace(
+        params: Parameters4DSTEM,
+        scan_pos: PixelYX,
+        source_dx: float, source_dy: float,
+        _one: float = 1.) -> Result4DSTEM:
+    model = Model4DSTEM.build(params, scan_pos=scan_pos)
+    ray = model.make_source_ray(source_dy=source_dy, source_dx=source_dx, _one=_one).ray
+    return model.trace(ray)

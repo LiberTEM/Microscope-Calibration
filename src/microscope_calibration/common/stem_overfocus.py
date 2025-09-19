@@ -6,7 +6,7 @@ import numpy as np
 import numba
 
 from microscope_calibration.common.model import (
-    Parameters4DSTEM, Model4DSTEM, PixelYX, CoordXY, DescanError
+    Parameters4DSTEM, PixelYX, CoordXY, DescanError, trace
 )
 
 
@@ -119,9 +119,12 @@ def get_backward_transformation_matrix(
             scan_pos = PixelYX(x=test_param[0], y=test_param[1])
             source_dy = test_param[2]
             source_dx = test_param[3]
-            model = Model4DSTEM.build(params=rec_params, scan_pos=scan_pos)
-            ray = model.make_source_ray(source_dy=source_dy, source_dx=source_dx).ray
-            res = model.trace(ray)
+            res = trace(
+                params=rec_params,
+                scan_pos=scan_pos,
+                source_dy=source_dy,
+                source_dx=source_dx
+            )
 
             if specimen_to_image is None:
                 spec_px = res['specimen'].sampling['scan_px']
@@ -271,15 +274,19 @@ def get_detector_correction_matrix(
             scan_pos = PixelYX(x=test_param[0], y=test_param[1])
             source_dy = test_param[2]
             source_dx = test_param[3]
-            model = Model4DSTEM.build(params=rec_params, scan_pos=scan_pos)
-            ray = model.make_source_ray(source_dy=source_dy, source_dx=source_dx).ray
-            res = model.trace(ray)
+            res = trace(
+                params=rec_params,
+                scan_pos=scan_pos,
+                source_dy=source_dy,
+                source_dx=source_dx
+            )
 
-            ref_model = Model4DSTEM.build(params=ref_params, scan_pos=scan_pos)
-            straight_ray = ref_model.make_source_ray(
-                source_dy=source_dy, source_dx=source_dx
-            ).ray
-            ref_res = ref_model.trace(straight_ray)
+            ref_res = trace(
+                params=ref_params,
+                scan_pos=scan_pos,
+                source_dy=source_dy,
+                source_dx=source_dx
+            )
 
             input_sample = (
                 scan_pos.y,

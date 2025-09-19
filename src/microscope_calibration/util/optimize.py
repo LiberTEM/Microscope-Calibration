@@ -1,3 +1,5 @@
+from typing import NamedTuple
+
 import numpy as np
 from scipy. optimize import shgo
 from skimage.measure import blur_effect
@@ -6,9 +8,9 @@ from collections.abc import Iterable
 
 import jax; jax.config.update("jax_enable_x64", True)  # noqa: E702
 import jax.numpy as jnp
-import optax
+import optimistix
 
-from microscope_calibration.common.model import Parameters4DSTEM, Model4DSTEM, PixelYX
+from microscope_calibration.common.model import Parameters4DSTEM, PixelYX, DescanError, trace
 
 if TYPE_CHECKING:
     from libertem.udf.base import UDF
@@ -154,67 +156,71 @@ def optimize(loss, bounds=None, minimizer_kwargs=None, **kwargs):
     return res
 
 
-def _solve(start: jnp.array, loss: Callable[[jnp.array], float], limit=1e-12, debug=False):
-    solver = optax.lbfgs()
-    optargs = start.copy()
-    opt_state = solver.init(optargs)
-    value_and_grad = optax.value_and_grad_from_state(loss)
+class _CLArgs(NamedTuple):
+    ref_params: Parameters4DSTEM
+    test_dx: float
+    radius_px: float
 
-    @jax.jit
-    def optstep(optargs, opt_state):
-        value, grad = value_and_grad(optargs, state=opt_state)
-        updates, opt_state = solver.update(
-            grad, opt_state, optargs, value=value, grad=grad, value_fn=loss
-        )
-        optargs = optax.apply_updates(optargs, updates)
-        return optargs, opt_state, jnp.linalg.norm(updates)
 
-    while True:
-        if debug:
-            print(f'Args: {optargs}, objective function: {loss(optargs)}')
-        optargs, opt_state, change = optstep(optargs, opt_state)
-        if debug:
-            print(f'Change: {change}')
-        if change < limit:
-            break
-    if debug:
-        print(f'Args: {optargs}, objective function: {loss(optargs)}')
-
-    return optargs, loss(optargs)
+@jax.jit
+def _cl_loss(y, args: _CLArgs):
+    opt_params = args.ref_params.derive(
+        camera_length=y[0],
+        overfocus=0.
+    )
+    opt_res_1 = trace(
+        opt_params, scan_pos=PixelYX(y=0., x=0.), source_dx=args.test_dx, source_dy=0.)
+    opt_res_2 = trace(
+        opt_params, scan_pos=PixelYX(y=0., x=0.), source_dx=-args.test_dx, source_dy=0.)
+    px_1 = opt_res_1['detector'].sampling['detector_px']
+    px_2 = opt_res_2['detector'].sampling['detector_px']
+    distance = jnp.linalg.norm(jnp.array(px_2) - jnp.array(px_1))
+    return distance - 2*args.radius_px
 
 
 # FIXME include wavelength calculation etc for more practical
 # input parameters
 def solve_camera_length(ref_params: Parameters4DSTEM, diffraction_angle, radius_px):
-    test_dx = jnp.tan(diffraction_angle)
-
-    @jax.jit
-    def loss(optargs):
-        opt_params = ref_params.derive(
-            camera_length=optargs[0],
-            overfocus=0.
-        )
-        opt_model = Model4DSTEM.build(params=opt_params, scan_pos=PixelYX(y=0., x=0.))
-        opt_ray_1 = opt_model.make_source_ray(source_dx=test_dx, source_dy=0.).ray
-        opt_res_1 = opt_model.trace(opt_ray_1)
-        opt_ray_2 = opt_model.make_source_ray(source_dx=-test_dx, source_dy=0.).ray
-        opt_res_2 = opt_model.trace(opt_ray_2)
-        px_1 = opt_res_1['detector'].sampling['detector_px']
-        px_2 = opt_res_2['detector'].sampling['detector_px']
-        distance = jnp.linalg.norm(jnp.array(px_2) - jnp.array(px_1))
-        return jnp.abs(distance - 2*radius_px)
-
-    start = jnp.array((ref_params.camera_length, ))
-    opt_res, residual = _solve(
-        start=start,
-        loss=loss,
+    args = _CLArgs(
+        radius_px=radius_px,
+        test_dx=jnp.tan(diffraction_angle),
+        ref_params=ref_params
     )
+    start = jnp.array((ref_params.camera_length, ))
+    opt_res = optimistix.least_squares(
+        fn=_cl_loss,
+        args=args,
+        solver=optimistix.BFGS(atol=1e-12, rtol=1e-12),
+        y0=start
+    )
+    residual = _cl_loss(opt_res.value, args)
     # The loss function has minima at camera_length and -camera_length.
     # we take the positive side since a negative camera length doesn't make sense
     # for a classical TEM, only for reflection.
     return ref_params.derive(
-        camera_length=jnp.abs(opt_res[0]),
+        camera_length=jnp.abs(opt_res.value[0]),
     ), residual
+
+
+class _SPPArgs(NamedTuple):
+    ref_params: Parameters4DSTEM
+    point_1: PixelYX
+    point_2: PixelYX
+    physical_distance: float
+
+
+@jax.jit
+def _spp_loss(y, args: _SPPArgs):
+    opt_params = args.ref_params.derive(
+        scan_pixel_pitch=y[0],
+        overfocus=0.
+    )
+    opt_res_1 = trace(opt_params, scan_pos=args.point_1, source_dx=0., source_dy=0.)
+    opt_res_2 = trace(opt_params, scan_pos=args.point_2, source_dx=0., source_dy=0.)
+    dx = opt_res_2['specimen'].ray.x - opt_res_1['specimen'].ray.x
+    dy = opt_res_2['specimen'].ray.y - opt_res_1['specimen'].ray.y
+    opt_distance = jnp.linalg.norm(jnp.array((dy, dx)))
+    return opt_distance - args.physical_distance
 
 
 def solve_scan_pixel_pitch(
@@ -222,31 +228,284 @@ def solve_scan_pixel_pitch(
         point_1: PixelYX, point_2: PixelYX,
         physical_distance: float):
 
-    @jax.jit
-    def loss(optargs):
-        opt_params = ref_params.derive(
-            scan_pixel_pitch=optargs[0],
-            overfocus=0.
-        )
-        opt_model_1 = Model4DSTEM.build(params=opt_params, scan_pos=point_1)
-        opt_ray_1 = opt_model_1.make_source_ray(source_dx=0., source_dy=0.).ray
-        opt_res_1 = opt_model_1.trace(opt_ray_1)
-        opt_model_2 = Model4DSTEM.build(params=opt_params, scan_pos=point_2)
-        opt_ray_2 = opt_model_2.make_source_ray(source_dx=0., source_dy=0.).ray
-        opt_res_2 = opt_model_2.trace(opt_ray_2)
-        dx = opt_res_2['specimen'].ray.x - opt_res_1['specimen'].ray.x
-        dy = opt_res_2['specimen'].ray.y - opt_res_1['specimen'].ray.y
-        opt_distance = jnp.linalg.norm(jnp.array((dy, dx)))
-        return jnp.abs(opt_distance - physical_distance)
-
-    start = jnp.array((ref_params.scan_pixel_pitch, ))
-    opt_res, residual = _solve(
-        start=start,
-        loss=loss,
+    args = _SPPArgs(
+        ref_params=ref_params,
+        point_1=point_1,
+        point_2=point_2,
+        physical_distance=physical_distance
     )
+    start = jnp.array((ref_params.scan_pixel_pitch, ))
+    opt_res = optimistix.least_squares(
+        fn=_spp_loss,
+        args=args,
+        solver=optimistix.BFGS(atol=1e-12, rtol=1e-12),
+        y0=start
+    )
+    residual = _spp_loss(opt_res.value, args)
     # The loss function has minima at scan_pixel_pitch and -scan_pixel_pitch. we
     # take the positive side since the inversion can be better expressed with a
     # scan rotation.
     return ref_params.derive(
-        scan_pixel_pitch=jnp.abs(opt_res[0]),
+        scan_pixel_pitch=jnp.abs(opt_res.value[0]),
     ), residual
+
+
+# As returned by CoMUDF in the 'regression' buffer with
+# RegressionOptions.SUBTRACT_LINEAR This allows preliminary calibration of
+# descan error for a single camera length by adjusting constant tilt offset and
+# tilt as a function of scan.
+CoMRegression = np.ndarray[tuple[3, 2], np.floating]
+
+
+# Type specification for dictionary where keys are calibrated camera lengths and
+# values regression specifiers. This allows full calibration of descan error if at
+# least two different camera lengths are provided.
+CoMRegressions = dict[float, CoMRegression]
+
+
+class _DEFullArgs(NamedTuple):
+    # Aligned with the CoM regression coordinate system.
+    # Currently only tested for no scan rotation and no flip_y
+    aligned_params: Parameters4DSTEM
+    regressions: CoMRegressions
+
+
+@jax.jit
+def _de_full_loss(y, args: _DEFullArgs):
+    de = DescanError(*y)
+    distances = []
+    for cl, reg in args.regressions.items():
+        opt_params = args.aligned_params.derive(
+            camera_length=cl,
+            descan_error=de,
+        )
+        for scan_y in (0., 1.):
+            for scan_x in (0., 1.):
+                dy = reg[0, 0]
+                dx = reg[0, 1]
+                dydy = reg[1, 0]
+                dxdy = reg[1, 1]
+                dydx = reg[2, 0]
+                dxdx = reg[2, 1]
+                det_y = opt_params.detector_center.y + (dy + dydy*scan_y + dydx*scan_x)
+                det_x = opt_params.detector_center.x + (dx + dxdy*scan_y + dxdx*scan_x)
+                res = trace(
+                    opt_params, scan_pos=PixelYX(y=scan_y, x=scan_x), source_dx=0., source_dy=0.)
+                distances.extend((
+                    det_y - res['detector'].sampling['detector_px'].y,
+                    det_x - res['detector'].sampling['detector_px'].x,
+                ))
+    return jnp.array(distances)
+
+
+def solve_full_descan_error(ref_params: Parameters4DSTEM, regressions: CoMRegressions):
+    # Caveat: scan and detector center of ref_params and of regressions should
+    # match.
+
+    # Align coordinate system directions with native CoM coordinate
+    # system without corrections
+    aligned_params = ref_params.derive(
+        flip_y=False,
+        scan_rotation=0.,
+        detector_rotation=0.,
+    )
+    args = _DEFullArgs(
+        aligned_params=aligned_params,
+        regressions=regressions,
+    )
+
+    # Start with a small epsilon to prevent NaN results of yet unknown origin
+    # for some parameter combinations
+    start = jnp.full(shape=(len(DescanError()), ), fill_value=1e-6)
+    opt_res = optimistix.least_squares(
+        fn=_de_full_loss,
+        args=args,
+        solver=optimistix.BFGS(atol=1e-12, rtol=1e-12),
+        y0=start
+    )
+    residual = _de_full_loss(opt_res.value, args)
+
+    # Bring descan error back to original coordinate system
+    res_params = aligned_params.derive(
+        descan_error=DescanError(*opt_res.value)
+    ).adjust_scan_rotation(
+        ref_params.scan_rotation
+    ).adjust_detector_rotation(
+        ref_params.detector_rotation
+    ).adjust_flip_y(
+        ref_params.flip_y
+    )
+
+    return res_params, residual
+
+
+class _NormArgs(NamedTuple):
+    ref_params: Parameters4DSTEM
+
+
+def _zero_const(de: DescanError) -> DescanError:
+    return DescanError(
+        pxo_pxi=de.pxo_pxi,
+        pxo_pyi=de.pxo_pyi,
+        pyo_pxi=de.pyo_pxi,
+        pyo_pyi=de.pyo_pyi,
+        sxo_pxi=de.sxo_pxi,
+        sxo_pyi=de.sxo_pyi,
+        syo_pxi=de.syo_pxi,
+        syo_pyi=de.syo_pyi,
+        offpxi=0.,
+        offpyi=0.,
+        offsxi=0.,
+        offsyi=0.,
+    )
+
+
+@jax.jit
+def _norm_loss(y, args: _NormArgs):
+    distances = []
+    scy, scx, dcy, dcx = y
+    de_new = _zero_const(args.ref_params.descan_error)
+    for cl in (0, 1, 2):
+        opt_params = args.ref_params.derive(
+            camera_length=cl,
+            descan_error=de_new,
+            scan_center=PixelYX(y=scy, x=scx),
+            detector_center=PixelYX(y=dcy, x=dcx),
+        )
+        ref_params = args.ref_params.derive(
+            camera_length=cl,
+        )
+        for scan_y in (0., 1.,):
+            for scan_x in (0., 1.):
+                res = trace(
+                    opt_params, scan_pos=PixelYX(y=scan_y, x=scan_x), source_dy=0., source_dx=0.)
+                ref = trace(
+                    ref_params, scan_pos=PixelYX(y=scan_y, x=scan_x), source_dy=0., source_dx=0.)
+                distances.append((
+                    res['detector'].sampling['detector_px'].y
+                    - ref['detector'].sampling['detector_px'].y,
+                    res['detector'].sampling['detector_px'].x
+                    - ref['detector'].sampling['detector_px'].x
+                ))
+    return jnp.array(distances)
+
+
+def normalize_descan_error(ref_params: Parameters4DSTEM):
+    args = _NormArgs(
+        ref_params=ref_params,
+    )
+    start = jnp.array((
+        ref_params.scan_center.y,
+        ref_params.scan_center.x,
+        ref_params.detector_center.y,
+        ref_params.detector_center.x
+    ))
+    opt_res = optimistix.least_squares(
+        fn=_norm_loss,
+        args=args,
+        solver=optimistix.BFGS(atol=1e-12, rtol=1e-12),
+        y0=start
+    )
+    residual = _norm_loss(opt_res.value, args)
+    scy, scx, dcy, dcx = opt_res.value
+    res_params = ref_params.derive(
+        scan_center=PixelYX(y=scy, x=scx),
+        detector_center=PixelYX(y=dcy, x=dcx),
+        descan_error=_zero_const(ref_params.descan_error)
+    )
+    return res_params, residual
+
+
+class _DETiltArgs(NamedTuple):
+    # Aligned with the CoM regression coordinate system.
+    # Currently only tested for no scan rotation and no flip_y
+    aligned_params: Parameters4DSTEM
+    regression: CoMRegression
+
+
+def _tilt_descan(de: DescanError, y) -> DescanError:
+    return DescanError(
+        pxo_pxi=de.pxo_pxi,
+        pxo_pyi=de.pxo_pyi,
+        pyo_pxi=de.pyo_pxi,
+        pyo_pyi=de.pyo_pyi,
+        sxo_pxi=y[0],
+        sxo_pyi=y[1],
+        syo_pxi=y[2],
+        syo_pyi=y[3],
+        offpxi=de.offpxi,
+        offpyi=de.offpyi,
+        offsxi=y[4],
+        offsyi=y[5],
+    )
+
+
+@jax.jit
+def _de_tilt_loss(y, args: _DETiltArgs):
+    opt_params = args.aligned_params.derive(
+        descan_error=_tilt_descan(de=args.aligned_params.descan_error, y=y)
+    )
+
+    distances = []
+    reg = args.regression
+    for scan_y in (0., 1.):
+        for scan_x in (0., 1.):
+            dy = reg[0, 0]
+            dx = reg[0, 1]
+            dydy = reg[1, 0]
+            dxdy = reg[1, 1]
+            dydx = reg[2, 0]
+            dxdx = reg[2, 1]
+            det_y = opt_params.detector_center.y + (dy + dydy*scan_y + dydx*scan_x)
+            det_x = opt_params.detector_center.x + (dx + dxdy*scan_y + dxdx*scan_x)
+            res = trace(
+                opt_params, scan_pos=PixelYX(y=scan_y, x=scan_x), source_dx=0., source_dy=0.)
+            distances.extend((
+                det_y - res['detector'].sampling['detector_px'].y,
+                det_x - res['detector'].sampling['detector_px'].x,
+            ))
+    return jnp.array(distances)
+
+
+def solve_tilt_descan_error(ref_params: Parameters4DSTEM, regression: CoMRegression):
+    # Caveat: scan and detector center of ref_params and of regressions should
+    # match.
+
+    # Align coordinate system directions with native CoM coordinate
+    # system without corrections
+    # We make sure that the offset-based descan error components are preserved
+    aligned_params = ref_params.adjust_flip_y(
+        flip_y=False,
+    ).adjust_scan_rotation(
+        scan_rotation=0.,
+    ).adjust_detector_rotation(
+        detector_rotation=0.,
+    )
+    args = _DETiltArgs(
+        aligned_params=aligned_params,
+        regression=regression,
+    )
+
+    # Start with a small epsilon to prevent NaN results of yet unknown origin
+    # for some parameter combinations
+    start = jnp.full(shape=(6, ), fill_value=1e-6)
+    opt_res = optimistix.least_squares(
+        fn=_de_tilt_loss,
+        args=args,
+        solver=optimistix.BFGS(atol=1e-12, rtol=1e-12),
+        y0=start
+    )
+    residual = _de_tilt_loss(opt_res.value, args)
+
+    # Bring descan error back to original coordinate system
+    res_params = aligned_params.derive(
+        descan_error=_tilt_descan(aligned_params.descan_error, opt_res.value)
+    ).adjust_detector_rotation(
+        ref_params.detector_rotation
+    ).adjust_scan_rotation(
+        ref_params.scan_rotation
+    ).adjust_flip_y(
+        ref_params.flip_y
+    )
+
+    return res_params, residual
