@@ -30,6 +30,7 @@ dependencies = [
     # TODO release pin ASAP
     "scipy<1.16",
     "jax",
+    "optax",
     "optimistix",
 ]
 classifiers = [
