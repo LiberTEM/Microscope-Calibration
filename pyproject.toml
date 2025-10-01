@@ -7,7 +7,7 @@ name = "microscope-calibration"
 description = "Tools to calibrate a microscope"
 license = {file = "LICENSE"}
 keywords = ["microscopy", "LiberTEM", "TEM", "STEM"]
-requires-python = ">=3.9"
+requires-python = ">=3.10"
 dynamic = ["version", "readme"]
 dependencies = [
     "numpy",
@@ -16,7 +16,6 @@ dependencies = [
     "temgymbasic@git+https://github.com/TemGym/TemGym@c7a851ce2d6719acc47d36d31d91df27b1e9590b",
     # Minimum constraints of numba for all Python versions we support
     # See https://numba.readthedocs.io/en/stable/release-notes-overview.html
-    "numba>=0.53;python_version < '3.10'",
     "numba>=0.55;python_version < '3.11'",
     "numba>=0.57;python_version < '3.12'",
     "numba>=0.59;python_version < '3.13'",
@@ -33,7 +32,6 @@ dependencies = [
 ]
 classifiers = [
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.9",
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
