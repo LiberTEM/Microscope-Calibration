@@ -656,3 +656,5 @@ def test_tilt_descan_error_points(
             # For some reason less accurate than in other tests
             atol=1e-8
         )
+        assert isinstance(getattr(params.descan_error, key), float)
+        assert isinstance(getattr(opt_res.descan_error, key), float)

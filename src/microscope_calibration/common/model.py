@@ -139,6 +139,40 @@ class Parameters4DSTEM:
             descan_error=descan_error if descan_error is not None else self.descan_error,
         )
 
+    def normalize_types(self):
+        return self.derive(
+            overfocus=float(self.overfocus),
+            scan_pixel_pitch=float(self.scan_pixel_pitch),
+            scan_center=PixelYX(
+                y=float(self.scan_center.y),
+                x=float(self.scan_center.x),
+            ),
+            scan_rotation=float(self.scan_rotation),
+            camera_length=float(self.camera_length),
+            detector_pixel_pitch=float(self.detector_pixel_pitch),
+            detector_center=PixelYX(
+                y=float(self.detector_center.y),
+                x=float(self.detector_center.x),
+            ),
+            detector_rotation=float(self.detector_rotation),
+            semiconv=float(self.semiconv),
+            flip_y=bool(self.flip_y),
+            descan_error=DescanError(
+                pxo_pyi=float(self.descan_error.pxo_pyi),
+                pyo_pyi=float(self.descan_error.pyo_pyi),
+                pxo_pxi=float(self.descan_error.pxo_pxi),
+                pyo_pxi=float(self.descan_error.pyo_pxi),
+                sxo_pyi=float(self.descan_error.sxo_pyi),
+                syo_pyi=float(self.descan_error.syo_pyi),
+                sxo_pxi=float(self.descan_error.sxo_pxi),
+                syo_pxi=float(self.descan_error.syo_pxi),
+                offpxi=float(self.descan_error.offpxi),
+                offpyi=float(self.descan_error.offpyi),
+                offsxi=float(self.descan_error.offsxi),
+                offsyi=float(self.descan_error.offsyi),
+            )
+        )
+
     def adjust_scan_rotation(self, scan_rotation: float) -> 'Parameters4DSTEM':
         '''
         Adjust the scan rotation while keeping the effective descan error
