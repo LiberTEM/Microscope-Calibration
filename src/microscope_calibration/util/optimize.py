@@ -199,7 +199,7 @@ def solve_camera_length(ref_params: Parameters4DSTEM, diffraction_angle, radius_
     # for a classical TEM, only for reflection.
     return ref_params.derive(
         camera_length=jnp.abs(opt_res.value[0]),
-    ), residual
+    ).normalize_types(), residual
 
 
 class _SPPArgs(NamedTuple):
@@ -247,7 +247,7 @@ def solve_scan_pixel_pitch(
     # scan rotation.
     return ref_params.derive(
         scan_pixel_pitch=jnp.abs(opt_res.value[0]),
-    ), residual
+    ).normalize_types(), residual
 
 
 # As returned by CoMUDF in the 'regression' buffer with
@@ -334,7 +334,7 @@ def solve_full_descan_error(ref_params: Parameters4DSTEM, regressions: CoMRegres
         ref_params.detector_rotation
     ).adjust_flip_y(
         ref_params.flip_y
-    )
+    ).normalize_types()
 
     return res_params, residual
 
@@ -412,7 +412,7 @@ def normalize_descan_error(ref_params: Parameters4DSTEM):
         scan_center=PixelYX(y=scy, x=scx),
         detector_center=PixelYX(y=dcy, x=dcx),
         descan_error=_zero_const(ref_params.descan_error)
-    )
+    ).normalize_types()
     return res_params, residual
 
 
@@ -506,7 +506,7 @@ def solve_tilt_descan_error(ref_params: Parameters4DSTEM, regression: CoMRegress
         ref_params.scan_rotation
     ).adjust_flip_y(
         ref_params.flip_y
-    )
+    ).normalize_types()
 
     return res_params, residual
 
@@ -557,6 +557,6 @@ def solve_tilt_descan_error_points(ref_params: Parameters4DSTEM, points: jnp.nda
     # Bring descan error back to original coordinate system
     res_params = ref_params.derive(
         descan_error=_tilt_descan(ref_params.descan_error, opt_res.value)
-    )
+    ).normalize_types()
 
     return res_params, residual
