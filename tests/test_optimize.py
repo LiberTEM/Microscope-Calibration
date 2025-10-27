@@ -20,6 +20,7 @@ from microscope_calibration.util.optimize import (
     solve_camera_length, solve_scan_pixel_pitch,
     solve_full_descan_error, normalize_descan_error,
     solve_tilt_descan_error, _tilt_descan,
+    solve_tilt_descan_error_points,
 )
 
 
@@ -554,10 +555,104 @@ def test_tilt_descan_error(scan_rotation, flip_y, detector_rotation, descans):
         regression=exact_reg,
     )
     assert_allclose(residual, 0., atol=1e-11)
-    for key in ('pxo_pxi', 'pxo_pyi', 'pyo_pxi', 'pyo_pyi', 'offpxi', 'offpyi', ):
+    for key in ('pxo_pxi', 'pxo_pyi', 'pyo_pxi', 'pyo_pyi', 'offpxi', 'offpyi',
+                'sxo_pxi', 'syo_pyi', 'syo_pxi', 'sxo_pyi'):
         print(key)
         assert_allclose(
             getattr(params.descan_error, key),
             getattr(opt_res.descan_error, key),
             atol=1e-11
+        )
+
+
+@pytest.mark.parametrize(
+    'scan_rotation, flip_y, detector_rotation', [
+        (0., False, 0.),
+        (np.pi/7*3, True, -np.pi/3)
+    ]
+)
+@pytest.mark.parametrize(
+    'descans', (
+        np.zeros(12),
+        # Alternating mishmash
+        (np.full(12, -1) ** np.array(range(12))) * np.linspace(-1, 1, 12) % 0.11,
+    )
+)
+@pytest.mark.parametrize(
+    'scan_pos, works', (
+        (tuple(), False),
+        (((0., 0.),), False),
+        (((0., 0.), (0., 1.), (1., 0.)), True),
+        (((1., 2.), (3., 5.), (7., 11.), (13., 17.)), True),
+    )
+)
+def test_tilt_descan_error_points(
+        scan_rotation, flip_y, detector_rotation, descans, scan_pos, works):
+    scan_pixel_pitch = 0.1
+    detector_pixel_pitch = scan_pixel_pitch
+    overfocus = 0.
+    camera_length = 1.
+    propagation_distance = overfocus + camera_length
+    obj_half_size = 8
+    # Small epsilon to combat aliasing
+    angle = np.arctan2(obj_half_size*detector_pixel_pitch/2*2 + 0.001, propagation_distance)
+
+    params = Parameters4DSTEM(
+        overfocus=overfocus,
+        scan_pixel_pitch=scan_pixel_pitch,
+        camera_length=camera_length,
+        detector_pixel_pitch=detector_pixel_pitch,
+        semiconv=angle,
+        scan_center=PixelYX(x=obj_half_size, y=obj_half_size),
+        scan_rotation=scan_rotation,
+        flip_y=flip_y,
+        detector_center=PixelYX(x=obj_half_size*8+2, y=obj_half_size*8-1),
+        detector_rotation=detector_rotation,
+        descan_error=DescanError(
+            offpxi=descans[0] * detector_pixel_pitch,
+            offpyi=descans[1] * detector_pixel_pitch,
+            offsxi=-descans[2] * detector_pixel_pitch/camera_length,
+            offsyi=-descans[3] * detector_pixel_pitch/camera_length,
+            pxo_pxi=descans[4] * detector_pixel_pitch/scan_pixel_pitch,
+            pyo_pyi=descans[5] * detector_pixel_pitch/scan_pixel_pitch,
+            pyo_pxi=-descans[6] * detector_pixel_pitch/scan_pixel_pitch,
+            pxo_pyi=-descans[7] * detector_pixel_pitch/scan_pixel_pitch,
+            sxo_pxi=descans[8] * detector_pixel_pitch/scan_pixel_pitch/camera_length,
+            syo_pyi=descans[9] * detector_pixel_pitch/scan_pixel_pitch/camera_length,
+            syo_pxi=-descans[10] * detector_pixel_pitch/scan_pixel_pitch/camera_length,
+            sxo_pyi=-descans[11] * detector_pixel_pitch/scan_pixel_pitch/camera_length,
+        ),
+    )
+
+    points = []
+    for (scan_y, scan_x) in scan_pos:
+        res = trace(
+            params=params,
+            scan_pos=PixelYX(y=scan_y, x=scan_x),
+            source_dx=0., source_dy=0.,
+        )
+        detector_center = res['detector'].sampling['detector_px']
+        points.append((scan_y, scan_x, detector_center.y, detector_center.x))
+    opt_res, residual = solve_tilt_descan_error_points(
+        ref_params=params.derive(
+            # Blank out the tilt parts of the descan error
+            descan_error=_tilt_descan(de=params.descan_error, y=np.zeros(6)),
+        ),
+        points=points,
+    )
+    default_attrs = ('pxo_pxi', 'pxo_pyi', 'pyo_pxi', 'pyo_pyi', 'offpxi', 'offpyi')
+    opt_attrs = ('sxo_pxi', 'syo_pyi', 'syo_pxi', 'sxo_pyi')
+    if works:
+        attrs = default_attrs + opt_attrs
+        # For some reason less accurate than in other tests
+        assert_allclose(residual, 0., atol=1e-8)
+    else:
+        attrs = default_attrs
+    for key in attrs:
+        print(key)
+        assert_allclose(
+            getattr(params.descan_error, key),
+            getattr(opt_res.descan_error, key),
+            # For some reason less accurate than in other tests
+            atol=1e-8
         )
