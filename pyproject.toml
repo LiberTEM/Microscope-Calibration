@@ -50,6 +50,7 @@ repository = "https://github.com/LiberTEM/Microscope-Calibration"
 [project.optional-dependencies]
 test = ["pytest", "pytest-cov"]
 examples = ["ipywidgets", "libertem[bqplot]", "jupyter-ui-poll"]
+diffraction = ["pycifrw", "diffpy.structure", "orix", "diffsims"]
 
 [tool.setuptools.dynamic]
 version = {attr = "microscope_calibration.__version__"}
