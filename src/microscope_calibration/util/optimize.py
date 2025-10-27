@@ -553,10 +553,10 @@ def solve_tilt_descan_error_points(ref_params: Parameters4DSTEM, points: jnp.nda
         max_steps=10000,
     )
     residual = _de_tilt_point_loss(opt_res.value, args)
-
-    # Bring descan error back to original coordinate system
+    # Write the new tilts and offsets into the previous descan error
+    new_descan = _tilt_descan(ref_params.descan_error, opt_res.value)
     res_params = ref_params.derive(
-        descan_error=_tilt_descan(ref_params.descan_error, opt_res.value)
+        descan_error=new_descan
     ).normalize_types()
 
     return res_params, residual
