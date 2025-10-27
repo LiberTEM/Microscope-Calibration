@@ -453,9 +453,11 @@ class Model4DSTEM:
         if specimen is None:
             specimen = Plane(z=params.overfocus)
         else:
-            # FIXME better solution later?
-            assert jnp.allclose(specimen.z, params.overfocus)
-
+            try:
+                # FIXME better solution later?
+                assert jnp.allclose(specimen.z, params.overfocus)
+            except TracerBoolConversionError:
+                pass
         return cls(
             source=PointSource(z=0, semi_conv=params.semiconv),
             _scan_to_real=scan_to_real,
@@ -638,7 +640,8 @@ def trace(
         params: Parameters4DSTEM,
         scan_pos: PixelYX,
         source_dx: float, source_dy: float,
+        specimen: Component | None = None,
         _one: float = 1.) -> Result4DSTEM:
-    model = Model4DSTEM.build(params, scan_pos=scan_pos)
+    model = Model4DSTEM.build(params, scan_pos=scan_pos, specimen=specimen)
     ray = model.make_source_ray(source_dy=source_dy, source_dx=source_dx, _one=_one).ray
     return model.trace(ray)
