@@ -493,7 +493,8 @@ def solve_tilt_descan_error(ref_params: Parameters4DSTEM, regression: CoMRegress
         fn=_de_tilt_loss,
         args=args,
         solver=optimistix.BFGS(atol=1e-12, rtol=1e-12),
-        y0=start
+        y0=start,
+        max_steps=10000,
     )
     residual = _de_tilt_loss(opt_res.value, args)
 
