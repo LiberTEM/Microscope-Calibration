@@ -1,6 +1,7 @@
 from numpy.testing import assert_allclose
 
 import numpy as np
+import jax
 from libertem.api import Context
 
 from microscope_calibration.common.stem_overfocus import (
@@ -9,8 +10,20 @@ from microscope_calibration.common.stem_overfocus import (
 )
 from microscope_calibration.udf.stem_overfocus import OverfocusUDF
 from microscope_calibration.common.model import (
-    Parameters4DSTEM, PixelYX, DescanError
+    Parameters4DSTEM, PixelYX, DescanError, trace
 )
+
+
+@jax.jit
+def get_beam_center(params: Parameters4DSTEM, scan_y, scan_x):
+    res = trace(
+        params=params,
+        scan_pos=PixelYX(y=scan_y, x=scan_x),
+        source_dx=0.,
+        source_dy=0.
+    )
+    center = res['detector'].sampling['detector_px']
+    return (center.y, center.x)
 
 
 def test_udf():
@@ -22,7 +35,7 @@ def test_udf():
         semiconv=0.023,
         scan_center=PixelYX(x=0.13, y=0.23),
         scan_rotation=0.752,
-        flip_y=True,
+        flip_factor=-1.,
         detector_center=PixelYX(x=5, y=7),
         detector_rotation=2.134,
         descan_error=DescanError(
@@ -50,7 +63,17 @@ def test_udf():
 
     ref_back = np.zeros_like(data[:, :, 0, 0])
     ref_corr = np.zeros_like(data[0, 0])
-    ref_point = data[:, :, int(params.detector_center.y), int(params.detector_center.x)]
+    ref_point = np.zeros_like(data[:, :, 0, 0])
+
+    for scan_y in range(ds.shape.nav[0]):
+        for scan_x in range(ds.shape.nav[1]):
+            (y, x) = get_beam_center(params=params, scan_y=scan_y, scan_x=scan_x)
+            y = int(np.round(y))
+            x = int(np.round(x))
+            if y >= 0 and y < data.shape[2] and x >= 0 and x < data.shape[3]:
+                ref_point[scan_y, scan_x] = data[
+                    scan_y, scan_x, y, x
+                ]
     ref_select = np.zeros_like(ref_back)
 
     select_y = data.shape[0]//2
@@ -85,7 +108,6 @@ def test_udf():
 
     res = ctx.run_udf(dataset=ds, udf=OverfocusUDF(overfocus_params={'params': params}))
 
-    assert_allclose(ref_back, res['shifted_sum'])
+    assert_allclose(ref_back, res['backprojected_sum'])
     assert_allclose(ref_corr, res['corrected_sum'])
-    assert_allclose(ref_point, res['point'])
-    assert_allclose(ref_select, res['selected'])
+    assert_allclose(ref_point, res['corrected_point'])

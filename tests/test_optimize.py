@@ -26,7 +26,7 @@ from microscope_calibration.util.optimize import (
 
 def test_optimize():
     scan_rotation = np.pi/2
-    flip_y = True
+    flip_factor = -1.
     detector_rotation = 0.
 
     scan_pixel_pitch = 0.1
@@ -45,7 +45,7 @@ def test_optimize():
         semiconv=angle,
         scan_center=PixelYX(x=obj_half_size, y=obj_half_size),
         scan_rotation=scan_rotation,
-        flip_y=flip_y,
+        flip_factor=flip_factor,
         # Simulate detector larger than object to avoid clipping at the borders
         detector_center=PixelYX(x=obj_half_size * 2, y=obj_half_size * 2),
         detector_rotation=detector_rotation,
@@ -92,7 +92,7 @@ def test_optimize():
             valdict['val'] = True
             assert_allclose(args, [0, 0])
             assert params == new_params
-            assert_allclose(udf_results[0]['shifted_sum'].data.astype(bool), obj.astype(bool))
+            assert_allclose(udf_results[0]['backprojected_sum'].data.astype(bool), obj.astype(bool))
 
     make_new_params, loss = make_overfocus_loss_function(
         params=params,
@@ -130,7 +130,7 @@ def test_descan_error():
         semiconv=angle,
         scan_center=PixelYX(x=0., y=0.),
         scan_rotation=0.,
-        flip_y=False,
+        flip_factor=1.,
         detector_center=PixelYX(x=2*obj_half_size, y=2*obj_half_size),
         detector_rotation=0.,
         descan_error=DescanError(
@@ -229,7 +229,7 @@ def test_camera_length():
         semiconv=angle,
         scan_center=PixelYX(x=obj_half_size, y=obj_half_size),
         scan_rotation=0.,
-        flip_y=False,
+        flip_factor=1.,
         detector_center=PixelYX(x=2*obj_half_size, y=2*obj_half_size),
     )
     # This is observed on the detector
@@ -261,7 +261,7 @@ def test_scan_pixel_pitch():
         semiconv=angle,
         scan_center=PixelYX(x=obj_half_size, y=obj_half_size),
         scan_rotation=0.,
-        flip_y=False,
+        flip_factor=1.,
         detector_center=PixelYX(x=2*obj_half_size, y=2*obj_half_size),
     )
 
@@ -280,10 +280,10 @@ def test_scan_pixel_pitch():
 
 
 @pytest.mark.parametrize(
-    'scan_rotation, flip_y, detector_rotation', [
-        (-np.pi, False, np.pi/7),
-        (0., True, 0.),
-        (np.pi/7*3, True, -np.pi/3)
+    'scan_rotation, flip_factor, detector_rotation', [
+        (-np.pi, 1., np.pi/7),
+        (0., -1., 0.),
+        (np.pi/7*3, -1., -np.pi/3)
     ]
 )
 @pytest.mark.parametrize(
@@ -296,7 +296,7 @@ def test_scan_pixel_pitch():
         (np.full(12, -1) ** np.array(range(12))) * np.linspace(-1, 1, 12) % 0.11,
     )
 )
-def test_full_descan_error(scan_rotation, flip_y, detector_rotation, descans):
+def test_full_descan_error(scan_rotation, flip_factor, detector_rotation, descans):
     scan_pixel_pitch = 0.1
     detector_pixel_pitch = scan_pixel_pitch
     overfocus = 0.
@@ -314,7 +314,7 @@ def test_full_descan_error(scan_rotation, flip_y, detector_rotation, descans):
         semiconv=angle,
         scan_center=PixelYX(x=obj_half_size, y=obj_half_size),
         scan_rotation=scan_rotation,
-        flip_y=flip_y,
+        flip_factor=flip_factor,
         detector_center=PixelYX(x=obj_half_size*8-2, y=obj_half_size*8+1),
         detector_rotation=detector_rotation,
         descan_error=DescanError(
@@ -440,10 +440,10 @@ def test_normalize_descan(random_params):
 
 
 @pytest.mark.parametrize(
-    'scan_rotation, flip_y, detector_rotation', [
-        (-np.pi, False, np.pi/7),
-        (0., True, 0.),
-        (np.pi/7*3, True, -np.pi/3)
+    'scan_rotation, flip_factor, detector_rotation', [
+        (-np.pi, 1., np.pi/7),
+        (0., -1., 0.),
+        (np.pi/7*3, -1., -np.pi/3)
     ]
 )
 @pytest.mark.parametrize(
@@ -456,7 +456,7 @@ def test_normalize_descan(random_params):
         (np.full(12, -1) ** np.array(range(12))) * np.linspace(-1, 1, 12) % 0.11,
     )
 )
-def test_tilt_descan_error(scan_rotation, flip_y, detector_rotation, descans):
+def test_tilt_descan_error(scan_rotation, flip_factor, detector_rotation, descans):
     scan_pixel_pitch = 0.1
     detector_pixel_pitch = scan_pixel_pitch
     overfocus = 0.
@@ -474,7 +474,7 @@ def test_tilt_descan_error(scan_rotation, flip_y, detector_rotation, descans):
         semiconv=angle,
         scan_center=PixelYX(x=obj_half_size, y=obj_half_size),
         scan_rotation=scan_rotation,
-        flip_y=flip_y,
+        flip_factor=flip_factor,
         detector_center=PixelYX(x=obj_half_size*8+2, y=obj_half_size*8-1),
         detector_rotation=detector_rotation,
         descan_error=DescanError(
@@ -566,9 +566,9 @@ def test_tilt_descan_error(scan_rotation, flip_y, detector_rotation, descans):
 
 
 @pytest.mark.parametrize(
-    'scan_rotation, flip_y, detector_rotation', [
-        (0., False, 0.),
-        (np.pi/7*3, True, -np.pi/3)
+    'scan_rotation, flip_factor, detector_rotation', [
+        (0., 1., 0.),
+        (np.pi/7*3, -1., -np.pi/3)
     ]
 )
 @pytest.mark.parametrize(
@@ -587,7 +587,7 @@ def test_tilt_descan_error(scan_rotation, flip_y, detector_rotation, descans):
     )
 )
 def test_tilt_descan_error_points(
-        scan_rotation, flip_y, detector_rotation, descans, scan_pos, works):
+        scan_rotation, flip_factor, detector_rotation, descans, scan_pos, works):
     scan_pixel_pitch = 0.1
     detector_pixel_pitch = scan_pixel_pitch
     overfocus = 0.
@@ -605,7 +605,7 @@ def test_tilt_descan_error_points(
         semiconv=angle,
         scan_center=PixelYX(x=obj_half_size, y=obj_half_size),
         scan_rotation=scan_rotation,
-        flip_y=flip_y,
+        flip_factor=flip_factor,
         detector_center=PixelYX(x=obj_half_size*8+2, y=obj_half_size*8-1),
         detector_rotation=detector_rotation,
         descan_error=DescanError(

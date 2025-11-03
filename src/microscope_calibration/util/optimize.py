@@ -125,7 +125,7 @@ def make_overfocus_loss_function(
         # Hack to make parameter update work
         overfocus_udf.params.overfocus_params['params'] = params
         res = ctx.run_udf(dataset=dataset, udf=[overfocus_udf] + list(extra_udfs), **kwargs)
-        blur = blur_function(res[0]['shifted_sum'].data)
+        blur = blur_function(res[0]['backprojected_sum'].data)
         if callback is not None:
             callback(args, overfocus_udf.params.overfocus_params['params'], res, blur)
         return blur
@@ -305,7 +305,7 @@ def solve_full_descan_error(ref_params: Parameters4DSTEM, regressions: CoMRegres
     # Align coordinate system directions with native CoM coordinate
     # system without corrections
     aligned_params = ref_params.derive(
-        flip_y=False,
+        flip_factor=1.,
         scan_rotation=0.,
         detector_rotation=0.,
     )
@@ -332,8 +332,8 @@ def solve_full_descan_error(ref_params: Parameters4DSTEM, regressions: CoMRegres
         ref_params.scan_rotation
     ).adjust_detector_rotation(
         ref_params.detector_rotation
-    ).adjust_flip_y(
-        ref_params.flip_y
+    ).adjust_flip_factor(
+        ref_params.flip_factor
     ).normalize_types()
 
     return res_params, residual
@@ -474,8 +474,8 @@ def solve_tilt_descan_error(ref_params: Parameters4DSTEM, regression: CoMRegress
     # Align coordinate system directions with native CoM coordinate
     # system without corrections
     # We make sure that the offset-based descan error components are preserved
-    aligned_params = ref_params.adjust_flip_y(
-        flip_y=False,
+    aligned_params = ref_params.adjust_flip_factor(
+        flip_factor=1.,
     ).adjust_scan_rotation(
         scan_rotation=0.,
     ).adjust_detector_rotation(
@@ -505,8 +505,8 @@ def solve_tilt_descan_error(ref_params: Parameters4DSTEM, regression: CoMRegress
         ref_params.detector_rotation
     ).adjust_scan_rotation(
         ref_params.scan_rotation
-    ).adjust_flip_y(
-        ref_params.flip_y
+    ).adjust_flip_factor(
+        ref_params.flip_factor
     ).normalize_types()
 
     return res_params, residual

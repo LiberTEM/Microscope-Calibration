@@ -22,7 +22,7 @@ def random_params() -> Parameters4DSTEM:
             x=np.random.uniform(-10, 10),
         ),
         semiconv=np.random.uniform(0.0001, np.pi/2),
-        flip_y=np.random.choice([True, False]),
+        flip_factor=np.random.choice([-1., 1.]),
         descan_error=DescanError(
             *np.random.uniform(-1, 1, size=len(DescanError()))
         ),

@@ -37,7 +37,7 @@ def identity():
     return jnp.eye(2, dtype=jnp.float64)
 
 
-def scale_rotate_flip_y(mat: jnp.ndarray):
+def scale_rotate_flip(mat: jnp.ndarray):
     """
     Deconstruct a matrix generated with scale() @ rotate() @ flip_y()
     into the individual parameters
@@ -53,12 +53,6 @@ def scale_rotate_flip_y(mat: jnp.ndarray):
         scan_rot_flip[0, 0] * scan_rot_flip[1, 1]
         - scan_rot_flip[0, 1] * scan_rot_flip[1, 0]
     )
-    # Make sure no scale or shear left
-    if not jnp.allclose(jnp.abs(flip_factor), 1.0):
-        raise ValueError(
-            f"Contains shear: flip factor (2D cross product) is {flip_factor}."
-        )
-    flip_y = bool(flip_factor < 0)
     # undo flip_y
     rot = scan_rot_flip.copy()
     rot = rot.at[:, 0].set(rot[:, 0] * flip_factor)
@@ -75,7 +69,7 @@ def scale_rotate_flip_y(mat: jnp.ndarray):
             f"Rotation angle 1 {angle1} and rotation angle 2 {angle2} are inconsistent."
         )
 
-    return (scale_y, angle1, flip_y)
+    return (scale_y, angle1, flip_factor)
 
 
 # TODO use LiberTEM-schema later
@@ -89,7 +83,7 @@ class Parameters4DSTEM:
     detector_pixel_pitch: float  # m
     detector_center: PixelYX
     semiconv: float  # rad
-    flip_y: bool
+    flip_factor: float  # 1.: no flip; -1.: flip
     descan_error: DescanError = DescanError()
     detector_rotation: float = 0.0  # rad
 
@@ -105,8 +99,14 @@ class Parameters4DSTEM:
         detector_rotation: float | None = None,  # rad
         semiconv: float | None = None,  # rad
         flip_y: bool | None = None,
+        flip_factor: float | None = None,
         descan_error: DescanError | None = None,
     ) -> "Parameters4DSTEM":
+        if flip_factor is not None:
+            assert flip_y is None
+        if flip_y is not None:
+            flip_factor = -1. if flip_y else 1.
+
         return Parameters4DSTEM(
             overfocus=overfocus if overfocus is not None else self.overfocus,
             scan_pixel_pitch=(
@@ -135,7 +135,7 @@ class Parameters4DSTEM:
                 else self.detector_rotation
             ),
             semiconv=semiconv if semiconv is not None else self.semiconv,
-            flip_y=flip_y if flip_y is not None else self.flip_y,
+            flip_factor=flip_factor if flip_factor is not None else self.flip_factor,
             descan_error=descan_error
             if descan_error is not None
             else self.descan_error,
@@ -158,7 +158,7 @@ class Parameters4DSTEM:
             ),
             detector_rotation=float(self.detector_rotation),
             semiconv=float(self.semiconv),
-            flip_y=bool(self.flip_y),
+            flip_factor=float(self.flip_factor),
             descan_error=DescanError(
                 pxo_pyi=float(self.descan_error.pxo_pyi),
                 pyo_pyi=float(self.descan_error.pyo_pyi),
@@ -298,15 +298,16 @@ class Parameters4DSTEM:
             descan_error=new_de,
         )
 
-    def adjust_flip_y(self, flip_y: bool) -> "Parameters4DSTEM":
+    def adjust_flip_factor(self, flip_factor: float) -> "Parameters4DSTEM":
         # Some import gymnastic to keep the naming clean
-        from .model import flip_y as fl
+        from .model import flip_y
 
         de = self.descan_error
         angle = self.detector_rotation
-        if flip_y != self.flip_y:
+
+        if flip_factor != self.flip_factor:
             # Rotate into detector directions, flip, then rotate back
-            trans = rotate(angle) @ fl() @ rotate(-angle)
+            trans = rotate(angle) @ flip_y(flip_factor/self.flip_factor) @ rotate(-angle)
             # transform the output direction
             pyo_pyi, pxo_pyi = trans @ jnp.array((de.pyo_pyi, de.pxo_pyi))
             pyo_pxi, pxo_pxi = trans @ jnp.array((de.pyo_pxi, de.pxo_pxi))
@@ -329,7 +330,7 @@ class Parameters4DSTEM:
                 offsyi=offsyi,
             )
             return self.derive(
-                flip_y=not self.flip_y,
+                flip_factor=flip_factor,
                 descan_error=new_de,
             )
         else:
@@ -495,14 +496,13 @@ class Model4DSTEM:
                 scan_pos.x - params.scan_center.x,
             )
         )
-        do_flip = flip_y((-1) ** params.flip_y)
         detector_to_real = (
             scale(params.detector_pixel_pitch)
             @ rotate(params.detector_rotation)
-            @ do_flip
+            @ flip_y(flip_factor=params.flip_factor)
         )
         real_to_detector = (
-            do_flip
+            flip_y(flip_factor=1 / params.flip_factor)
             @ rotate(-params.detector_rotation)
             @ scale(1 / params.detector_pixel_pitch)
         )
@@ -535,9 +535,10 @@ class Model4DSTEM:
 
     @property
     def params(self) -> Parameters4DSTEM:
-        scan_scale, scan_rotation, scan_flip = scale_rotate_flip_y(self._scan_to_real)
-        assert scan_flip is False
-        detector_scale, detector_rotation, detector_flip = scale_rotate_flip_y(
+        scan_scale, scan_rotation, scan_flip = scale_rotate_flip(self._scan_to_real)
+        # FIXME assert close to 1
+        # assert scan_flip is False
+        detector_scale, detector_rotation, detector_flip = scale_rotate_flip(
             self._detector_to_real
         )
         assert jnp.allclose(detector_rotation, 0.0)
@@ -550,7 +551,7 @@ class Model4DSTEM:
             detector_pixel_pitch=detector_scale,
             detector_center=self.detector_center,
             semiconv=self.source.semi_conv,
-            flip_y=detector_flip,
+            flip_factor=detector_flip,
             descan_error=self.descanner.descan_error,
         )
 

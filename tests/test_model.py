@@ -26,7 +26,7 @@ def test_params():
         detector_pixel_pitch=0.0247,
         detector_center=PixelYX(y=11, x=19),
         semiconv=0.023,
-        flip_y=True,
+        flip_factor=-1.,
         descan_error=DescanError(offpxi=.345, pxo_pxi=948)
     )
     model = Model4DSTEM.build(params=params, scan_pos=PixelYX(y=13, x=7))
@@ -44,7 +44,7 @@ def test_inverse():
         detector_center=PixelYX(y=11, x=19),
         detector_rotation=2.134,
         semiconv=0.023,
-        flip_y=True,
+        flip_factor=-1.,
         descan_error=DescanError(offpxi=.345, pxo_pxi=948)
     )
     model = Model4DSTEM.build(params=params, scan_pos=PixelYX(y=13, x=7))
@@ -68,7 +68,7 @@ def test_trace_smoke():
         detector_pixel_pitch=0.0247,
         detector_center=PixelYX(y=11, x=19),
         semiconv=0.023,
-        flip_y=True,
+        flip_factor=-1.,
         descan_error=DescanError()
     )
     res = trace(params=params, scan_pos=PixelYX(y=13, x=7), source_dx=0.034, source_dy=0.042)
@@ -103,7 +103,7 @@ def test_trace_focused():
         detector_pixel_pitch=0.0247,
         detector_center=PixelYX(y=11, x=19),
         semiconv=0.023,
-        flip_y=True,
+        flip_factor=-1.,
         descan_error=DescanError()
     )
     res1 = trace(params=params, scan_pos=PixelYX(y=13, x=7), source_dx=0.034, source_dy=0.042)
@@ -124,7 +124,7 @@ def test_trace_noproject():
         detector_pixel_pitch=0.0247,
         detector_center=PixelYX(y=11, x=19),
         semiconv=0.023,
-        flip_y=True,
+        flip_factor=-1.,
         descan_error=DescanError()
     )
     trace(params=params, scan_pos=PixelYX(y=13, x=7), source_dx=0.034, source_dy=0.042)
@@ -140,7 +140,7 @@ def test_trace_underfocused_smoke():
         detector_pixel_pitch=0.0247,
         detector_center=PixelYX(y=11, x=19),
         semiconv=0.023,
-        flip_y=True,
+        flip_factor=-1.,
         descan_error=DescanError()
     )
     trace(params=params, scan_pos=PixelYX(y=13, x=7), source_dx=0.034, source_dy=0.042)
@@ -158,7 +158,7 @@ def test_straight():
         detector_pixel_pitch=1,
         detector_center=PixelYX(y=0., x=0.),
         semiconv=0.023,
-        flip_y=False,
+        flip_factor=1.,
         descan_error=DescanError()
     )
     res = trace(params=params, scan_pos=PixelYX(y=0., x=0.), source_dx=0., source_dy=0.)
@@ -198,7 +198,7 @@ def test_scan(dy, dx, scan_y, scan_x):
         detector_pixel_pitch=1,
         detector_center=PixelYX(y=0., x=0.),
         semiconv=0.023,
-        flip_y=False,
+        flip_factor=1.,
         descan_error=DescanError()
     )
     res_straight = trace(params=params, scan_pos=PixelYX(y=0., x=0.), source_dx=dx, source_dy=dy)
@@ -273,13 +273,13 @@ def test_scan(dy, dx, scan_y, scan_x):
     'detector_pixel_pitch', (0.09, 1., 1.53)
 )
 @pytest.mark.parametrize(
-    'flip_y', (True, False)
+    'flip_factor', (-1., 1.)
 )
 @pytest.mark.parametrize(
     'dydx', ((0., 0.), (-0.2, 0.42))
 )
 def test_detector_coordinate_shift_scale_flip(
-        detector_cycx, detector_pixel_pitch, flip_y, dydx):
+        detector_cycx, detector_pixel_pitch, flip_factor, dydx):
     detector_cy, detector_cx = detector_cycx
     scan_cy = -0.7
     scan_cx = 23.
@@ -296,7 +296,7 @@ def test_detector_coordinate_shift_scale_flip(
         detector_pixel_pitch=detector_pixel_pitch,
         detector_center=PixelYX(y=detector_cy, x=detector_cx),
         semiconv=0.023,
-        flip_y=flip_y,
+        flip_factor=flip_factor,
         descan_error=DescanError()
     )
     res = trace(params=params, scan_pos=PixelYX(y=scan_y, x=scan_x), source_dx=dx, source_dy=dy)
@@ -309,7 +309,6 @@ def test_detector_coordinate_shift_scale_flip(
         ),
         rtol=1e-12, atol=1e-12
     )
-    flip_factor = -1. if flip_y else 1.
     # check physical coords vs pixel coords scale and shift
     assert_allclose(
         res['detector'].sampling['detector_px'],
@@ -345,7 +344,7 @@ def test_scan_coordinate_shift_scale(scan_cy, scan_cx, scan_pixel_pitch):
     detector_cy = -11.
     detector_cx = 43.
     detector_pixel_pitch = 0.09
-    flip_y = True
+    flip_factor = -1.
     dy = -0.2
     dx = 0.42
     scan_y = -17
@@ -359,7 +358,7 @@ def test_scan_coordinate_shift_scale(scan_cy, scan_cx, scan_pixel_pitch):
         detector_pixel_pitch=detector_pixel_pitch,
         detector_center=PixelYX(y=detector_cy, x=detector_cx),
         semiconv=0.023,
-        flip_y=flip_y,
+        flip_factor=flip_factor,
         descan_error=DescanError()
     )
     res = trace(params=params, scan_pos=PixelYX(y=scan_y, x=scan_x), source_dx=dx, source_dy=dy)
@@ -372,7 +371,7 @@ def test_scan_coordinate_shift_scale(scan_cy, scan_cx, scan_pixel_pitch):
         ),
         rtol=1e-12, atol=1e-12
     )
-    flip_factor = -1. if flip_y else 1.
+    flip_factor = -1. if flip_factor else 1.
     # check physical coords vs pixel coords scale and shift
     assert_allclose(
         res['detector'].sampling['detector_px'],
@@ -390,7 +389,7 @@ def test_scan_coordinate_shift_scale(scan_cy, scan_cx, scan_pixel_pitch):
     'scan_rotation', (73/180*np.pi, 0, 23/180*np.pi)
 )
 @pytest.mark.parametrize(
-    'flip_y', (False, True)
+    'flip_factor', (1., -1.)
 )
 @pytest.mark.parametrize(
     'detector_cy', (-13, 0., 7)
@@ -398,7 +397,7 @@ def test_scan_coordinate_shift_scale(scan_cy, scan_cx, scan_pixel_pitch):
 @pytest.mark.parametrize(
     'detector_cx', (-11, 0., 5)
 )
-def test_com_validation(scan_rotation, flip_y, detector_cy, detector_cx):
+def test_com_validation(scan_rotation, flip_factor, detector_cy, detector_cx):
     @jdc.pytree_dataclass
     class PointChargeComponent(Component):
         z: float
@@ -423,7 +422,7 @@ def test_com_validation(scan_rotation, flip_y, detector_cy, detector_cx):
         detector_pixel_pitch=1,
         detector_center=PixelYX(y=detector_cy, x=detector_cx),
         semiconv=0.023,
-        flip_y=flip_y,
+        flip_factor=flip_factor,
         descan_error=DescanError()
     )
 
@@ -489,6 +488,12 @@ def test_com_validation(scan_rotation, flip_y, detector_cy, detector_cx):
         atol=1e-12,
         rtol=1e-4
     )
+    if flip_factor == 1.:
+        flip_y = False
+    elif flip_factor == -1.:
+        flip_y = True
+    else:
+        raise ValueError(0)
     assert guess_result.flip_y == flip_y
     assert_allclose(guess_result.cy, detector_cy, atol=1e-2, rtol=1e-2)
     assert_allclose(guess_result.cx, detector_cx, atol=1e-2, rtol=1e-2)
@@ -510,7 +515,7 @@ def test_rotation_direction_0():
         detector_pixel_pitch=1,
         detector_center=PixelYX(y=0., x=0.),
         semiconv=0.023,
-        flip_y=False,
+        flip_factor=1.,
         descan_error=DescanError()
     )
     res = trace(params=params, scan_pos=PixelYX(y=0., x=1.), source_dx=0., source_dy=0.)
@@ -527,9 +532,9 @@ def test_rotation_direction_0():
 
 
 @pytest.mark.parametrize(
-    'flip_y', (False, True)
+    'flip_factor', (1., -1.)
 )
-def test_rotation_direction_90(flip_y):
+def test_rotation_direction_90(flip_factor):
     # Check conformance with
     # https://libertem.github.io/LiberTEM/concepts.html#coordinate-system: y
     # points down, x to the right, z away, and therefore positive scan rotation
@@ -543,7 +548,7 @@ def test_rotation_direction_90(flip_y):
         detector_pixel_pitch=1,
         detector_center=PixelYX(y=0., x=0.),
         semiconv=0.023,
-        flip_y=flip_y,
+        flip_factor=flip_factor,
         descan_error=DescanError()
     )
     res = trace(params=params, scan_pos=PixelYX(y=0., x=1.), source_dx=0., source_dy=0.)
@@ -573,7 +578,7 @@ def test_detector_px():
         detector_pixel_pitch=1,
         detector_center=PixelYX(y=0., x=0.),
         semiconv=0.023,
-        flip_y=False,
+        flip_factor=1.,
         descan_error=DescanError()
     )
     res = trace(params=params, scan_pos=PixelYX(y=0., x=0.), source_dx=0.5, source_dy=0.)
@@ -607,7 +612,7 @@ def test_detector_px_flipy():
         detector_center=PixelYX(y=0., x=0.),
         detector_rotation=0.,
         semiconv=0.023,
-        flip_y=True,
+        flip_factor=-1.,
         descan_error=DescanError()
     )
     model = Model4DSTEM.build(
@@ -647,7 +652,7 @@ def test_detector_px_rotate():
         detector_center=PixelYX(y=0., x=0.),
         detector_rotation=np.pi/2,
         semiconv=0.023,
-        flip_y=False,
+        flip_factor=1.,
         descan_error=DescanError()
     )
     model = Model4DSTEM.build(
@@ -687,7 +692,7 @@ def test_detector_px_rotate_flipy():
         detector_center=PixelYX(y=0., x=0.),
         detector_rotation=np.pi/2,
         semiconv=0.023,
-        flip_y=True,
+        flip_factor=-1.,
         descan_error=DescanError()
     )
     model = Model4DSTEM.build(
@@ -736,7 +741,7 @@ def test_geometry(scan, overfocus, camera_length, dydx):
         detector_pixel_pitch=1,
         detector_center=PixelYX(y=0., x=0.),
         semiconv=0.023,
-        flip_y=False,
+        flip_factor=1.,
         descan_error=DescanError()
     )
     model = Model4DSTEM.build(
@@ -770,7 +775,7 @@ def test_descan_offset():
         detector_pixel_pitch=1,
         detector_center=PixelYX(y=0., x=0.),
         semiconv=0.023,
-        flip_y=False,
+        flip_factor=1.,
         descan_error=DescanError()
     )
     model_ref = Model4DSTEM.build(
@@ -793,7 +798,7 @@ def test_descan_offset():
         detector_pixel_pitch=1,
         detector_center=PixelYX(y=0., x=0.),
         semiconv=0.023,
-        flip_y=False,
+        flip_factor=1.,
         descan_error=DescanError(
             offpxi=offpxi,
             offpyi=offpyi,
@@ -873,7 +878,7 @@ def test_descan_position(scan):
         detector_pixel_pitch=1.,
         detector_center=PixelYX(y=0., x=0.),
         semiconv=0.023,
-        flip_y=False,
+        flip_factor=1.,
         descan_error=DescanError()
     )
     model_ref = Model4DSTEM.build(
@@ -896,7 +901,7 @@ def test_descan_position(scan):
         detector_pixel_pitch=1,
         detector_center=PixelYX(y=0., x=0.),
         semiconv=0.023,
-        flip_y=False,
+        flip_factor=1.,
         descan_error=DescanError(
             pxo_pxi=pxo_pxi,
             pxo_pyi=pxo_pyi,
@@ -985,7 +990,7 @@ def test_descan_slope(scan):
         detector_pixel_pitch=1.,
         detector_center=PixelYX(y=0., x=0.),
         semiconv=0.023,
-        flip_y=False,
+        flip_factor=1.,
         descan_error=DescanError()
     )
     model_ref = Model4DSTEM.build(
@@ -1008,7 +1013,7 @@ def test_descan_slope(scan):
         detector_pixel_pitch=1,
         detector_center=PixelYX(y=0., x=0.),
         semiconv=0.023,
-        flip_y=False,
+        flip_factor=1.,
         descan_error=DescanError(
             sxo_pxi=sxo_pxi,
             sxo_pyi=sxo_pyi,
@@ -1094,7 +1099,7 @@ def test_jax_smoke():
         detector_pixel_pitch=0.0247,
         detector_center=PixelYX(y=11, x=19),
         semiconv=0.023,
-        flip_y=True,
+        flip_factor=-1.,
         descan_error=DescanError(offpxi=.345, pxo_pxi=948)
     )
 
@@ -1213,11 +1218,11 @@ def test_adjust_detector_rotation(random_params):
 
 
 def test_adjust_flip_y(random_params):
-    for flip_y in (True, False):
-        modified = random_params.adjust_flip_y(
-            flip_y=flip_y,
+    for flip_factor in (-1., 1.):
+        modified = random_params.adjust_flip_factor(
+            flip_factor=flip_factor,
         )
-        print(random_params, flip_y, modified)
+        print(random_params, flip_factor, modified)
         assert_allclose(0,
             measure_descan_deviation(
                 random_params,
@@ -1225,7 +1230,7 @@ def test_adjust_flip_y(random_params):
             ),
             atol=1e-12,
         )
-        assert modified.flip_y == flip_y
+        assert modified.flip_factor == flip_factor
 
 
 def test_adjust_detector_center(random_params):
