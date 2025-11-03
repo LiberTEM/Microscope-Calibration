@@ -243,7 +243,7 @@ def get_detector_correction_matrix(
 
     If no reference parameters are specified, it derives the reference from the
     reconstruction parameters by setting scan rotation and descan error to 0,
-    and flip_y to False.
+    and flip_factor to 1..
 
     Using a matrix multiplication instead of solving for ray solutions for each
     pixel greatly improves performance.
@@ -285,7 +285,7 @@ def get_detector_correction_matrix(
     if ref_params is None:
         ref_params = rec_params.derive(
             scan_rotation=0.0,
-            flip_y=False,
+            flip_factor=1.,
             descan_error=DescanError(),
             detector_rotation=rec_params.scan_rotation,
         )

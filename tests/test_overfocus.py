@@ -24,7 +24,7 @@ def test_model_consistency_backproject():
         semiconv=0.023,
         scan_center=PixelYX(x=0.13, y=0.23),
         scan_rotation=0.752,
-        flip_y=True,
+        flip_factor=-1.,
         detector_center=PixelYX(x=23, y=42),
         detector_rotation=2.134,
         descan_error=DescanError(
@@ -71,7 +71,7 @@ def test_model_consistency_correct():
         semiconv=0.023,
         scan_center=PixelYX(x=0.13, y=0.23),
         scan_rotation=0.752,
-        flip_y=True,
+        flip_factor=-1.,
         detector_center=PixelYX(x=23, y=42),
         detector_rotation=2.134,
         descan_error=DescanError(
@@ -97,7 +97,7 @@ def test_model_consistency_correct():
         semiconv=0.042,
         scan_center=PixelYX(x=0.4, y=0.345),
         scan_rotation=0.75,
-        flip_y=False,
+        flip_factor=1.,
         detector_center=PixelYX(x=2, y=4),
         detector_rotation=2.4134,
         descan_error=DescanError(
@@ -151,7 +151,7 @@ def test_backproject_identity():
         semiconv=np.pi/2,
         scan_center=PixelYX(x=7.1, y=16.),
         scan_rotation=0.,
-        flip_y=False,
+        flip_factor=1.,
         detector_center=PixelYX(x=7.1, y=16.),
         descan_error=DescanError()
     )
@@ -181,7 +181,7 @@ def test_backproject_counterrotate():
         semiconv=np.pi/2,
         scan_center=PixelYX(x=16, y=16.),
         scan_rotation=np.pi/2,
-        flip_y=False,
+        flip_factor=1.,
         detector_center=PixelYX(x=16, y=16.),
         detector_rotation=np.pi/2,
         descan_error=DescanError()
@@ -210,9 +210,9 @@ def test_backproject_counterrotate():
     'fixed_reference', (False, True)
 )
 @pytest.mark.parametrize(
-    'flip_y', (False, True)
+    'flip_factor', (1., -1.)
 )
-def test_backproject_rot90_flip(rotate_scan, rotate_detector, fixed_reference, flip_y):
+def test_backproject_rot90_flip(rotate_scan, rotate_detector, fixed_reference, flip_factor):
     # 1:1 size mapping between detector and specimen
     # rotating scan and detector in fixed reference frame and
     # scan reference frame.
@@ -236,7 +236,7 @@ def test_backproject_rot90_flip(rotate_scan, rotate_detector, fixed_reference, f
         semiconv=np.pi/2,
         scan_center=PixelYX(x=16, y=16.),
         scan_rotation=scan_rotation,
-        flip_y=flip_y,
+        flip_factor=flip_factor,
         detector_center=PixelYX(x=16, y=16.),
         detector_rotation=detector_rotation,
         descan_error=DescanError()
@@ -294,7 +294,7 @@ def test_backproject_scale_fixed():
         semiconv=np.pi/2,
         scan_center=PixelYX(x=16., y=16.),
         scan_rotation=0.,
-        flip_y=False,
+        flip_factor=1.,
         detector_center=PixelYX(x=32, y=32.),
         detector_rotation=0.,
         descan_error=DescanError()
@@ -344,7 +344,7 @@ def test_backproject_scale_scanref():
         semiconv=np.pi/2,
         scan_center=PixelYX(x=16., y=16.),
         scan_rotation=0.,
-        flip_y=False,
+        flip_factor=1.,
         detector_center=PixelYX(x=32, y=32.),
         detector_rotation=0.,
         descan_error=DescanError()
@@ -384,12 +384,12 @@ def test_backproject_scale_scanref():
     'detector_rotation', (0., np.pi/2)
 )
 @pytest.mark.parametrize(
-    'flip_y', (False, True)
+    'flip_factor', (1., -1.)
 )
 @pytest.mark.parametrize(
     'manual_reference', (False, True)
 )
-def test_correct(scan_rotation, detector_rotation, flip_y, manual_reference):
+def test_correct(scan_rotation, detector_rotation, flip_factor, manual_reference):
     scan_pixel_pitch = 0.1
     detector_pixel_pitch = 0.2
     overfocus = 1.
@@ -406,7 +406,7 @@ def test_correct(scan_rotation, detector_rotation, flip_y, manual_reference):
         semiconv=angle,
         scan_center=PixelYX(x=obj_half_size, y=obj_half_size),
         scan_rotation=scan_rotation,
-        flip_y=flip_y,
+        flip_factor=flip_factor,
         # Simulate detector larger than object to avoid clipping at the borders
         detector_center=PixelYX(x=obj_half_size * 2, y=obj_half_size * 2),
         detector_rotation=detector_rotation,
@@ -434,7 +434,7 @@ def test_correct(scan_rotation, detector_rotation, flip_y, manual_reference):
         semiconv=angle,
         scan_center=PixelYX(x=obj_half_size, y=obj_half_size),
         scan_rotation=0.,
-        flip_y=False,
+        flip_factor=1.,
         detector_center=PixelYX(x=obj_half_size * 2, y=obj_half_size * 2),
         detector_rotation=scan_rotation,
         descan_error=DescanError()
@@ -448,7 +448,7 @@ def test_correct(scan_rotation, detector_rotation, flip_y, manual_reference):
         semiconv=angle,
         scan_center=PixelYX(x=obj_half_size, y=obj_half_size),
         scan_rotation=0.,
-        flip_y=False,
+        flip_factor=1.,
         detector_center=PixelYX(x=obj_half_size * 2, y=obj_half_size * 2),
         detector_rotation=0.,
         descan_error=DescanError()
@@ -516,7 +516,7 @@ def test_correct_flip(scan_rotation, detector_rotation):
         semiconv=angle,
         scan_center=PixelYX(x=obj_half_size, y=obj_half_size),
         scan_rotation=scan_rotation,
-        flip_y=False,
+        flip_factor=1.,
         # Simulate detector larger than object to avoid clipping at the borders
         detector_center=PixelYX(x=obj_half_size * 2, y=obj_half_size * 2),
         detector_rotation=detector_rotation,
@@ -542,7 +542,7 @@ def test_correct_flip(scan_rotation, detector_rotation):
         semiconv=angle,
         scan_center=PixelYX(x=obj_half_size, y=obj_half_size),
         scan_rotation=0.,
-        flip_y=True,
+        flip_factor=-1.,
         detector_center=PixelYX(x=obj_half_size * 2, y=obj_half_size * 2),
         detector_rotation=scan_rotation,
         descan_error=DescanError()
@@ -556,7 +556,7 @@ def test_correct_flip(scan_rotation, detector_rotation):
         semiconv=angle,
         scan_center=PixelYX(x=obj_half_size, y=obj_half_size),
         scan_rotation=0.,
-        flip_y=True,
+        flip_factor=-1.,
         detector_center=PixelYX(x=obj_half_size * 2, y=obj_half_size * 2),
         detector_rotation=0.,
         descan_error=DescanError()
@@ -627,7 +627,7 @@ def test_correct_fixed_manualref(scan_rotation, detector_rotation):
         semiconv=angle,
         scan_center=PixelYX(x=obj_half_size, y=obj_half_size),
         scan_rotation=scan_rotation,
-        flip_y=False,
+        flip_factor=1.,
         # Simulate detector larger than object to avoid clipping at the borders
         detector_center=PixelYX(x=obj_half_size * 2, y=obj_half_size * 2),
         detector_rotation=detector_rotation,
@@ -656,7 +656,7 @@ def test_correct_fixed_manualref(scan_rotation, detector_rotation):
         # Has no impact since we don't remap the scan dimension,
         # only the projection after the specimen
         scan_rotation=np.pi/23,
-        flip_y=True,
+        flip_factor=-1.,
         detector_center=PixelYX(x=obj_half_size * 2 - 1, y=obj_half_size * 2 + 2),
         detector_rotation=0.,
         descan_error=DescanError()
@@ -672,7 +672,7 @@ def test_correct_fixed_manualref(scan_rotation, detector_rotation):
         # Has to match the input scan rotation since we don't
         # remap the scan dimension
         scan_rotation=scan_rotation,
-        flip_y=True,
+        flip_factor=-1.,
         detector_center=PixelYX(x=obj_half_size * 2 - 1, y=obj_half_size * 2 + 2),
         detector_rotation=0.,
         descan_error=DescanError()

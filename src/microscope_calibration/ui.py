@@ -45,6 +45,9 @@ class CoordinateCorrectionLayout:
     descan_columns = ["scan_y", "scan_x", "detector_cy", "detector_cx"]
     descan_index_cols = descan_columns[:2]
 
+    coord_columns = ["scan_y", "scan_x", "detector_y", "detector_x"]
+    coord_index_cols = coord_columns[:2]
+
     def __init__(
         self,
         dataset: DataSet,
@@ -93,12 +96,14 @@ class CoordinateCorrectionLayout:
         self.descan_fixpoints = pd.DataFrame(columns=self.descan_columns).set_index(
             self.descan_index_cols
         )
+        self.coord_fixpoints = pd.DataFrame(columns=self.coord_columns).set_index(
+            self.coord_index_cols
+        )
 
         # # GUI elements
         preview = self.get_preview()
         self.nav_fig = ApertureFigure.new(preview['nav'], title="Nav map")
-        self.nav_fig.fig.x_range.bounds = (0, self.dataset.shape.nav[1])
-        self.nav_fig.fig.y_range.bounds = (0, self.dataset.shape.nav[0])
+        self.adjust_layout(self.nav_fig, shape=preview['nav'].shape)
 
         self.cursor = (
             Cursor(cds=self.model_params, x="scan_x", y="scan_y")
@@ -109,23 +114,11 @@ class CoordinateCorrectionLayout:
         # The cursor Glyph is accessed via the .cursor property, until the API is unified
         self.cursor.cursor.line_color = "red"
 
-        self.scalebar_handles = (
-            PointSet(cds=self.scalebar_params, x="scalebar_x", y="scalebar_y")
-            .on(self.nav_fig.fig)
-            .editable(drag=True, tag_name="cursor")
-        )
-        self.scalebar_line = Curve(
-            cds=self.scalebar_params, xkey="scalebar_x", ykey="scalebar_y"
-        ).on(self.nav_fig.fig)
-        self.scalebar_handles.glyph.line_color = "yellow"
-        self.scalebar_handles.glyph.fill_color = None
-        self.scalebar_line.glyph.line_color = "yellow"
         frames = self.get_frames(pos=self.scan_pos)
         self.pick_fig = ApertureFigure.new(
             frames['raw'], title="QWERT"
         )
-        self.pick_fig.fig.x_range.bounds = (0, self.dataset.shape.sig[1])
-        self.pick_fig.fig.y_range.bounds = (0, self.dataset.shape.sig[0])
+        self.adjust_layout(self.pick_fig, shape=frames['raw'].shape)
 
         self.beam_centre = (
             Cursor(cds=self.ring_params, x="detector_cx", y="detector_cy")
@@ -150,10 +143,46 @@ class CoordinateCorrectionLayout:
         self.corr_point_fig = ApertureFigure.new(
             preview['corrected_point'], title="Corrected point analysis"
         )
+        self.adjust_layout(self.corr_point_fig, shape=preview['corrected_point'].shape)
+        self.cursor_2 = (
+            Cursor(cds=self.model_params, x="scan_x", y="scan_y")
+            .on(self.corr_point_fig.fig)
+            # this adds the necessary components to make the cursor draggable
+            .editable(selected=True)
+        )
+        # The cursor Glyph is accessed via the .cursor property, until the API is unified
+        self.cursor_2.cursor.line_color = "red"
+
+        self.scalebar_handles = (
+            PointSet(cds=self.scalebar_params, x="scalebar_x", y="scalebar_y")
+            .on(self.corr_point_fig.fig)
+            .editable(drag=True, tag_name="cursor")
+        )
+        self.scalebar_line = Curve(
+            cds=self.scalebar_params, xkey="scalebar_x", ykey="scalebar_y"
+        ).on(self.corr_point_fig.fig)
+        self.scalebar_handles.glyph.line_color = "yellow"
+        self.scalebar_handles.glyph.fill_color = None
+        self.scalebar_line.glyph.line_color = "yellow"
 
         self.corr_pick_fig = ApertureFigure.new(
             frames['corrected'], title="Frame corrected for descan error"
         )
+        self.adjust_layout(self.corr_pick_fig, shape=frames['corrected'].shape)
+        self.corr_sum_fig = ApertureFigure.new(
+            preview['corrected_sum'], title="Sum of frames corrected for descan error"
+        )
+        self.adjust_layout(self.corr_sum_fig, shape=preview['corrected_sum'].shape)
+
+        self.back_sum_fig = ApertureFigure.new(
+            preview['backprojected_sum'], title="Frames back-projected to scan coordinate system"
+        )
+        self.adjust_layout(self.back_sum_fig, shape=preview['backprojected_sum'].shape)
+
+        self.back_pick_fig = ApertureFigure.new(
+            frames['backprojected'], title="Current frame back-projected to scan coordinate system"
+        )
+        self.adjust_layout(self.back_pick_fig, shape=frames['backprojected'].shape)
 
         self.cl_input = pn.widgets.FloatInput(
             name="Camera length / m", step=0.01, value=self.start_params.camera_length
@@ -188,6 +217,23 @@ class CoordinateCorrectionLayout:
         self.clear_button = pn.widgets.Button(name="Clear")
         self.correlate_button = pn.widgets.Button(
             name="Refine correction with cross-correlation"
+        )
+
+        self.coord_fixpoint_table = pn.widgets.Tabulator(
+            self.coord_fixpoints,
+            buttons={
+                "select": '<i class="fa fa-bullseye"></i>',
+                "delete": '<i class="fa fa-trash"></i>',
+            },
+            # See https://github.com/holoviz/panel/pull/8256
+            selectable=False,
+        )
+
+        self.coord_record_button = pn.widgets.Button(name="Record")
+        self.coord_apply_button = pn.widgets.Button(name="Derive coordinate system from table")
+        self.coord_clear_button = pn.widgets.Button(name="Clear")
+        self.optimize_button = pn.widgets.Button(
+            name="Optimize sharpness of back-projection"
         )
 
         # # Event handler setup
@@ -227,6 +273,30 @@ class CoordinateCorrectionLayout:
         self.clear_button.on_click(lambda e: self.descan_drop())
         self.correlate_button.on_click(lambda e: self.center_correlation_regression())
 
+        # ## coord fixpoints table
+        self.coord_fixpoint_table.on_click(
+            lambda e: self.coord_delete_row(e.row) if e.column == "delete" else None,
+            column="delete",
+        )
+        self.coord_fixpoint_table.on_click(
+            lambda e: self.coord_move_to_row(e.row) if e.column == "select" else None,
+            column="select",
+        )
+
+        # ## descan correction buttons
+        self.coord_record_button.on_click(lambda e: self.coord_add_row())
+        self.coord_apply_button.on_click(lambda e: self.perform_coord_update())
+        self.coord_clear_button.on_click(lambda e: self.coord_drop())
+        self.optimize_button.on_click(lambda e: self.sharpen())
+
+    @staticmethod
+    def adjust_layout(plot, shape):
+        plot.fig.y_range.bounds = (0, shape[0])
+        plot.fig.x_range.bounds = (0, shape[1])
+        plot.fig.sizing_mode = 'scale_width'
+        plot.layout.max_width = 400
+        plot.layout.sizing_mode = 'stretch_width'
+
     def on_model_params_change(self, attr, old, new):
         # This is a "bokeh-style" callback because it will trigger directly from a ColumnDataSource
         # The callback must have three arguments [attr, old, new]
@@ -240,6 +310,14 @@ class CoordinateCorrectionLayout:
         # if old_pos != new_pos:
         frames = self.get_frames(pos=new_pos)
         self.pick_fig.update(frames['raw'])
+        self.corr_pick_fig.update(frames['corrected'])
+        self.back_pick_fig.update(frames['backprojected'])
+
+        previews = self.get_preview()
+        self.corr_point_fig.update(previews['corrected_point'])
+        self.corr_sum_fig.update(previews['corrected_sum'])
+        self.back_sum_fig.update(previews['backprojected_sum'])
+
         self.update_with_force(
             self.ring_params,
             self.ring_update(model_data=new),
@@ -267,7 +345,6 @@ class CoordinateCorrectionLayout:
     def update_semiconv(self, event):
         params = self.params.derive(semiconv=event.new / 1000)
         self.update_with_force(self.model_params, self.params_update(params))
-        self.push()
 
     def update_scale(self, event):
         base = self.params
@@ -275,7 +352,6 @@ class CoordinateCorrectionLayout:
         scan_pixel_pitch = event.new / 1e9 / length_px
         params = base.adjust_scan_pixel_pitch(scan_pixel_pitch)
         self.update_with_force(self.model_params, self.params_update(params))
-        self.push()
 
     def move_scan_to(self, event):
         self.update_with_force(
@@ -325,6 +401,41 @@ class CoordinateCorrectionLayout:
         t = self.descan_fixpoint_table
         t.value = t.value.drop(t.value.index)
 
+    def coord_add_row(self):
+        scan_pos = self.scan_pos
+        center_pos = self.get_detector_center(self.ring_params.data)
+        idx = (int(np.round(scan_pos.y)), int(np.round(scan_pos.x)))
+        new_df = pd.DataFrame(
+            [idx + (center_pos.y, center_pos.x)], columns=self.coord_columns
+        )
+        new_df = new_df.set_index(self.coord_index_cols)
+        t = self.coord_fixpoint_table
+        if idx in t.value.index:
+            t.value.update(new_df)
+            # Make sure the change is registered
+            t.value = t.value
+        else:
+            t.value = pd.concat((t.value, new_df))
+
+    def coord_delete_row(self, row):
+        df = self.coord_fixpoint_table.value
+        key = df.index[row]
+        self.coord_fixpoint_table.value = df.drop(index=key)
+
+    def coord_move_to_row(self, row):
+        df = self.coord_fixpoint_table.value
+        key = df.index[row]
+        detector = df.values[row]
+        assert len(key) == 2
+        scan_pos = PixelYX(y=key[0], x=key[1])
+        self.update_with_force(self.model_params, self.scan_pos_update(scan_pos))
+        detector_pos = PixelYX(y=detector[0], x=detector[1])
+        self.update_with_force(self.ring_params, self.detector_center_update(detector_pos))
+
+    def coord_drop(self):
+        t = self.coord_fixpoint_table
+        t.value = t.value.drop(t.value.index)
+
     def default_params(self) -> Parameters4DSTEM:
         ds = self.dataset
         if ds is None:
@@ -348,7 +459,7 @@ class CoordinateCorrectionLayout:
             detector_pixel_pitch=50e-6,
             detector_center=detector_center,
             semiconv=1e-3,  # radian
-            flip_y=False,
+            flip_factor=1.,
             # descan_error=DescanError(sxo_pxi=1, syo_pyi=-3)
         )
 
@@ -506,12 +617,15 @@ class CoordinateCorrectionLayout:
             )
             self.update_with_force(self.model_params, self.params_update(new_params))
 
-    def push_async(self):
-        self.nav_fig.push(self.pick_fig)
+    def _push(self):
+        self.nav_fig.push(
+            self.pick_fig, self.corr_point_fig, self.corr_pick_fig, self.corr_sum_fig,
+            self.back_sum_fig, self.back_pick_fig,
+        )
 
     def push(self):
-        self.nav_fig.push(self.pick_fig)
-        self.executor.submit(self.push_async)
+        self._push()
+        self.executor.submit(self._push)
 
     def update_with_force(self, cds: ColumnDataSource, update):
         cds.data.update(**update)
@@ -591,10 +705,13 @@ class CoordinateCorrectionLayout:
 
     @property
     def layout(self):
-        inputs = pn.layout.Row(self.scalebar_input, self.cl_input, self.semiconv_input)
-        figs = pn.layout.Column(
-            pn.layout.Row(self.nav_fig.layout, self.pick_fig.layout),
-            pn.layout.Row(self.corr_point_fig.layout, self.corr_pick_fig.layout),
+        inputs = pn.layout.Row(self.scalebar_input, self.cl_input, self.semiconv_input,)
+        raw_figs = pn.layout.Row(self.nav_fig.layout, self.pick_fig.layout)
+        corrected_figs = pn.layout.Row(
+            self.corr_point_fig.layout, self.corr_pick_fig.layout, self.corr_sum_fig.layout,
+        )
+        back_figs = pn.layout.Row(
+            self.back_sum_fig.layout, self.back_pick_fig.layout
         )
         descan_buttons = pn.layout.Row(
             self.record_button,
@@ -602,9 +719,29 @@ class CoordinateCorrectionLayout:
             self.clear_button,
             self.correlate_button,
         )
-        descan_section = pn.layout.Column(self.descan_fixpoint_table, descan_buttons)
+        self.descan_label = pn.pane.Markdown("# Descan correction", )
+        descan_section = pn.layout.Column(
+            self.descan_label,
+            self.descan_fixpoint_table,
+            descan_buttons
+        )
+        coord_buttons = pn.layout.Row(
+            self.coord_record_button,
+            self.coord_apply_button,
+            self.coord_clear_button,
+            self.optimize_button,
+        )
+        self.coord_label = pn.pane.Markdown("# Coordinate system calibration", )
+        coord_section = pn.layout.Column(
+            self.coord_label,
+            self.coord_fixpoint_table,
+            coord_buttons
+        )
+        table_row = pn.layout.Row(descan_section, coord_section)
         return pn.layout.Column(
             inputs,
-            figs,
-            descan_section,
+            raw_figs,
+            table_row,
+            corrected_figs,
+            back_figs,
         )
