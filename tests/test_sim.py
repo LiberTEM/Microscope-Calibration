@@ -1,7 +1,7 @@
 import pytest
 from numpy.testing import assert_allclose
 
-import jax; jax.config.update("jax_enable_x64", True)  # noqa: E702
+import jax; jax.config.update("jax_enable_x64", True)  # noqa
 import numpy as np
 import jax.numpy as jnp
 
@@ -69,7 +69,7 @@ def test_model_consistency():
         semiconv=0.023,
         scan_center=PixelYX(x=0.13, y=0.23),
         scan_rotation=0.752,
-        flip_y=True,
+        flip_factor=-1.,
         detector_center=PixelYX(x=23, y=42),
         descan_error=DescanError(
             pxo_pxi=0.2,
@@ -164,7 +164,7 @@ def test_nonlinear_model(monkeypatch):
         semiconv=0.023,
         scan_center=PixelYX(x=0.13, y=0.23),
         scan_rotation=0.752,
-        flip_y=True,
+        flip_factor=-1.,
         detector_center=PixelYX(x=23, y=42),
         descan_error=DescanError(
             pxo_pxi=0.2,
@@ -201,7 +201,7 @@ def test_no_precision(monkeypatch):
         semiconv=0.023,
         scan_center=PixelYX(x=0.13, y=0.23),
         scan_rotation=0.752,
-        flip_y=True,
+        flip_factor=-1.,
         detector_center=PixelYX(x=23, y=42),
         descan_error=DescanError(
             pxo_pxi=0.2,
@@ -246,7 +246,7 @@ def test_project_identity():
         semiconv=np.pi/2,
         scan_center=PixelYX(x=6.9, y=16.),
         scan_rotation=0.,
-        flip_y=False,
+        flip_factor=1.,
         detector_center=PixelYX(x=7.1, y=16.),
         descan_error=DescanError()
     )
@@ -271,7 +271,7 @@ def test_project_scale():
         semiconv=np.pi/2,
         scan_center=PixelYX(x=16, y=16.),
         scan_rotation=0.,
-        flip_y=False,
+        flip_factor=1.,
         detector_center=PixelYX(x=32, y=32.),
         descan_error=DescanError()
     )
@@ -295,7 +295,7 @@ def test_project_shift():
         semiconv=np.pi/2,
         scan_center=PixelYX(x=6.9, y=16.),
         scan_rotation=0.,
-        flip_y=False,
+        flip_factor=1.,
         detector_center=PixelYX(x=8.1, y=15.),
         descan_error=DescanError()
     )
@@ -319,7 +319,7 @@ def test_project_rotate():
         semiconv=np.pi/2,
         scan_center=PixelYX(x=16, y=16.),
         scan_rotation=np.pi/2,
-        flip_y=False,
+        flip_factor=1.,
         detector_center=PixelYX(x=16, y=16.),
         descan_error=DescanError()
     )
@@ -343,7 +343,7 @@ def test_project_flip():
         semiconv=np.pi/2,
         scan_center=PixelYX(x=16, y=16.),
         scan_rotation=0.,
-        flip_y=True,
+        flip_factor=-1.,
         detector_center=PixelYX(x=16, y=16.),
         descan_error=DescanError()
     )
@@ -367,7 +367,7 @@ def test_project_detector_rotate():
         semiconv=np.pi/2,
         scan_center=PixelYX(x=16, y=16.),
         scan_rotation=0.,
-        flip_y=False,
+        flip_factor=1.,
         detector_center=PixelYX(x=16, y=16.),
         detector_rotation=np.pi/2,
         descan_error=DescanError()
@@ -392,7 +392,7 @@ def test_project_map_identity():
         semiconv=np.pi/2,
         scan_center=PixelYX(x=16, y=16.),
         scan_rotation=0.,
-        flip_y=False,
+        flip_factor=1.,
         detector_center=PixelYX(x=16., y=16.),
         descan_error=DescanError()
     )
@@ -426,7 +426,7 @@ def test_project_map_scale():
         semiconv=np.pi/2,
         scan_center=PixelYX(x=16, y=16.),
         scan_rotation=0.,
-        flip_y=False,
+        flip_factor=1.,
         detector_center=PixelYX(x=16., y=16.),
         descan_error=DescanError()
     )
@@ -461,7 +461,7 @@ def test_project_map_rotate():
         semiconv=np.pi/2,
         scan_center=PixelYX(x=16, y=16.),
         scan_rotation=0.,
-        flip_y=False,
+        flip_factor=1.,
         detector_center=PixelYX(x=16., y=16.),
         descan_error=DescanError()
     )
@@ -495,7 +495,7 @@ def test_project_map_flip():
         semiconv=np.pi/2,
         scan_center=PixelYX(x=16, y=16.),
         scan_rotation=0.,
-        flip_y=False,
+        flip_factor=1.,
         detector_center=PixelYX(x=16., y=16.),
         descan_error=DescanError()
     )
@@ -528,7 +528,7 @@ def test_project_fixref_scanscale():
         semiconv=np.pi/2,
         scan_center=PixelYX(x=16, y=16.),
         scan_rotation=0.,
-        flip_y=False,
+        flip_factor=1.,
         detector_center=PixelYX(x=16., y=16.),
         descan_error=DescanError()
     )
@@ -563,7 +563,7 @@ def test_project_fixref_scanshift():
         semiconv=np.pi/2,
         scan_center=PixelYX(x=17, y=15.),
         scan_rotation=0.,
-        flip_y=False,
+        flip_factor=1.,
         detector_center=PixelYX(x=16., y=16.),
         descan_error=DescanError()
     )
@@ -596,7 +596,7 @@ def test_project_fixref_scanrotate():
         semiconv=np.pi/2,
         scan_center=PixelYX(x=16, y=16.),
         scan_rotation=np.pi/2,
-        flip_y=False,
+        flip_factor=1.,
         detector_center=PixelYX(x=16., y=16.),
         descan_error=DescanError()
     )
@@ -638,7 +638,7 @@ def test_project_aperture():
         semiconv=angle,
         scan_center=PixelYX(x=obj_half_size, y=obj_half_size),
         scan_rotation=0.,
-        flip_y=False,
+        flip_factor=1.,
         detector_center=PixelYX(x=obj_half_size, y=obj_half_size),
     )
     obj = np.random.random((32, 32))
@@ -679,7 +679,7 @@ def test_project_descan():
         semiconv=angle,
         scan_center=PixelYX(x=obj_half_size, y=obj_half_size),
         scan_rotation=0.,
-        flip_y=False,
+        flip_factor=1.,
         detector_center=PixelYX(x=obj_half_size, y=obj_half_size),
         descan_error=DescanError(
             offpxi=detector_pixel_pitch,

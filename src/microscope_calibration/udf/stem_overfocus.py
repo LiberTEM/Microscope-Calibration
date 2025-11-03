@@ -206,7 +206,7 @@ class CorrectedPickUDF(BaseCorrectionUDF):
                 scan_y=scan_y,
                 scan_x=scan_x,
                 mat=self.params.corr_mat,
-                detector_out=self.results.corrected[sl],
+                detector_out=self.results.corrected[sl][0],
             )
         if self.has_backprojection:
             project_frame_backwards(
@@ -215,7 +215,7 @@ class CorrectedPickUDF(BaseCorrectionUDF):
                 scan_y=scan_y,
                 scan_x=scan_x,
                 mat=self.params.back_mat,
-                image_out=self.results.backprojected[sl],
+                image_out=self.results.backprojected[sl][0],
             )
 
     def merge(self, dest, src):
