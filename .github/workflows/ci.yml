@@ -24,7 +24,7 @@ jobs:
             python_version: "3.9"
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
       - name: Choose Python version ${{ matrix.python_version }}
         uses: actions/setup-python@v6
         with:
@@ -41,7 +41,7 @@ jobs:
   pinned-requirements:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
       - name: Choose Python version ${{ matrix.python_version }}
         uses: actions/setup-python@v6
         with:
@@ -54,7 +54,7 @@ jobs:
   numba_coverage:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
       - name: 'Choose Python version 3.12'
         uses: actions/setup-python@v6
         with:
