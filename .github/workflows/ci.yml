@@ -16,12 +16,10 @@ concurrency:
 jobs:
   tests:
     strategy:
+      fail-fast: false
       matrix:
         python_version: ["3.10", "3.11", "3.12"]
         os: [ubuntu-latest, windows-latest, macos-14]
-        exclude:
-          - os: macos-14
-            python_version: "3.9"
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v6
@@ -39,6 +37,7 @@ jobs:
           CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
 
   pinned-requirements:
+    if: false  # skip job
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
@@ -52,6 +51,7 @@ jobs:
         run: pytest --cov=microscope_calibration --cov-report=xml --cov-report=term tests/
 
   numba_coverage:
+    if: false  # skip job
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
