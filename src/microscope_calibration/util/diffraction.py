@@ -16,7 +16,7 @@ def get_twothetas(cif_filename, acceleration_voltage_V, reciprocal_radius=1):
     structure_raw = ReadCif(cif_filename)
     key = list(structure_raw.keys())[0]
     space_group = int(structure_raw[key]['_space_group_IT_number'])
-    structure = loadStructure('EntryWithCollCode163723.cif')
+    structure = loadStructure(cif_filename)
     p = Phase(structure=structure, space_group=space_group)
     twothetas = set()
     rng = np.random.default_rng(seed=0)

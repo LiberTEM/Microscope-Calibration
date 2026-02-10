@@ -32,6 +32,7 @@ from .util.optimize import (
     solve_tilt_descan_error,
     solve_coords_points,
     solve_hit_specimen,
+    make_overfocus_loss_function, optimize
 )
 from .common.stem_overfocus import (
     get_detector_correction_matrix,
@@ -43,7 +44,8 @@ from .common.stem_overfocus import (
 from .udf.stem_overfocus import CorrectedPickUDF, OverfocusUDF
 
 
-NavModeT = Literal["point", "sumsig"]
+NavModeT = Literal["point", "sumsig", ]
+SigModeT = Literal["lin", "log", ]
 
 
 class CoordinateCorrectionLayout:
@@ -65,6 +67,7 @@ class CoordinateCorrectionLayout:
         dataset: DataSet,
         ctx: Context,
         nav_mode: NavModeT = "point",
+        sig_mode: SigModeT = "lin",
         twothetas: np.ndarray | None = None,
         start_params=None,
     ):
@@ -73,6 +76,7 @@ class CoordinateCorrectionLayout:
         self.dataset = dataset
         self.ctx = ctx
         self.nav_mode = nav_mode
+        self.sig_mode = sig_mode
 
         if start_params is None:
             start_params = self.default_params()
@@ -427,8 +431,9 @@ class CoordinateCorrectionLayout:
         plot.fig.y_range.bounds = (0, shape[0])
         plot.fig.x_range.bounds = (0, shape[1])
         plot.fig.sizing_mode = "scale_width"
-        plot.layout.max_width = 350
-        plot.layout.sizing_mode = "stretch_width"
+        plot.layout.max_width = 500
+        plot.layout.max_height = 500
+        # plot.layout.sizing_mode = "stretch_width"
 
     def on_model_params_change(self, attr, old, new):
         # This is a "bokeh-style" callback because it will trigger directly from a ColumnDataSource
@@ -779,11 +784,18 @@ class CoordinateCorrectionLayout:
         result = {}
         if self.nav_mode == "sumsig":
             result["nav"] = res[0]["intensity"].data
+            result["corrected_point"] = res[0]["intensity"].data
         elif self.nav_mode == "point":
             result["nav"] = res[0]["intensity"].data[..., 0]
+            result["corrected_point"] = res[1]["corrected_point"].data
         result["backprojected_sum"] = res[1]["backprojected_sum"].data
-        result["corrected_point"] = res[1]["corrected_point"].data
-        result["corrected_sum"] = res[1]["corrected_sum"].data
+        # result["corrected_point"] = res[1]["corrected_point"].data
+        if self.sig_mode == 'lin':
+            result["corrected_sum"] = res[1]["corrected_sum"].data
+        elif self.sig_mode == 'log':
+            result["corrected_sum"] = np.log1p(res[1]["corrected_sum"].data)
+        else:
+            raise ValueError()
         return result
 
     def get_frames(self, pos: PixelYX):
@@ -795,10 +807,18 @@ class CoordinateCorrectionLayout:
             CorrectedPickUDF(overfocus_params={"params": self.params}),
         )
         res = self.ctx.run_udf(dataset=self.dataset, udf=udfs, roi=roi)
+
+        if self.sig_mode == 'log':
+            def fn(data):
+                return np.log1p(data)
+        else:
+            def fn(data):
+                return data
+
         return {
-            "raw": res[0]["intensity"].raw_data[0],
-            "corrected": res[1]["corrected"].raw_data[0],
-            "backprojected": res[1]["backprojected"].raw_data[0],
+            "raw": fn(res[0]["intensity"].raw_data[0]),
+            "corrected": fn(res[1]["corrected"].raw_data[0]),
+            "backprojected": fn(res[1]["backprojected"].raw_data[0]),
         }
 
     @staticmethod
@@ -979,6 +999,22 @@ class CoordinateCorrectionLayout:
         )
         self.model_params.data.update(**self.params_update(new_params))
         self.push()
+
+    def sharpen(self):
+        def callback(args, params, res, blur):
+            self.back_sum_fig.update(res[0]["backprojected_sum"].data)
+
+        make_new_params, loss = make_overfocus_loss_function(
+            params=self.params,
+            ctx=self.ctx,
+            dataset=self.dataset,
+            overfocus_udf=OverfocusUDF(overfocus_params={"params": self.params}),
+            callback=callback,
+        )
+
+        res = optimize(loss)
+        params = make_new_params(res.x)
+        self.update_with_force(self.model_params, self.params_update(params))
 
     @property
     def layout(self):
