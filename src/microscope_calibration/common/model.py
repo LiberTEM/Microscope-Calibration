@@ -1,5 +1,10 @@
-from typing import Optional, NamedTuple, Union
+from typing import Optional, NamedTuple, Union, Any
+from numbers import Number
+from types import ModuleType
 from collections import OrderedDict
+
+import numpy.typing as npt
+import sympy as sym
 
 import jax; jax.config.update("jax_enable_x64", True)  # noqa
 import jax_dataclasses as jdc
@@ -15,36 +20,36 @@ from temgym_core.propagator import Propagator, FreeSpaceParaxial
 
 
 # Jax-compatible versions of libertem.corrections.coordinates functions
-def scale(factor):
-    return jnp.eye(2) * factor
+def scale(factor, xp):
+    return xp.eye(2) * factor
 
 
-def rotate(radians):
+def rotate(radians, xp):
     # https://en.wikipedia.org/wiki/Rotation_matrix
     # y, x instead of x, y
-    radians = jnp.astype(radians, jnp.float64)
-    return jnp.array(
-        [(jnp.cos(radians), jnp.sin(radians)), (-jnp.sin(radians), jnp.cos(radians))]
+    # radians = jnp.astype(radians, jnp.float64)
+    return xp.array(
+        [(xp.cos(radians), xp.sin(radians)), (-xp.sin(radians), xp.cos(radians))]
     )
 
 
 # The flip_factor is introduced to make it differentiable
-def flip_y(flip_factor: float = -1.0):
-    return jnp.array([(flip_factor, 0), (0, 1)], dtype=jnp.float64)
+def flip_y(xp, flip_factor: float = -1.0):
+    return xp.array([(flip_factor, 0), (0, 1)], dtype=xp.float64)
 
 
-def identity():
-    return jnp.eye(2, dtype=jnp.float64)
+def identity(xp):
+    return xp.eye(2, dtype=xp.float64)
 
 
-def scale_rotate_flip(mat: jnp.ndarray):
+def scale_rotate_flip(mat: npt.ArrayLike, xp):
     """
     Deconstruct a matrix generated with scale() @ rotate() @ flip_y()
     into the individual parameters
     """
-    scale_y = jnp.linalg.norm(mat[:, 0])
-    scale_x = jnp.linalg.norm(mat[:, 1])
-    if not jnp.allclose(scale_y, scale_x):
+    scale_y = xp.linalg.norm(mat[:, 0])
+    scale_x = xp.linalg.norm(mat[:, 1])
+    if not xp.allclose(scale_y, scale_x):
         raise ValueError(f"y scale {scale_y} and x scale {scale_x} are different.")
 
     scan_rot_flip = mat / scale_y
@@ -57,19 +62,96 @@ def scale_rotate_flip(mat: jnp.ndarray):
     rot = scan_rot_flip.copy()
     rot = rot.at[:, 0].set(rot[:, 0] * flip_factor)
 
-    angle1 = jnp.arctan2(-rot[1, 0], rot[0, 0])
-    angle2 = jnp.arctan2(rot[0, 1], rot[1, 1])
+    angle1 = xp.arctan2(-rot[1, 0], rot[0, 0])
+    angle2 = xp.arctan2(rot[0, 1], rot[1, 1])
 
     # So far not reached in tests since inconsistencies are caught as shear before
-    if not jnp.allclose(
-        jnp.array((jnp.sin(angle1), jnp.cos(angle1))),
-        jnp.array((jnp.sin(angle2), jnp.cos(angle2))),
+    if not xp.allclose(
+        xp.array((xp.sin(angle1), xp.cos(angle1))),
+        xp.array((xp.sin(angle2), xp.cos(angle2))),
     ):
         raise ValueError(
             f"Rotation angle 1 {angle1} and rotation angle 2 {angle2} are inconsistent."
         )
 
     return (scale_y, angle1, flip_factor)
+
+
+def is_sympy(expr: Any) -> bool:
+    """
+    Check if the given instance is a sympy expression.
+
+    Some complex structure which contains a sympy expression as an element returns False.
+    One can use a recursive function to check each element of the structure (e.g., typing.Iterable),
+    However, because of a possibiblity to have a long sequence of elements, it does not seem to be
+    effective enough.
+
+    Any expressions that make sence mathematically are of class sympy.core.expr.Expr, which e.g.
+    includes sympy.core.symbol.Symbol, sympy.core.numbers.Number, sympy.core.add.Add.
+    However, we use sympy.core.basic.Basic which includes sympy.core.expr.Expr, in case we need
+    to test also any logic operations, booleans, relations, etc.:
+    isinstance(x>0, sympy.Expr) returns False, but isinstance(x>0, sympy.Basic) returns True.
+
+    Some objects like matrices of class sympy.matrices.matrixbase.MatrixBase or sympy arrays
+    of class sympy.tensor.array.ImmutableDenseNDimArray are not instances of sympy.Basic.
+
+
+    Parameters
+    ----------
+    expr
+        anything to be checked if it is a sympy instance
+    """
+    # FIXME confirm that this are all the base classes
+    return isinstance(expr, (sym.Basic, sym.MatrixBase, sym.NDimArray))
+
+
+MaybeSympy = sym.Basic | npt.ArrayLike | Number
+
+
+def sympy_equals(a: MaybeSympy, b: MaybeSympy) -> bool:
+    """
+    Compare two sympy expressions. Use the sympy simplification function to check if
+    the difference of the two expressions is zero, which would imply their equality.
+
+    sympy.simplify() allows to avoid false conclusions about nontrival symbolic expresions like:
+    for a, b = sympy.symbols('a b') the instance "((a+b)**2 - (a**2 +2*a*b + b**2)).is_zero is True"
+    returns False, as the expression is undetermined to equal to zero without the simplification.
+
+    Usage of is_zero allows to check the equality to zero for all the types, e.g., 0.0, 0,
+    sympy.core.numbers.Zero. Otherwise sympy.simplify(0-0.0) returns False compared to 0 (int)
+    or 0.0 (float), as the simplified expression is of other type (sympy.core.numbers.Float).
+
+    The existing sympy function expr1.equals(expr2) fails if expr1 is not a sympy exression,
+    e.g. a number. Usage of sympy.simplify(expr1) or sympy.Number(expr1) (only for numbers)
+    instead of expr1 solves this problem, however it gets a bit messy. Moreover, the implemented
+    sympy_equals() works on the same principle as the sympy one, which garanties the correctness.
+
+    If comparing x = sym.Symbol('x') and a number, returns False, not None.
+    However, x = sym.Symbol('x', zero=True) and zero works (returns True).
+
+    Parameters
+    ----------
+    a, b
+        expressions that are compatible with sympy.simplify()
+    """
+    return sym.simplify(a - b).is_zero is True
+
+
+def equals(ray1: Ray, ray2: Ray) -> bool:
+    """
+    Compare two rays that may contain sympy expressions to check if they are equal.
+    The comparison is done by the ray components.
+    Use normal comparison except for sympy instances (use is_sympy() to prove that),
+    where apply sympy_equals() function.
+    """
+    for key in ray1.__dict__.keys():
+        if (is_sympy(ray1.__dict__[key]) or is_sympy(ray2.__dict__[key])):
+            if not sympy_equals(ray1.__dict__[key], ray2.__dict__[key]):
+                return False
+        else:
+            if ray1.__dict__[key] != ray2.__dict__[key]:
+                return False
+    return True
 
 
 # TODO use LiberTEM-schema later
@@ -86,6 +168,7 @@ class Parameters4DSTEM:
     flip_factor: float  # 1.: no flip; -1.: flip
     descan_error: DescanError = DescanError()
     detector_rotation: float = 0.0  # rad
+    xp: ModuleType = jnp
 
     def derive(
         self,
@@ -101,6 +184,7 @@ class Parameters4DSTEM:
         flip_y: bool | None = None,
         flip_factor: float | None = None,
         descan_error: DescanError | None = None,
+        xp: ModuleType | None = None,
     ) -> "Parameters4DSTEM":
         if flip_factor is not None:
             assert flip_y is None
@@ -139,6 +223,9 @@ class Parameters4DSTEM:
             descan_error=descan_error
             if descan_error is not None
             else self.descan_error,
+            xp=xp
+            if xp is not None
+            else self.xp,
         )
 
     def normalize_types(self):
@@ -184,11 +271,14 @@ class Parameters4DSTEM:
         """
         de = self.descan_error
         angle = scan_rotation - self.scan_rotation
+
+        xp = self.xp
+
         # Rotate the input direction
-        pxo_pyi, pxo_pxi = rotate(angle) @ jnp.array((de.pxo_pyi, de.pxo_pxi))
-        pyo_pyi, pyo_pxi = rotate(angle) @ jnp.array((de.pyo_pyi, de.pyo_pxi))
-        sxo_pyi, sxo_pxi = rotate(angle) @ jnp.array((de.sxo_pyi, de.sxo_pxi))
-        syo_pyi, syo_pxi = rotate(angle) @ jnp.array((de.syo_pyi, de.syo_pxi))
+        pxo_pyi, pxo_pxi = rotate(angle, xp=xp) @ xp.array((de.pxo_pyi, de.pxo_pxi))
+        pyo_pyi, pyo_pxi = rotate(angle, xp=xp) @ xp.array((de.pyo_pyi, de.pyo_pxi))
+        sxo_pyi, sxo_pxi = rotate(angle, xp=xp) @ xp.array((de.sxo_pyi, de.sxo_pxi))
+        syo_pyi, syo_pxi = rotate(angle, xp=xp) @ xp.array((de.syo_pyi, de.syo_pxi))
         new_de = DescanError(
             pxo_pyi=pxo_pyi,
             pyo_pyi=pyo_pyi,
@@ -272,13 +362,16 @@ class Parameters4DSTEM:
     def adjust_detector_rotation(self, detector_rotation: float) -> "Parameters4DSTEM":
         de = self.descan_error
         angle = detector_rotation - self.detector_rotation
+
+        xp = self.xp
+
         # rotate the output direction
-        pyo_pyi, pxo_pyi = rotate(angle) @ jnp.array((de.pyo_pyi, de.pxo_pyi))
-        pyo_pxi, pxo_pxi = rotate(angle) @ jnp.array((de.pyo_pxi, de.pxo_pxi))
-        syo_pyi, sxo_pyi = rotate(angle) @ jnp.array((de.syo_pyi, de.sxo_pyi))
-        syo_pxi, sxo_pxi = rotate(angle) @ jnp.array((de.syo_pxi, de.sxo_pxi))
-        offpyi, offpxi = rotate(angle) @ jnp.array((de.offpyi, de.offpxi))
-        offsyi, offsxi = rotate(angle) @ jnp.array((de.offsyi, de.offsxi))
+        pyo_pyi, pxo_pyi = rotate(angle, xp=xp) @ xp.array((de.pyo_pyi, de.pxo_pyi))
+        pyo_pxi, pxo_pxi = rotate(angle, xp=xp) @ xp.array((de.pyo_pxi, de.pxo_pxi))
+        syo_pyi, sxo_pyi = rotate(angle, xp=xp) @ xp.array((de.syo_pyi, de.sxo_pyi))
+        syo_pxi, sxo_pxi = rotate(angle, xp=xp) @ xp.array((de.syo_pxi, de.sxo_pxi))
+        offpyi, offpxi = rotate(angle, xp=xp) @ xp.array((de.offpyi, de.offpxi))
+        offsyi, offsxi = rotate(angle, xp=xp) @ xp.array((de.offsyi, de.offsxi))
         new_de = DescanError(
             pxo_pyi=pxo_pyi,
             pyo_pyi=pyo_pyi,
@@ -302,19 +395,22 @@ class Parameters4DSTEM:
         # Some import gymnastic to keep the naming clean
         from .model import flip_y
 
+        xp = self.xp
+
         de = self.descan_error
         angle = self.detector_rotation
 
         if flip_factor != self.flip_factor:
             # Rotate into detector directions, flip, then rotate back
-            trans = rotate(angle) @ flip_y(flip_factor/self.flip_factor) @ rotate(-angle)
+            trans = rotate(angle, xp=xp) @ flip_y(xp, flip_factor/self.flip_factor) @ rotate(-angle,
+                                                                                             xp=xp)
             # transform the output direction
-            pyo_pyi, pxo_pyi = trans @ jnp.array((de.pyo_pyi, de.pxo_pyi))
-            pyo_pxi, pxo_pxi = trans @ jnp.array((de.pyo_pxi, de.pxo_pxi))
-            syo_pyi, sxo_pyi = trans @ jnp.array((de.syo_pyi, de.sxo_pyi))
-            syo_pxi, sxo_pxi = trans @ jnp.array((de.syo_pxi, de.sxo_pxi))
-            offpyi, offpxi = trans @ jnp.array((de.offpyi, de.offpxi))
-            offsyi, offsxi = trans @ jnp.array((de.offsyi, de.offsxi))
+            pyo_pyi, pxo_pyi = trans @ xp.array((de.pyo_pyi, de.pxo_pyi))
+            pyo_pxi, pxo_pxi = trans @ xp.array((de.pyo_pxi, de.pxo_pxi))
+            syo_pyi, sxo_pyi = trans @ xp.array((de.syo_pyi, de.sxo_pyi))
+            syo_pxi, sxo_pxi = trans @ xp.array((de.syo_pxi, de.sxo_pxi))
+            offpyi, offpxi = trans @ xp.array((de.offpyi, de.offpxi))
+            offsyi, offsxi = trans @ xp.array((de.offsyi, de.offsxi))
             new_de = DescanError(
                 pxo_pyi=pxo_pyi,
                 pyo_pyi=pyo_pyi,
@@ -438,13 +534,15 @@ class Model4DSTEM:
     descanner: Descanner
     detector: Plane
 
-    _scan_to_real: jnp.ndarray  # 2x2 matrix from libertem.corrections.coordinates
-    _real_to_scan: jnp.ndarray  # 2x2 matrix from libertem.corrections.coordinates
-    _detector_to_real: jnp.ndarray  # 2x2 matrix from libertem.corrections.coordinates
-    _real_to_detector: jnp.ndarray  # 2x2 matrix from libertem.corrections.coordinates
+    _scan_to_real: npt.ArrayLike  # 2x2 matrix from libertem.corrections.coordinates
+    _real_to_scan: npt.ArrayLike  # 2x2 matrix from libertem.corrections.coordinates
+    _detector_to_real: npt.ArrayLike  # 2x2 matrix from libertem.corrections.coordinates
+    _real_to_detector: npt.ArrayLike  # 2x2 matrix from libertem.corrections.coordinates
 
     scan_center: PixelYX
     detector_center: PixelYX
+
+    xp: ModuleType
 
     @property
     def overfocus(self) -> float:
@@ -455,17 +553,20 @@ class Model4DSTEM:
         return self.detector.z - self.specimen.z
 
     def scan_to_real(self, pixels: PixelYX, _one: float = 1.0) -> CoordXY:
-        (y, x) = self._scan_to_real @ jnp.array(
+        xp = self.xp
+        (y, x) = self._scan_to_real @ xp.array(
             (pixels.y - self.scan_center.y * _one, pixels.x - self.scan_center.x * _one)
         )
         return CoordXY(y=y, x=x)
 
     def real_to_scan(self, coords: CoordXY, _one: float = 1.0) -> PixelYX:
-        (y, x) = self._real_to_scan @ jnp.array((coords.y, coords.x))
+        xp = self.xp
+        (y, x) = self._real_to_scan @ xp.array((coords.y, coords.x))
         return PixelYX(y=y + self.scan_center.y * _one, x=x + self.scan_center.x * _one)
 
     def detector_to_real(self, pixels: PixelYX, _one: float = 1.0) -> CoordXY:
-        (y, x) = self._detector_to_real @ jnp.array(
+        xp = self.xp
+        (y, x) = self._detector_to_real @ xp.array(
             (
                 pixels.y - self.detector_center.y * _one,
                 pixels.x - self.detector_center.x * _one,
@@ -474,7 +575,8 @@ class Model4DSTEM:
         return CoordXY(y=y, x=x)
 
     def real_to_detector(self, coords: CoordXY, _one: float = 1.0) -> PixelYX:
-        (y, x) = self._real_to_detector @ jnp.array((coords.y, coords.x))
+        xp = self.xp
+        (y, x) = self._real_to_detector @ xp.array((coords.y, coords.x))
         return PixelYX(
             y=y + self.detector_center.y * _one, x=x + self.detector_center.x * _one
         )
@@ -486,32 +588,32 @@ class Model4DSTEM:
         scan_pos: PixelYX,
         specimen: Optional[Component] = None,
     ) -> "Model4DSTEM":
-        scan_to_real = rotate(params.scan_rotation) @ scale(params.scan_pixel_pitch)
-        real_to_scan = scale(1 / params.scan_pixel_pitch) @ rotate(
-            -params.scan_rotation
-        )
-        scan_y, scan_x = scan_to_real @ jnp.array(
+        scan_to_real = rotate(params.scan_rotation, xp=params.xp) @ scale(params.scan_pixel_pitch,
+                                                                          xp=params.xp)
+        real_to_scan = scale(1 / params.scan_pixel_pitch, xp=params.xp) @ rotate(
+            -params.scan_rotation, xp=params.xp)
+        scan_y, scan_x = scan_to_real @ params.xp.array(
             (
                 scan_pos.y - params.scan_center.y,
                 scan_pos.x - params.scan_center.x,
             )
         )
         detector_to_real = (
-            scale(params.detector_pixel_pitch)
-            @ rotate(params.detector_rotation)
-            @ flip_y(flip_factor=params.flip_factor)
+            scale(params.detector_pixel_pitch, xp=params.xp)
+            @ rotate(params.detector_rotation, xp=params.xp)
+            @ flip_y(flip_factor=params.flip_factor, xp=params.xp)
         )
         real_to_detector = (
-            flip_y(flip_factor=1 / params.flip_factor)
-            @ rotate(-params.detector_rotation)
-            @ scale(1 / params.detector_pixel_pitch)
+            flip_y(flip_factor=1 / params.flip_factor, xp=params.xp)
+            @ rotate(-params.detector_rotation, xp=params.xp)
+            @ scale(1 / params.detector_pixel_pitch, xp=params.xp)
         )
         if specimen is None:
             specimen = Plane(z=params.overfocus)
         else:
             try:
                 # FIXME better solution later?
-                assert jnp.allclose(specimen.z, params.overfocus)
+                assert params.xp.allclose(specimen.z, params.overfocus)
             except TracerBoolConversionError:
                 pass
         return cls(
@@ -531,17 +633,18 @@ class Model4DSTEM:
             detector=Plane(z=params.overfocus + params.camera_length),
             scan_center=params.scan_center,
             detector_center=params.detector_center,
+            xp=params.xp,
         )
 
     @property
     def params(self) -> Parameters4DSTEM:
-        scan_scale, scan_rotation, scan_flip = scale_rotate_flip(self._scan_to_real)
+        scan_scale, scan_rotation, scan_flip = scale_rotate_flip(self._scan_to_real, xp=self.xp)
         # FIXME assert close to 1
         # assert scan_flip is False
         detector_scale, detector_rotation, detector_flip = scale_rotate_flip(
-            self._detector_to_real
+            self._detector_to_real, xp=self.xp
         )
-        assert jnp.allclose(detector_rotation, 0.0)
+        assert self.xp.allclose(detector_rotation, 0.0)
         return Parameters4DSTEM(
             overfocus=self.specimen.z - self.source.z,
             scan_pixel_pitch=scan_scale,
@@ -604,14 +707,14 @@ class Model4DSTEM:
         try:
             assert isinstance(comp, Propagator)
             assert comp.distance == 0.0
-            assert r == ray
+            assert equals(r, ray)
         except TracerBoolConversionError:
             pass
 
         comp, r = run_result.pop(0)
         try:
             assert comp == self.source
-            assert r == ray
+            assert equals(r, ray)
         except TracerBoolConversionError:
             pass
         result["source"] = ResultSection(component=comp, ray=r)
@@ -636,7 +739,7 @@ class Model4DSTEM:
             assert isinstance(comp, Propagator)
             assert comp.distance == 0.0
             assert isinstance(r, Ray)
-            assert r == result["scanner"].ray
+            assert equals(r, result["scanner"].ray)
         except TracerBoolConversionError:
             pass
 
@@ -658,7 +761,7 @@ class Model4DSTEM:
         try:
             assert isinstance(comp, Propagator)
             assert comp.distance == 0.0
-            assert r == result["specimen"].ray
+            assert equals(r, result["specimen"].ray)
         except TracerBoolConversionError:
             pass
         comp, r = run_result.pop(0)

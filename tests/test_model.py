@@ -7,13 +7,17 @@ from libertem.udf.com import guess_corrections, apply_correction
 import numpy as np
 import jax.numpy as jnp
 
+import sympy as sym
+
 from temgym_core.ray import Ray
 from temgym_core.components import DescanError, Component
 from temgym_core.propagator import Propagator
 from temgym_core.source import Source
 from temgym_core import PixelYX
 
-from microscope_calibration.common.model import Parameters4DSTEM, Model4DSTEM, trace
+from microscope_calibration.common.model import (
+    Parameters4DSTEM, Model4DSTEM, trace, sympy_equals, is_sympy, equals
+)
 
 
 def test_params():
@@ -1303,3 +1307,47 @@ def test_adjust_camera_length(random_params):
                 ))
     assert_allclose(0, np.linalg.norm(distances), atol=1e-12)
     assert modified.camera_length == camera_length
+
+
+x = sym.Symbol('x')
+
+
+@pytest.mark.parametrize(
+        'expr, expected', [
+            (x, True),
+            (0, False),
+            (np.array((x, 0)), False),
+        ]
+)
+def test_is_sympy(expr, expected):
+    res = is_sympy(expr)
+    assert res is expected
+
+
+@pytest.mark.parametrize(
+    'a, b, expected', [
+        (0, 0.0, True),
+        (x, x, True),
+        (sym.S(0), 0.0, True),
+        (x, 0, False),
+        (x, x+1, False),
+    ]
+)
+def test_sympy_equals(a, b, expected):
+    res = sympy_equals(a, b)
+    assert res is expected
+
+
+@pytest.mark.parametrize(
+        'ray1, ray2, expected', [
+            (Ray(x, 0, 0, 0, 0, 0), Ray(2*x-1.0*x + 0.0 - 0, 0, 0, 0, 0, 0), True),
+            (Ray(sym.S(0), 0, 0, 0, 0, 0), Ray(0.0, 0, 0, 0, 0, 0), True),
+            (Ray(sym.S(0), 0, 0, 0, 0, 0), Ray(x, 0, 0, 0, 0, 0), False),
+            (Ray(0, 2.0, 0, 0, 0, 0), Ray(0.0, 2, 0, 0, 0, 0), True),
+            (Ray(0.0, 0, 0, 0, 0, 0), Ray(sym.S(0), 0, 0, 0, 0, 0), True),
+            (Ray(2*x-x, 0, 0, 0, 0, 0), Ray(np.array((x)), 0, 0, 0, 0, 0), True),
+        ]
+)
+def test_equals(ray1, ray2, expected):
+    res = equals(ray1, ray2)
+    assert res is expected
