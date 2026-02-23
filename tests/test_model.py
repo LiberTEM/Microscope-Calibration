@@ -1346,7 +1346,7 @@ def test_sympy_equals(a, b, expected):
             (sym.S(0), 0.0, True),
             (sym.S(0), x, False),
             (0, 0.0, True),
-            (2*x-x, np.array((x)), True),
+            (2*x-x, np.array(x), True),
         ]
 )
 def test_equals(leftval, rightval, expected):
