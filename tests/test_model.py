@@ -1335,19 +1335,29 @@ def test_is_sympy(expr, expected):
 )
 def test_sympy_equals(a, b, expected):
     res = sympy_equals(a, b)
+    res2 = sympy_equals(b, a)
     assert res is expected
+    assert res2 is expected
 
 
 @pytest.mark.parametrize(
-        'ray1, ray2, expected', [
-            (Ray(x, 0, 0, 0, 0, 0), Ray(2*x-1.0*x + 0.0 - 0, 0, 0, 0, 0, 0), True),
-            (Ray(sym.S(0), 0, 0, 0, 0, 0), Ray(0.0, 0, 0, 0, 0, 0), True),
-            (Ray(sym.S(0), 0, 0, 0, 0, 0), Ray(x, 0, 0, 0, 0, 0), False),
-            (Ray(0, 2.0, 0, 0, 0, 0), Ray(0.0, 2, 0, 0, 0, 0), True),
-            (Ray(0.0, 0, 0, 0, 0, 0), Ray(sym.S(0), 0, 0, 0, 0, 0), True),
-            (Ray(2*x-x, 0, 0, 0, 0, 0), Ray(np.array((x)), 0, 0, 0, 0, 0), True),
+        'leftval, rightval, expected', [
+            (x, 2*x-1.0*x, True),
+            (sym.S(0), 0.0, True),
+            (sym.S(0), x, False),
+            (0, 0.0, True),
+            (2*x-x, np.array((x)), True),
         ]
 )
-def test_equals(ray1, ray2, expected):
-    res = equals(ray1, ray2)
-    assert res is expected
+def test_equals(leftval, rightval, expected):
+    values = np.random.random(6)
+    ray = Ray(*(float(v) for v in values))
+    for attr in ('x', 'y', 'dx', 'dy', 'z', 'pathlength'):
+        # "**" means apply dict as keyword arguments
+        left = ray.derive(**{attr: leftval})
+        right = ray.derive(**{attr: rightval})
+        res1 = equals(left, right)
+        # because commutative
+        res2 = equals(right, left)
+        assert res1 is expected
+        assert res2 is expected

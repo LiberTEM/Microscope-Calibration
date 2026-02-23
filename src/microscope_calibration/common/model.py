@@ -60,7 +60,10 @@ def scale_rotate_flip(mat: npt.ArrayLike, xp):
     )
     # undo flip_y
     rot = scan_rot_flip.copy()
-    rot = rot.at[:, 0].set(rot[:, 0] * flip_factor)
+    if xp is jnp:
+        rot = rot.at[:, 0].set(rot[:, 0] * flip_factor)
+    else:
+        rot[:, 0] = rot[:, 0] * flip_factor
 
     angle1 = xp.arctan2(-rot[1, 0], rot[0, 0])
     angle2 = xp.arctan2(rot[0, 1], rot[1, 1])
@@ -124,10 +127,13 @@ def sympy_equals(a: MaybeSympy, b: MaybeSympy) -> bool:
     The existing sympy function expr1.equals(expr2) fails if expr1 is not a sympy exression,
     e.g. a number. Usage of sympy.simplify(expr1) or sympy.Number(expr1) (only for numbers)
     instead of expr1 solves this problem, however it gets a bit messy. Moreover, the implemented
-    sympy_equals() works on the same principle as the sympy one, which garanties the correctness.
+    sympy_equals() works on the same principle as the sympy one, which guarantees the correctness.
 
-    If comparing x = sym.Symbol('x') and a number, returns False, not None.
-    However, x = sym.Symbol('x', zero=True) and zero works (returns True).
+    sympy.simplify(x-0).is_zero returns None for x = sym.Symbol('x'), as the expression (x-0)
+    is undetermined to equal zero. Note that the function sympy_equals() returns False for
+    such case, not None. However, sympy.simplify(x-0).is_zero returns True for
+    x = sym.Symbol('x', zero=True), and sympy.simplify(x-0).is_zero is False for
+    x = sym.Symbol('x', zero=False).
 
     Parameters
     ----------
