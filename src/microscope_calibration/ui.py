@@ -26,7 +26,7 @@ from libertem_ui.display.lines import Curve
 from bokeh.plotting import ColumnDataSource
 from bokeh.events import DoubleTap, Tap
 
-from .common.model import Parameters4DSTEM, DescanError, PixelYX, trace
+from .common.model import Parameters4DSTEM, DescanError, PixelYX
 from .util.optimize import (
     solve_tilt_descan_error_points,
     solve_tilt_descan_error,
@@ -740,8 +740,7 @@ class CoordinateCorrectionLayout:
             scan_pos=scan_pos,
             specimen_px=specimen_px,
         )
-        res = trace(
-            params=params,
+        res = params.trace(
             scan_pos=scan_pos,
             source_dy=slope.dy,
             source_dx=slope.dx,

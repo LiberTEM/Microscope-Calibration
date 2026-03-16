@@ -11,7 +11,6 @@ from microscope_calibration.common.model import (
     CoordXY,
     DescanError,
     Scanner,
-    trace,
 )
 
 
@@ -129,8 +128,7 @@ def get_backward_transformation_matrix(
             scan_pos = PixelYX(x=test_param[0], y=test_param[1])
             source_dy = test_param[2]
             source_dx = test_param[3]
-            res = trace(
-                params=rec_params,
+            res = rec_params.trace(
                 scan_pos=scan_pos,
                 source_dy=source_dy,
                 source_dx=source_dx,
@@ -297,15 +295,13 @@ def get_detector_correction_matrix(
             scan_pos = PixelYX(x=test_param[0], y=test_param[1])
             source_dy = test_param[2]
             source_dx = test_param[3]
-            res = trace(
-                params=rec_params,
+            res = rec_params.trace(
                 scan_pos=scan_pos,
                 source_dy=source_dy,
                 source_dx=source_dx,
             )
 
-            ref_res = trace(
-                params=ref_params,
+            ref_res = ref_params.trace(
                 scan_pos=scan_pos,
                 source_dy=source_dy,
                 source_dx=source_dx,
@@ -383,14 +379,12 @@ def get_diffraction_pixel_radius(params: Parameters4DSTEM, twotheta: float):
         scan_pos_y=0.0,
         scan_tilt_x=jnp.tan(twotheta),
     )
-    center_res = trace(
-        params=params,
+    center_res = params.trace(
         scan_pos=PixelYX(0.0, 0.0),
         source_dx=0.0,
         source_dy=0.0,
     )
-    diff_res = trace(
-        params=params,
+    diff_res = params.trace(
         scan_pos=PixelYX(0.0, 0.0),
         source_dx=0.0,
         source_dy=0.0,
@@ -404,14 +398,12 @@ def get_diffraction_pixel_radius(params: Parameters4DSTEM, twotheta: float):
 
 @jax.jit
 def get_primary_beam_radius(params: Parameters4DSTEM):
-    center_res = trace(
-        params=params,
+    center_res = params.trace(
         scan_pos=PixelYX(0.0, 0.0),
         source_dx=0.0,
         source_dy=0.0,
     )
-    border_res = trace(
-        params=params,
+    border_res = params.trace(
         scan_pos=PixelYX(0.0, 0.0),
         source_dx=params.semiconv,
         source_dy=0.0,
@@ -438,8 +430,7 @@ def ring_radii(params: Parameters4DSTEM, twothetas):
 
 @jax.jit
 def get_center(params: Parameters4DSTEM, scan_pos: PixelYX):
-    center_res = trace(
-        params=params,
+    center_res = params.trace(
         scan_pos=scan_pos,
         source_dx=0.0,
         source_dy=0.0,
