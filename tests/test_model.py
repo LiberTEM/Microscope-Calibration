@@ -17,7 +17,7 @@ from microscope_calibration.common.model import Model4DSTEM
 
 
 def test_trace_smoke():
-    params = Model4DSTEM(
+    model = Model4DSTEM(
         overfocus=0.7,
         scan_pixel_pitch=0.005,
         scan_center=PixelYX(y=17, x=13),
@@ -29,7 +29,7 @@ def test_trace_smoke():
         flip_factor=-1.,
         descan_error=DescanError()
     )
-    res = params.trace(scan_pos=PixelYX(y=13, x=7), source_dx=0.034, source_dy=0.042)
+    res = model.trace(scan_pos=PixelYX(y=13, x=7), source_dx=0.034, source_dy=0.042)
     keys = (
         'source', 'overfocus', 'scanner', 'specimen', 'descanner',
         'camera_length', 'detector'
@@ -52,7 +52,7 @@ def test_trace_smoke():
 
 
 def test_trace_focused():
-    params = Model4DSTEM(
+    model = Model4DSTEM(
         overfocus=0.,
         scan_pixel_pitch=0.005,
         scan_center=PixelYX(y=17, x=13),
@@ -64,8 +64,8 @@ def test_trace_focused():
         flip_factor=-1.,
         descan_error=DescanError()
     )
-    res1 = params.trace(scan_pos=PixelYX(y=13, x=7), source_dx=0.034, source_dy=0.042)
-    res2 = params.trace(scan_pos=PixelYX(y=13, x=7), source_dx=0., source_dy=0.)
+    res1 = model.trace(scan_pos=PixelYX(y=13, x=7), source_dx=0.034, source_dy=0.042)
+    res2 = model.trace(scan_pos=PixelYX(y=13, x=7), source_dx=0., source_dy=0.)
     assert_allclose(res1['specimen'].ray.x, res2['specimen'].ray.x)
     assert_allclose(res1['specimen'].ray.y, res2['specimen'].ray.y)
     assert_allclose(res1['specimen'].sampling['scan_px'].x, 7)
@@ -73,7 +73,7 @@ def test_trace_focused():
 
 
 def test_trace_noproject():
-    params = Model4DSTEM(
+    model = Model4DSTEM(
         overfocus=0.123,
         scan_pixel_pitch=0.005,
         scan_center=PixelYX(y=17, x=13),
@@ -85,11 +85,11 @@ def test_trace_noproject():
         flip_factor=-1.,
         descan_error=DescanError()
     )
-    params.trace(scan_pos=PixelYX(y=13, x=7), source_dx=0.034, source_dy=0.042)
+    model.trace(scan_pos=PixelYX(y=13, x=7), source_dx=0.034, source_dy=0.042)
 
 
 def test_trace_underfocused_smoke():
-    params = Model4DSTEM(
+    model = Model4DSTEM(
         overfocus=-0.23,
         scan_pixel_pitch=0.005,
         scan_center=PixelYX(y=17, x=13),
@@ -101,13 +101,13 @@ def test_trace_underfocused_smoke():
         flip_factor=-1.,
         descan_error=DescanError()
     )
-    params.trace(scan_pos=PixelYX(y=13, x=7), source_dx=0.034, source_dy=0.042)
+    model.trace(scan_pos=PixelYX(y=13, x=7), source_dx=0.034, source_dy=0.042)
 
 
 # Beam straight along the optical axis, no scan deflection, scan and detector
 # coordinate system identical with physical coordinates.
 def test_straight():
-    params = Model4DSTEM(
+    model = Model4DSTEM(
         overfocus=1,
         scan_pixel_pitch=1,
         scan_center=PixelYX(y=0., x=0.),
@@ -119,7 +119,7 @@ def test_straight():
         flip_factor=1.,
         descan_error=DescanError()
     )
-    res = params.trace(scan_pos=PixelYX(y=0., x=0.), source_dx=0., source_dy=0.)
+    res = model.trace(scan_pos=PixelYX(y=0., x=0.), source_dx=0., source_dy=0.)
 
     for key, sect in res.items():
         if isinstance(sect.component, Component) or isinstance(sect.component, Source):
@@ -127,7 +127,7 @@ def test_straight():
             assert sect.component.z == sect.ray.pathlength
         assert sect.ray.x == 0.
         assert sect.ray.y == 0.
-    assert res['detector'].ray.z == params.overfocus + params.camera_length
+    assert res['detector'].ray.z == model.overfocus + model.camera_length
     assert res['source'].ray.z == 0.
     assert res['specimen'].sampling['scan_px'] == PixelYX(x=0., y=0.)
     assert res['detector'].sampling['detector_px'] == PixelYX(x=0., y=0.)
@@ -147,7 +147,7 @@ def test_straight():
     'scan_x', (-23, 0., 29)
 )
 def test_scan(dy, dx, scan_y, scan_x):
-    params = Model4DSTEM(
+    model = Model4DSTEM(
         overfocus=1,
         scan_pixel_pitch=1,
         scan_center=PixelYX(y=0., x=0.),
@@ -159,8 +159,8 @@ def test_scan(dy, dx, scan_y, scan_x):
         flip_factor=1.,
         descan_error=DescanError()
     )
-    res_straight = params.trace(scan_pos=PixelYX(y=0., x=0.), source_dx=dx, source_dy=dy)
-    res = params.trace(scan_pos=PixelYX(y=scan_y, x=scan_x), source_dx=dx, source_dy=dy)
+    res_straight = model.trace(scan_pos=PixelYX(y=0., x=0.), source_dx=dx, source_dy=dy)
+    res = model.trace(scan_pos=PixelYX(y=scan_y, x=scan_x), source_dx=dx, source_dy=dy)
 
     for key in res.keys():
         sect = res[key]
@@ -181,7 +181,7 @@ def test_scan(dy, dx, scan_y, scan_x):
             # Ray propagates straight
             assert_allclose(sect.ray.x, sect.ray.z * dx)
             assert_allclose(sect.ray.y, sect.ray.z * dy)
-    assert_allclose(res['detector'].ray.z, params.overfocus + params.camera_length)
+    assert_allclose(res['detector'].ray.z, model.overfocus + model.camera_length)
     assert_allclose(res['source'].ray.z, 0.)
     # Correct scan deflection
     assert_allclose(
@@ -210,8 +210,8 @@ def test_scan(dy, dx, scan_y, scan_x):
         )
     )
     assert_allclose(res['detector'].sampling['detector_px'], PixelYX(
-        x=dx*(params.overfocus + params.camera_length),
-        y=dy*(params.overfocus + params.camera_length)
+        x=dx*(model.overfocus + model.camera_length),
+        y=dy*(model.overfocus + model.camera_length)
     ))
     # check physical coords equals pixel coords
     assert_allclose(
@@ -245,7 +245,7 @@ def test_detector_coordinate_shift_scale_flip(
     dy, dx = dydx
     scan_y = -17
     scan_x = 29
-    params = Model4DSTEM(
+    model = Model4DSTEM(
         overfocus=1,
         scan_pixel_pitch=scan_pixel_pitch,
         scan_center=PixelYX(y=scan_cy, x=scan_cx),
@@ -257,7 +257,7 @@ def test_detector_coordinate_shift_scale_flip(
         flip_factor=flip_factor,
         descan_error=DescanError()
     )
-    res = params.trace(scan_pos=PixelYX(y=scan_y, x=scan_x), source_dx=dx, source_dy=dy)
+    res = model.trace(scan_pos=PixelYX(y=scan_y, x=scan_x), source_dx=dx, source_dy=dy)
     # check physical coords vs pixel coords scale and shift
     assert_allclose(
         res['specimen'].sampling['scan_px'],
@@ -307,7 +307,7 @@ def test_scan_coordinate_shift_scale(scan_cy, scan_cx, scan_pixel_pitch):
     dx = 0.42
     scan_y = -17
     scan_x = 29
-    params = Model4DSTEM(
+    model = Model4DSTEM(
         overfocus=1,
         scan_pixel_pitch=scan_pixel_pitch,
         scan_center=PixelYX(y=scan_cy, x=scan_cx),
@@ -319,7 +319,7 @@ def test_scan_coordinate_shift_scale(scan_cy, scan_cx, scan_pixel_pitch):
         flip_factor=flip_factor,
         descan_error=DescanError()
     )
-    res = params.trace(scan_pos=PixelYX(y=scan_y, x=scan_x), source_dx=dx, source_dy=dy)
+    res = model.trace(scan_pos=PixelYX(y=scan_y, x=scan_x), source_dx=dx, source_dy=dy)
     # check physical coords vs pixel coords scale and shift
     assert_allclose(
         res['specimen'].sampling['scan_px'],
@@ -371,7 +371,7 @@ def test_com_validation(scan_rotation, flip_factor, detector_cy, detector_cx):
             else:
                 return ray
 
-    params = Model4DSTEM(
+    model = Model4DSTEM(
         overfocus=1,
         scan_pixel_pitch=1,
         scan_center=PixelYX(y=0., x=0.),
@@ -390,11 +390,11 @@ def test_com_validation(scan_rotation, flip_factor, detector_cy, detector_cx):
     com_x = np.empty((len(y_deflections), len(x_deflections)))
     for y, scan_y in enumerate(y_deflections):
         for x, scan_x in enumerate(x_deflections):
-            res = params.trace(
+            res = model.trace(
                 scan_pos=PixelYX(x=float(scan_x), y=float(scan_y)),
                 source_dy=0.,
                 source_dx=0.,
-                specimen=PointChargeComponent(z=params.overfocus),
+                specimen=PointChargeComponent(z=model.overfocus),
             )
             # Validate that the ray is deflected towards the center
             # by the point charge component
@@ -463,7 +463,7 @@ def test_rotation_direction_0():
     # https://libertem.github.io/LiberTEM/concepts.html#coordinate-system: y
     # points down, x to the right, z away, and therefore positive scan rotation
     # rotates the scan points to the right.
-    params = Model4DSTEM(
+    model = Model4DSTEM(
         overfocus=1,
         scan_pixel_pitch=1,
         scan_center=PixelYX(y=0., x=0.),
@@ -475,13 +475,13 @@ def test_rotation_direction_0():
         flip_factor=1.,
         descan_error=DescanError()
     )
-    res = params.trace(scan_pos=PixelYX(y=0., x=1.), source_dx=0., source_dy=0.)
+    res = model.trace(scan_pos=PixelYX(y=0., x=1.), source_dx=0., source_dy=0.)
     assert_allclose(res['specimen'].sampling['scan_px'].x, 1., atol=1e-12, rtol=1e-12)
     assert_allclose(res['specimen'].sampling['scan_px'].y, 0., atol=1e-12, rtol=1e-12)
     assert_allclose(res['specimen'].ray.x, 1., atol=1e-12, rtol=1e-12)
     assert_allclose(res['specimen'].ray.y, 0., atol=1e-12, rtol=1e-12)
 
-    res = params.trace(scan_pos=PixelYX(y=1., x=0.), source_dx=0., source_dy=0.)
+    res = model.trace(scan_pos=PixelYX(y=1., x=0.), source_dx=0., source_dy=0.)
     assert_allclose(res['specimen'].sampling['scan_px'].x, 0., atol=1e-12, rtol=1e-12)
     assert_allclose(res['specimen'].sampling['scan_px'].y, 1., atol=1e-12, rtol=1e-12)
     assert_allclose(res['specimen'].ray.x, 0., atol=1e-12, rtol=1e-12)
@@ -496,7 +496,7 @@ def test_rotation_direction_90(flip_factor):
     # https://libertem.github.io/LiberTEM/concepts.html#coordinate-system: y
     # points down, x to the right, z away, and therefore positive scan rotation
     # rotates the scan points to the right in physical coordinates
-    params = Model4DSTEM(
+    model = Model4DSTEM(
         overfocus=1,
         scan_pixel_pitch=1,
         scan_center=PixelYX(y=0., x=0.),
@@ -508,14 +508,14 @@ def test_rotation_direction_90(flip_factor):
         flip_factor=flip_factor,
         descan_error=DescanError()
     )
-    res = params.trace(scan_pos=PixelYX(y=0., x=1.), source_dx=0., source_dy=0.)
+    res = model.trace(scan_pos=PixelYX(y=0., x=1.), source_dx=0., source_dy=0.)
 
     assert_allclose(res['specimen'].sampling['scan_px'].x, 1., atol=1e-12, rtol=1e-12)
     assert_allclose(res['specimen'].sampling['scan_px'].y, 0., atol=1e-12, rtol=1e-12)
     assert_allclose(res['specimen'].ray.x, 0., atol=1e-12, rtol=1e-12)
     assert_allclose(res['specimen'].ray.y, 1., atol=1e-12, rtol=1e-12)
 
-    res = params.trace(scan_pos=PixelYX(y=1., x=0.), source_dx=0., source_dy=0.)
+    res = model.trace(scan_pos=PixelYX(y=1., x=0.), source_dx=0., source_dy=0.)
     assert_allclose(res['specimen'].sampling['scan_px'].x, 0., atol=1e-12, rtol=1e-12)
     assert_allclose(res['specimen'].sampling['scan_px'].y, 1., atol=1e-12, rtol=1e-12)
     assert_allclose(res['specimen'].ray.x, -1., atol=1e-12, rtol=1e-12)
@@ -526,7 +526,7 @@ def test_detector_px():
     # Check conformance with
     # https://libertem.github.io/LiberTEM/concepts.html#coordinate-system: y
     # points down, x to the right, z away.
-    params = Model4DSTEM(
+    model = Model4DSTEM(
         overfocus=1,
         scan_pixel_pitch=1,
         scan_center=PixelYX(y=0., x=0.),
@@ -538,13 +538,13 @@ def test_detector_px():
         flip_factor=1.,
         descan_error=DescanError()
     )
-    res = params.trace(scan_pos=PixelYX(y=0., x=0.), source_dx=0.5, source_dy=0.)
+    res = model.trace(scan_pos=PixelYX(y=0., x=0.), source_dx=0.5, source_dy=0.)
     assert_allclose(res['detector'].sampling['detector_px'].x, 1., atol=1e-12, rtol=1e-12)
     assert_allclose(res['detector'].sampling['detector_px'].y, 0., atol=1e-12, rtol=1e-12)
     assert_allclose(res['detector'].ray.x, 1., atol=1e-12, rtol=1e-12)
     assert_allclose(res['detector'].ray.y, 0., atol=1e-12, rtol=1e-12)
 
-    res = params.trace(scan_pos=PixelYX(y=0., x=0.), source_dx=0., source_dy=0.5)
+    res = model.trace(scan_pos=PixelYX(y=0., x=0.), source_dx=0., source_dy=0.5)
     assert_allclose(res['detector'].sampling['detector_px'].x, 0., atol=1e-12, rtol=1e-12)
     assert_allclose(res['detector'].sampling['detector_px'].y, 1., atol=1e-12, rtol=1e-12)
     assert_allclose(res['detector'].ray.x, 0., atol=1e-12, rtol=1e-12)
@@ -555,7 +555,7 @@ def test_detector_px_flipy():
     # Check conformance with
     # https://libertem.github.io/LiberTEM/concepts.html#coordinate-system: y
     # points down, x to the right, z away.
-    params = Model4DSTEM(
+    model = Model4DSTEM(
         overfocus=1,
         scan_pixel_pitch=1,
         scan_center=PixelYX(y=0., x=0.),
@@ -568,7 +568,7 @@ def test_detector_px_flipy():
         flip_factor=-1.,
         descan_error=DescanError()
     )
-    res = params.trace(
+    res = model.trace(
         scan_pos=PixelYX(y=0., x=0.),
         source_dy=0.,
         source_dx=0.5
@@ -578,7 +578,7 @@ def test_detector_px_flipy():
     assert_allclose(res['detector'].ray.x, 1., atol=1e-12, rtol=1e-12)
     assert_allclose(res['detector'].ray.y, 0., atol=1e-12, rtol=1e-12)
 
-    res = params.trace(
+    res = model.trace(
         scan_pos=PixelYX(y=0., x=0.),
         source_dy=0.5,
         source_dx=0.
@@ -593,7 +593,7 @@ def test_detector_px_rotate():
     # Check conformance with
     # https://libertem.github.io/LiberTEM/concepts.html#coordinate-system: y
     # points down, x to the right, z away.
-    params = Model4DSTEM(
+    model = Model4DSTEM(
         overfocus=1,
         scan_pixel_pitch=1,
         scan_center=PixelYX(y=0., x=0.),
@@ -606,13 +606,13 @@ def test_detector_px_rotate():
         flip_factor=1.,
         descan_error=DescanError()
     )
-    res = params.trace(scan_pos=PixelYX(y=0., x=0.), source_dx=0.5, source_dy=0.)
+    res = model.trace(scan_pos=PixelYX(y=0., x=0.), source_dx=0.5, source_dy=0.)
     assert_allclose(res['detector'].sampling['detector_px'].x, 0., atol=1e-12, rtol=1e-12)
     assert_allclose(res['detector'].sampling['detector_px'].y, -1., atol=1e-12, rtol=1e-12)
     assert_allclose(res['detector'].ray.x, 1., atol=1e-12, rtol=1e-12)
     assert_allclose(res['detector'].ray.y, 0., atol=1e-12, rtol=1e-12)
 
-    res = params.trace(scan_pos=PixelYX(y=0., x=0.), source_dx=0., source_dy=0.5)
+    res = model.trace(scan_pos=PixelYX(y=0., x=0.), source_dx=0., source_dy=0.5)
     assert_allclose(res['detector'].sampling['detector_px'].x, 1., atol=1e-12, rtol=1e-12)
     assert_allclose(res['detector'].sampling['detector_px'].y, 0., atol=1e-12, rtol=1e-12)
     assert_allclose(res['detector'].ray.x, 0., atol=1e-12, rtol=1e-12)
@@ -623,7 +623,7 @@ def test_detector_px_rotate_flipy():
     # Check conformance with
     # https://libertem.github.io/LiberTEM/concepts.html#coordinate-system: y
     # points down, x to the right, z away.
-    params = Model4DSTEM(
+    model = Model4DSTEM(
         overfocus=1,
         scan_pixel_pitch=1,
         scan_center=PixelYX(y=0., x=0.),
@@ -636,13 +636,13 @@ def test_detector_px_rotate_flipy():
         flip_factor=-1.,
         descan_error=DescanError()
     )
-    res = params.trace(scan_pos=PixelYX(y=0., x=0.), source_dx=0.5, source_dy=0.)
+    res = model.trace(scan_pos=PixelYX(y=0., x=0.), source_dx=0.5, source_dy=0.)
     assert_allclose(res['detector'].sampling['detector_px'].x, 0., atol=1e-12, rtol=1e-12)
     assert_allclose(res['detector'].sampling['detector_px'].y, 1., atol=1e-12, rtol=1e-12)
     assert_allclose(res['detector'].ray.x, 1., atol=1e-12, rtol=1e-12)
     assert_allclose(res['detector'].ray.y, 0., atol=1e-12, rtol=1e-12)
 
-    res = params.trace(scan_pos=PixelYX(y=0., x=0.), source_dx=0., source_dy=0.5)
+    res = model.trace(scan_pos=PixelYX(y=0., x=0.), source_dx=0., source_dy=0.5)
     assert_allclose(res['detector'].sampling['detector_px'].x, 1., atol=1e-12, rtol=1e-12)
     assert_allclose(res['detector'].sampling['detector_px'].y, 0., atol=1e-12, rtol=1e-12)
     assert_allclose(res['detector'].ray.x, 0., atol=1e-12, rtol=1e-12)
@@ -663,7 +663,7 @@ def test_detector_px_rotate_flipy():
 )
 def test_geometry(scan, overfocus, camera_length, dydx):
     dy, dx = dydx
-    params = Model4DSTEM(
+    model = Model4DSTEM(
         overfocus=overfocus,
         scan_pixel_pitch=1,
         scan_center=PixelYX(y=0., x=0.),
@@ -675,7 +675,7 @@ def test_geometry(scan, overfocus, camera_length, dydx):
         flip_factor=1.,
         descan_error=DescanError()
     )
-    res = params.trace(scan_pos=scan, source_dx=dx, source_dy=dy)
+    res = model.trace(scan_pos=scan, source_dx=dx, source_dy=dy)
     # No descan error means rays not bent
     for key, sect in res.items():
         assert sect.ray.dy == dy
@@ -692,7 +692,7 @@ def test_geometry(scan, overfocus, camera_length, dydx):
 
 
 def test_descan_offset():
-    params_ref = Model4DSTEM(
+    model_ref = Model4DSTEM(
         overfocus=1,
         scan_pixel_pitch=1,
         scan_center=PixelYX(y=0., x=0.),
@@ -704,13 +704,13 @@ def test_descan_offset():
         flip_factor=1.,
         descan_error=DescanError()
     )
-    res_ref = params_ref.trace(scan_pos=PixelYX(y=23., x=-13.), source_dx=0.5, source_dy=-0.1)
+    res_ref = model_ref.trace(scan_pos=PixelYX(y=23., x=-13.), source_dx=0.5, source_dy=-0.1)
 
     offpxi = 0.11
     offpyi = 0.13
     offsxi = 0.17
     offsyi = 0.19
-    params = Model4DSTEM(
+    model = Model4DSTEM(
         overfocus=1,
         scan_pixel_pitch=1,
         scan_center=PixelYX(y=0., x=0.),
@@ -727,7 +727,7 @@ def test_descan_offset():
             offsyi=offsyi
         )
     )
-    res = params.trace(scan_pos=PixelYX(y=23., x=-13.), source_dx=0.5, source_dy=-0.1)
+    res = model.trace(scan_pos=PixelYX(y=23., x=-13.), source_dx=0.5, source_dy=-0.1)
 
     for key in ('source', 'overfocus', 'scanner', 'specimen'):
         sect_ref = res_ref[key]
@@ -785,7 +785,7 @@ def test_descan_offset():
     'scan', (PixelYX(y=0., x=0.), PixelYX(y=-3., x=5.), )
 )
 def test_descan_position(scan):
-    params_ref = Model4DSTEM(
+    model_ref = Model4DSTEM(
         overfocus=1.,
         scan_pixel_pitch=1.,
         scan_center=PixelYX(y=0., x=0.),
@@ -797,13 +797,13 @@ def test_descan_position(scan):
         flip_factor=1.,
         descan_error=DescanError()
     )
-    res_ref = params_ref.trace(scan_pos=scan, source_dx=0.5, source_dy=-0.1)
+    res_ref = model_ref.trace(scan_pos=scan, source_dx=0.5, source_dy=-0.1)
 
     pxo_pxi = 0.11
     pxo_pyi = 0.13
     pyo_pxi = 0.17
     pyo_pyi = 0.19
-    params = Model4DSTEM(
+    model = Model4DSTEM(
         overfocus=1.,
         scan_pixel_pitch=1.,
         scan_center=PixelYX(y=0., x=0.),
@@ -820,7 +820,7 @@ def test_descan_position(scan):
             pyo_pyi=pyo_pyi
         )
     )
-    res = params.trace(scan_pos=scan, source_dx=0.5, source_dy=-0.1)
+    res = model.trace(scan_pos=scan, source_dx=0.5, source_dy=-0.1)
 
     # no descan error contribution from p*o_p*i parameters
     # if beam is not deflected by scanner
@@ -887,7 +887,7 @@ def test_descan_position(scan):
     'scan', (PixelYX(y=0., x=0.), PixelYX(y=-3., x=5.), )
 )
 def test_descan_slope(scan):
-    params_ref = Model4DSTEM(
+    model_ref = Model4DSTEM(
         overfocus=1.,
         scan_pixel_pitch=1.,
         scan_center=PixelYX(y=0., x=0.),
@@ -899,13 +899,13 @@ def test_descan_slope(scan):
         flip_factor=1.,
         descan_error=DescanError()
     )
-    res_ref = params_ref.trace(scan_pos=scan, source_dx=0.5, source_dy=-0.1)
+    res_ref = model_ref.trace(scan_pos=scan, source_dx=0.5, source_dy=-0.1)
 
     sxo_pxi = 0.11
     sxo_pyi = 0.13
     syo_pxi = 0.17
     syo_pyi = 0.19
-    params = Model4DSTEM(
+    model = Model4DSTEM(
         overfocus=1.,
         scan_pixel_pitch=1.,
         scan_center=PixelYX(y=0., x=0.),
@@ -922,7 +922,7 @@ def test_descan_slope(scan):
             syo_pyi=syo_pyi
         )
     )
-    res = params.trace(scan_pos=scan, source_dx=0.5, source_dy=-0.1)
+    res = model.trace(scan_pos=scan, source_dx=0.5, source_dy=-0.1)
 
     # no descan error contribution from s*o_p*i parameters
     # if beam is not deflected by scanner
@@ -986,7 +986,7 @@ def test_descan_slope(scan):
 
 
 def test_jax_smoke():
-    params = Model4DSTEM(
+    model = Model4DSTEM(
         overfocus=0.7,
         scan_pixel_pitch=0.005,
         scan_center=PixelYX(y=17, x=13),
@@ -1002,7 +1002,7 @@ def test_jax_smoke():
     def test_func(arr):
         scan_y, scan_x, tilt_y, tilt_x, _one = arr
         scan_pos = PixelYX(x=scan_x, y=scan_y)
-        res = params.trace(scan_pos=scan_pos, source_dy=tilt_y, source_dx=tilt_x, _one=_one)
+        res = model.trace(scan_pos=scan_pos, source_dy=tilt_y, source_dx=tilt_x, _one=_one)
         return jnp.array((
             res['specimen'].sampling['scan_px'].y,
             res['specimen'].sampling['scan_px'].x,
@@ -1016,20 +1016,20 @@ def test_jax_smoke():
     jax.jacobian(test_func)(sample)
 
 
-def measure_descan_deviation(params, target_params):
+def measure_descan_deviation(model, target_model):
     distances = []
     for scan_y in (0, 1):
         for scan_x in (0, 1):
             for cl in (0, 1):
-                ref_params = params.derive(
+                ref_model = model.derive(
                     camera_length=cl
                 )
-                ref = ref_params.trace(
+                ref = ref_model.trace(
                     scan_pos=PixelYX(y=scan_y, x=scan_x), source_dy=0., source_dx=0.)
-                opt_params = target_params.derive(
+                opt_model = target_model.derive(
                     camera_length=cl,
                 )
-                opt = opt_params.trace(
+                opt = opt_model.trace(
                     scan_pos=PixelYX(y=scan_y, x=scan_x), source_dy=0., source_dx=0.)
                 distances.append((
                     opt['detector'].sampling['detector_px'].y
@@ -1040,15 +1040,15 @@ def measure_descan_deviation(params, target_params):
     return jnp.linalg.norm(jnp.array(distances))
 
 
-def test_adjust_scan_rotation(random_params: Model4DSTEM):
+def test_adjust_scan_rotation(random_model: Model4DSTEM):
     scan_rotation = np.random.uniform(-np.pi, np.pi)
-    modified = random_params.adjust_scan_rotation(
+    modified = random_model.adjust_scan_rotation(
         scan_rotation=scan_rotation,
     )
-    print(random_params, scan_rotation, modified)
+    print(random_model, scan_rotation, modified)
     assert_allclose(0,
         measure_descan_deviation(
-            random_params,
+            random_model,
             modified,
         ),
         atol=1e-12,
@@ -1056,15 +1056,15 @@ def test_adjust_scan_rotation(random_params: Model4DSTEM):
     assert modified.scan_rotation == scan_rotation
 
 
-def test_adjust_scan_pixel_pitch(random_params):
+def test_adjust_scan_pixel_pitch(random_model):
     scan_pixel_pitch = np.random.uniform(0.0001, 2)
-    modified = random_params.adjust_scan_pixel_pitch(
+    modified = random_model.adjust_scan_pixel_pitch(
         scan_pixel_pitch=scan_pixel_pitch,
     )
-    print(random_params, scan_pixel_pitch, modified)
+    print(random_model, scan_pixel_pitch, modified)
     assert_allclose(0,
         measure_descan_deviation(
-            random_params,
+            random_model,
             modified,
         ),
         atol=1e-12,
@@ -1072,18 +1072,18 @@ def test_adjust_scan_pixel_pitch(random_params):
     assert modified.scan_pixel_pitch == scan_pixel_pitch
 
 
-def test_adjust_scan_center(random_params):
+def test_adjust_scan_center(random_model):
     scan_center = PixelYX(
         y=np.random.uniform(-10, 10),
         x=np.random.uniform(-10, 10),
     )
-    modified = random_params.adjust_scan_center(
+    modified = random_model.adjust_scan_center(
         scan_center=scan_center,
     )
-    print(random_params, scan_center, modified)
+    print(random_model, scan_center, modified)
     assert_allclose(0,
         measure_descan_deviation(
-            random_params,
+            random_model,
             modified,
         ),
         atol=1e-12,
@@ -1091,15 +1091,15 @@ def test_adjust_scan_center(random_params):
     assert modified.scan_center == scan_center
 
 
-def test_adjust_detector_rotation(random_params):
+def test_adjust_detector_rotation(random_model):
     detector_rotation = np.random.uniform(-np.pi, np.pi)
-    modified = random_params.adjust_detector_rotation(
+    modified = random_model.adjust_detector_rotation(
         detector_rotation=detector_rotation,
     )
-    print(random_params, detector_rotation, modified)
+    print(random_model, detector_rotation, modified)
     assert_allclose(0,
         measure_descan_deviation(
-            random_params,
+            random_model,
             modified,
         ),
         atol=1e-12,
@@ -1107,15 +1107,15 @@ def test_adjust_detector_rotation(random_params):
     assert modified.detector_rotation == detector_rotation
 
 
-def test_adjust_flip_y(random_params):
+def test_adjust_flip_y(random_model):
     for flip_factor in (-1., 1.):
-        modified = random_params.adjust_flip_factor(
+        modified = random_model.adjust_flip_factor(
             flip_factor=flip_factor,
         )
-        print(random_params, flip_factor, modified)
+        print(random_model, flip_factor, modified)
         assert_allclose(0,
             measure_descan_deviation(
-                random_params,
+                random_model,
                 modified,
             ),
             atol=1e-12,
@@ -1123,18 +1123,18 @@ def test_adjust_flip_y(random_params):
         assert modified.flip_factor == flip_factor
 
 
-def test_adjust_detector_center(random_params):
+def test_adjust_detector_center(random_model):
     detector_center = PixelYX(
         y=np.random.uniform(-10, 10),
         x=np.random.uniform(-10, 10),
     )
-    modified = random_params.adjust_detector_center(
+    modified = random_model.adjust_detector_center(
         detector_center=detector_center,
     )
-    print(random_params, detector_center, modified)
+    print(random_model, detector_center, modified)
     assert_allclose(0,
         measure_descan_deviation(
-            random_params,
+            random_model,
             modified,
         ),
         atol=1e-12,
@@ -1142,15 +1142,15 @@ def test_adjust_detector_center(random_params):
     assert modified.detector_center == detector_center
 
 
-def test_adjust_detector_pixel_pitch(random_params):
+def test_adjust_detector_pixel_pitch(random_model):
     detector_pixel_pitch = np.random.uniform(0.0001, 2)
-    modified = random_params.adjust_detector_pixel_pitch(
+    modified = random_model.adjust_detector_pixel_pitch(
         detector_pixel_pitch=detector_pixel_pitch,
     )
-    print(random_params, detector_pixel_pitch, modified)
+    print(random_model, detector_pixel_pitch, modified)
     assert_allclose(0,
         measure_descan_deviation(
-            random_params,
+            random_model,
             modified,
         ),
         atol=1e-12,
@@ -1158,11 +1158,11 @@ def test_adjust_detector_pixel_pitch(random_params):
     assert modified.detector_pixel_pitch == detector_pixel_pitch
 
 
-def test_adjust_camera_length(random_params):
+def test_adjust_camera_length(random_model):
     camera_length = np.random.uniform(0.0001, 2)
-    modified = random_params.adjust_camera_length(camera_length)
-    ratio = modified.camera_length / random_params.camera_length
-    print(random_params, camera_length, modified)
+    modified = random_model.adjust_camera_length(camera_length)
+    ratio = modified.camera_length / random_model.camera_length
+    print(random_model, camera_length, modified)
 
     distances = []
     # We check that the model produces the same pixel offsets
@@ -1170,16 +1170,16 @@ def test_adjust_camera_length(random_params):
     for scan_y in (0, 1):
         for scan_x in (0, 1):
             for cl in (0, 1):
-                ref_params = random_params.derive(
+                ref_model = random_model.derive(
                     camera_length=cl
                 )
-                ref = ref_params.trace(
+                ref = ref_model.trace(
                     scan_pos=PixelYX(y=scan_y, x=scan_x), source_dy=0., source_dx=0.)
                 # Scale by `ratio`
-                opt_params = modified.derive(
+                opt_model = modified.derive(
                     camera_length=cl * ratio,
                 )
-                opt = opt_params.trace(
+                opt = opt_model.trace(
                     scan_pos=PixelYX(y=scan_y, x=scan_x), source_dy=0., source_dx=0.)
                 distances.append((
                     opt['detector'].sampling['detector_px'].y

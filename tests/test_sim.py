@@ -64,7 +64,7 @@ def test_project_frame_forward():
 
 
 def test_model_consistency():
-    params = Model4DSTEM(
+    model = Model4DSTEM(
         overfocus=0.123,
         scan_pixel_pitch=0.234,
         camera_length=0.73,
@@ -89,7 +89,7 @@ def test_model_consistency():
             offsyi=0.37
         )
     )
-    mat = get_forward_transformation_matrix(sim_params=params)
+    mat = get_forward_transformation_matrix(sim_model=model)
 
     inp = np.array((2, 3, 5, 7, 1))
     out = inp @ mat
@@ -101,7 +101,7 @@ def test_model_consistency():
     source_dx = out[3]
 
     assert_allclose(out[4], 1)
-    res = params.trace(scan_pos=scan_pos, source_dx=source_dx, source_dy=source_dy)
+    res = model.trace(scan_pos=scan_pos, source_dx=source_dx, source_dy=source_dy)
     assert_allclose(inp[2], res['detector'].sampling['detector_px'].y, rtol=1e-12, atol=1e-12)
     assert_allclose(inp[3], res['detector'].sampling['detector_px'].x, rtol=1e-12, atol=1e-12)
     assert_allclose(out[0], res['specimen'].sampling['scan_px'].y, rtol=1e-12, atol=1e-12)
@@ -112,7 +112,7 @@ def distort(x):
     return np.sign(x) * np.abs(x)**1.0001
 
 
-class BadParams4DSTEM(Model4DSTEM):
+class Badmodel4DSTEM(Model4DSTEM):
     def trace(self, scan_pos, source_dx, source_dy, specimen=None, _one=1.0):
         res = super().trace(scan_pos, source_dx, source_dy, specimen, _one)
         distorted_res = Result4DSTEM()
@@ -157,7 +157,7 @@ class BadParams4DSTEM(Model4DSTEM):
 
 
 def test_nonlinear_model():
-    params = BadParams4DSTEM(
+    model = Badmodel4DSTEM(
         overfocus=0.123,
         scan_pixel_pitch=0.234,
         camera_length=0.73,
@@ -184,11 +184,11 @@ def test_nonlinear_model():
     )
 
     with pytest.raises(RuntimeError, match="not linear"):
-        get_forward_transformation_matrix(sim_params=params)
+        get_forward_transformation_matrix(sim_model=model)
 
 
 def test_no_precision(monkeypatch):
-    params = BadParams4DSTEM(
+    model = Badmodel4DSTEM(
         overfocus=0.123,
         scan_pixel_pitch=0.234,
         camera_length=0.73,
@@ -222,12 +222,12 @@ def test_no_precision(monkeypatch):
         value=jnp.float32
     )
     with pytest.raises(RuntimeError, match='No float64 support'):
-        get_forward_transformation_matrix(sim_params=params)
+        get_forward_transformation_matrix(sim_model=model)
 
 
 def test_project_identity():
     # 1:1 size mapping between detector and specimen
-    params = Model4DSTEM(
+    model = Model4DSTEM(
         overfocus=1,
         scan_pixel_pitch=1,
         camera_length=1,
@@ -244,7 +244,7 @@ def test_project_identity():
         image=obj,
         detector_shape=(32, 13),
         scan_shape=(32, 13),
-        sim_params=params,
+        sim_model=model,
     )
     assert_allclose(obj, res[16, 7])
     assert_allclose(obj, res[:, :, 16, 7])
@@ -252,7 +252,7 @@ def test_project_identity():
 
 def test_project_scale():
     # 1:2 upscaling on the detector
-    params = Model4DSTEM(
+    model = Model4DSTEM(
         overfocus=1,
         scan_pixel_pitch=1,
         camera_length=1,
@@ -269,14 +269,14 @@ def test_project_scale():
         image=obj,
         detector_shape=(64, 64),
         scan_shape=(32, 32),
-        sim_params=params,
+        sim_model=model,
     )
     assert_allclose(obj, res[16, 16, ::2, ::2])
 
 
 def test_project_shift():
     # 1:1 size mapping between detector and specimen
-    params = Model4DSTEM(
+    model = Model4DSTEM(
         overfocus=1,
         scan_pixel_pitch=1,
         camera_length=1,
@@ -293,14 +293,14 @@ def test_project_shift():
         image=obj,
         detector_shape=(32, 13),
         scan_shape=(32, 13),
-        sim_params=params,
+        sim_model=model,
     )
     assert_allclose(obj, res[15, 8])
 
 
 def test_project_rotate():
     # 1:1 size mapping between detector and specimen
-    params = Model4DSTEM(
+    model = Model4DSTEM(
         overfocus=1,
         scan_pixel_pitch=1,
         camera_length=1,
@@ -317,14 +317,14 @@ def test_project_rotate():
         image=obj,
         detector_shape=(32, 32),
         scan_shape=(32, 32),
-        sim_params=params,
+        sim_model=model,
     )
     assert_allclose(obj, np.rot90(res[15, 16], k=1))
 
 
 def test_project_flip():
     # 1:1 size mapping between detector and specimen
-    params = Model4DSTEM(
+    model = Model4DSTEM(
         overfocus=1,
         scan_pixel_pitch=1,
         camera_length=1,
@@ -341,14 +341,14 @@ def test_project_flip():
         image=obj,
         detector_shape=(32, 32),
         scan_shape=(32, 32),
-        sim_params=params,
+        sim_model=model,
     )
     assert_allclose(obj, np.flip(res[15, 16], axis=0))
 
 
 def test_project_detector_rotate():
     # 1:1 size mapping between detector and specimen
-    params = Model4DSTEM(
+    model = Model4DSTEM(
         overfocus=1,
         scan_pixel_pitch=1,
         camera_length=1,
@@ -366,14 +366,14 @@ def test_project_detector_rotate():
         image=obj,
         detector_shape=(32, 32),
         scan_shape=(32, 32),
-        sim_params=params,
+        sim_model=model,
     )
     assert_allclose(obj, np.rot90(res[16, 15], k=-1))
 
 
 def test_project_map_identity():
     # 1:1 size mapping between detector and specimen
-    params = Model4DSTEM(
+    model = Model4DSTEM(
         overfocus=1,
         scan_pixel_pitch=1,
         camera_length=1,
@@ -398,7 +398,7 @@ def test_project_map_identity():
         image=obj,
         detector_shape=(32, 32),
         scan_shape=(32, 32),
-        sim_params=params,
+        sim_model=model,
         specimen_to_image=map_coord
     )
     assert_allclose(obj, res[16, 16])
@@ -407,7 +407,7 @@ def test_project_map_identity():
 
 def test_project_map_scale():
     # 1:1 size mapping between detector and specimen
-    params = Model4DSTEM(
+    model = Model4DSTEM(
         overfocus=1,
         scan_pixel_pitch=1,
         camera_length=1,
@@ -433,7 +433,7 @@ def test_project_map_scale():
         image=obj,
         detector_shape=(32, 32),
         scan_shape=(32, 32),
-        sim_params=params,
+        sim_model=model,
         specimen_to_image=map_coord
     )
     assert_allclose(obj_ref, res[16, 16])
@@ -442,7 +442,7 @@ def test_project_map_scale():
 
 def test_project_map_rotate():
     # 1:1 size mapping between detector and specimen
-    params = Model4DSTEM(
+    model = Model4DSTEM(
         overfocus=1,
         scan_pixel_pitch=1,
         camera_length=1,
@@ -467,7 +467,7 @@ def test_project_map_rotate():
         image=obj,
         detector_shape=(32, 32),
         scan_shape=(32, 32),
-        sim_params=params,
+        sim_model=model,
         specimen_to_image=map_coord
     )
     assert_allclose(obj, np.rot90(res[17, 16], k=-1))
@@ -476,7 +476,7 @@ def test_project_map_rotate():
 
 def test_project_map_flip():
     # 1:1 size mapping between detector and specimen
-    params = Model4DSTEM(
+    model = Model4DSTEM(
         overfocus=1,
         scan_pixel_pitch=1,
         camera_length=1,
@@ -501,7 +501,7 @@ def test_project_map_flip():
         image=obj,
         detector_shape=(32, 32),
         scan_shape=(32, 32),
-        sim_params=params,
+        sim_model=model,
         specimen_to_image=map_coord
     )
     assert_allclose(np.flip(obj, axis=0), res[17, 16])
@@ -509,7 +509,7 @@ def test_project_map_flip():
 
 
 def test_project_fixref_scanscale():
-    params = Model4DSTEM(
+    model = Model4DSTEM(
         overfocus=1,
         scan_pixel_pitch=2,  # <--
         camera_length=1,
@@ -536,7 +536,7 @@ def test_project_fixref_scanscale():
         image=obj,
         detector_shape=(32, 32),
         scan_shape=(32, 32),
-        sim_params=params,
+        sim_model=model,
         specimen_to_image=map_coord
     )
     assert_allclose(det_ref, res[16, 16])
@@ -544,7 +544,7 @@ def test_project_fixref_scanscale():
 
 
 def test_project_fixref_scanshift():
-    params = Model4DSTEM(
+    model = Model4DSTEM(
         overfocus=1,
         scan_pixel_pitch=1,
         camera_length=1,
@@ -569,7 +569,7 @@ def test_project_fixref_scanshift():
         image=obj,
         detector_shape=(32, 32),
         scan_shape=(32, 32),
-        sim_params=params,
+        sim_model=model,
         specimen_to_image=map_coord
     )
     assert_allclose(obj, res[15, 17])
@@ -577,7 +577,7 @@ def test_project_fixref_scanshift():
 
 
 def test_project_fixref_scanrotate():
-    params = Model4DSTEM(
+    model = Model4DSTEM(
         overfocus=1,
         scan_pixel_pitch=1,
         camera_length=1,
@@ -602,7 +602,7 @@ def test_project_fixref_scanrotate():
         image=obj,
         detector_shape=(32, 32),
         scan_shape=(32, 32),
-        sim_params=params,
+        sim_model=model,
         specimen_to_image=map_coord
     )
     assert_allclose(obj, res[16, 16])
@@ -619,7 +619,7 @@ def test_project_aperture():
     # Small epsilon to avoid hitting numerical errors at exactly the pixel boundary
     angle = np.arctan2(obj_half_size*detector_pixel_pitch/2 + 0.001, propagation_distance)
 
-    params = Model4DSTEM(
+    model = Model4DSTEM(
         overfocus=overfocus,
         scan_pixel_pitch=scan_pixel_pitch,
         camera_length=camera_length,
@@ -644,7 +644,7 @@ def test_project_aperture():
         image=obj,
         detector_shape=(2*obj_half_size, 2*obj_half_size),
         scan_shape=(2*obj_half_size, 2*obj_half_size),
-        sim_params=params,
+        sim_model=model,
     )
     assert_allclose(det_ref, res[obj_half_size, obj_half_size])
     assert_allclose(obj, res[:, :, obj_half_size, obj_half_size])
@@ -660,7 +660,7 @@ def test_project_descan():
     # Small epsilon to avoid hitting numerical errors at exactly the pixel boundary
     angle = np.arctan2(obj_half_size*detector_pixel_pitch/2 + 0.001, propagation_distance)
 
-    params = Model4DSTEM(
+    model = Model4DSTEM(
         overfocus=overfocus,
         scan_pixel_pitch=scan_pixel_pitch,
         camera_length=camera_length,
@@ -703,7 +703,7 @@ def test_project_descan():
         image=obj,
         detector_shape=(2*obj_half_size, 2*obj_half_size),
         scan_shape=(2*obj_half_size, 2*obj_half_size),
-        sim_params=params,
+        sim_model=model,
     )
     assert_allclose(det_ref, res[obj_half_size, obj_half_size])
     assert_allclose(det_ref2, res[obj_half_size+1, obj_half_size+1])

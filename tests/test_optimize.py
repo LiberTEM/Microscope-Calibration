@@ -37,7 +37,7 @@ def test_optimize():
     obj_half_size = 16
     angle = np.arctan2(obj_half_size*detector_pixel_pitch/2 + 0.00314157, propagation_distance)
 
-    params = Model4DSTEM(
+    model = Model4DSTEM(
         overfocus=overfocus,
         scan_pixel_pitch=scan_pixel_pitch,
         camera_length=camera_length,
@@ -67,35 +67,35 @@ def test_optimize():
         obj,
         scan_shape=(2*obj_half_size, 2*obj_half_size),
         detector_shape=(4*obj_half_size, 4*obj_half_size),
-        sim_params=params
+        sim_model=model
     )
     ctx = Context.make_with('inline')
     ds = ctx.load('memory', data=sim)
-    udf = OverfocusUDF(overfocus_params={'params': params})
-    make_new_params, loss = make_overfocus_loss_function(
-        params=params,
+    udf = OverfocusUDF(overfocus_model={'model': model})
+    make_new_model, loss = make_overfocus_loss_function(
+        model=model,
         ctx=ctx,
         dataset=ds,
         overfocus_udf=udf,
     )
     res = optimize(loss=loss)
-    res_params = make_new_params(res.x)
-    assert_allclose(res_params.scan_rotation, params.scan_rotation, atol=0.1)
-    assert_allclose(res_params.overfocus, params.overfocus, rtol=0.1)
+    res_model = make_new_model(res.x)
+    assert_allclose(res_model.scan_rotation, model.scan_rotation, atol=0.1)
+    assert_allclose(res_model.overfocus, model.overfocus, rtol=0.1)
 
     valdict = {'val': False}
 
-    def callback(args, new_params, udf_results, current_loss):
+    def callback(args, new_model, udf_results, current_loss):
         if valdict['val']:
             pass
         else:
             valdict['val'] = True
             assert_allclose(args, [0, 0])
-            assert params == new_params
+            assert model == new_model
             assert_allclose(udf_results[0]['backprojected_sum'].data.astype(bool), obj.astype(bool))
 
-    make_new_params, loss = make_overfocus_loss_function(
-        params=params,
+    make_new_model, loss = make_overfocus_loss_function(
+        model=model,
         ctx=ctx,
         dataset=ds,
         overfocus_udf=udf,
@@ -108,9 +108,9 @@ def test_optimize():
         loss=loss, minimizer_kwargs={'method': 'SLSQP'},
         bounds=[(-10, 10), (-10, 10)],
     )
-    res_params = make_new_params(res.x)
-    assert_allclose(res_params.scan_rotation, params.scan_rotation, atol=0.1)
-    assert_allclose(res_params.overfocus, params.overfocus, rtol=0.1)
+    res_model = make_new_model(res.x)
+    assert_allclose(res_model.scan_rotation, model.scan_rotation, atol=0.1)
+    assert_allclose(res_model.overfocus, model.overfocus, rtol=0.1)
 
 
 def test_descan_error():
@@ -122,7 +122,7 @@ def test_descan_error():
     obj_half_size = 16
     angle = np.arctan2(obj_half_size*detector_pixel_pitch/2 + 0.00314157, propagation_distance)
 
-    params = Model4DSTEM(
+    model = Model4DSTEM(
         overfocus=overfocus,
         scan_pixel_pitch=scan_pixel_pitch,
         camera_length=camera_length,
@@ -148,7 +148,7 @@ def test_descan_error():
 
     target_px = []
     for scan_y, scan_x in test_positions:
-        target_res = params.trace(
+        target_res = model.trace(
             scan_pos=PixelYX(y=scan_y, x=scan_x), source_dy=0, source_dx=0)
         target_px.append((
             target_res['detector'].sampling['detector_px'].x,
@@ -160,7 +160,7 @@ def test_descan_error():
     @jax.jit
     def loss(args):
         sxo_pyi, syo_pxi, sxo_pxi, syo_pyi = args
-        opt_params = params.derive(descan_error=DescanError(
+        opt_model = model.derive(descan_error=DescanError(
             sxo_pyi=sxo_pyi,
             syo_pxi=syo_pxi,
             sxo_pxi=sxo_pxi,
@@ -168,7 +168,7 @@ def test_descan_error():
         ))
         res = []
         for scan_y, scan_x in test_positions:
-            opt_res = opt_params.trace(
+            opt_res = opt_model.trace(
                 scan_pos=PixelYX(y=scan_y, x=scan_x), source_dy=0, source_dx=0)
             res.append((
                 opt_res['detector'].sampling['detector_px'].x,
@@ -221,7 +221,7 @@ def test_camera_length():
     # This is known, e.g. from crystal structure, diffraction order and
     # wavelength
     angle = np.arctan2(obj_half_size*detector_pixel_pitch/2 + 0.00314157, propagation_distance)
-    params = Model4DSTEM(
+    model = Model4DSTEM(
         overfocus=overfocus,
         scan_pixel_pitch=scan_pixel_pitch,
         camera_length=camera_length,
@@ -237,7 +237,7 @@ def test_camera_length():
 
     res, residual = solve_camera_length(
         # Start with a negative value on purpose
-        ref_params=params.derive(camera_length=-2*camera_length),
+        ref_model=model.derive(camera_length=-2*camera_length),
         diffraction_angle=angle,
         radius_px=px_radius,
     )
@@ -253,7 +253,7 @@ def test_scan_pixel_pitch():
     propagation_distance = overfocus + camera_length
     obj_half_size = 16
     angle = np.arctan2(obj_half_size*detector_pixel_pitch/2 + 0.00314157, propagation_distance)
-    params = Model4DSTEM(
+    model = Model4DSTEM(
         overfocus=overfocus,
         scan_pixel_pitch=scan_pixel_pitch,
         camera_length=camera_length,
@@ -270,7 +270,7 @@ def test_scan_pixel_pitch():
     distance = np.linalg.norm(np.array(point_2) - np.array(point_1)) * scan_pixel_pitch
 
     res, residual = solve_scan_pixel_pitch(
-        ref_params=params.derive(scan_pixel_pitch=.3543),
+        ref_model=model.derive(scan_pixel_pitch=.3543),
         point_1=point_1,
         point_2=point_2,
         physical_distance=distance,
@@ -306,7 +306,7 @@ def test_full_descan_error(scan_rotation, flip_factor, detector_rotation, descan
     # Small epsilon to combat aliasing
     angle = np.arctan2(obj_half_size*detector_pixel_pitch/2*2 + 0.001, propagation_distance)
 
-    params = Model4DSTEM(
+    model = Model4DSTEM(
         overfocus=overfocus,
         scan_pixel_pitch=scan_pixel_pitch,
         camera_length=camera_length,
@@ -341,15 +341,15 @@ def test_full_descan_error(scan_rotation, flip_factor, detector_rotation, descan
             image=obj,
             detector_shape=(16*obj_half_size, 16*obj_half_size),
             scan_shape=(2*obj_half_size, 2*obj_half_size),
-            sim_params=params.derive(camera_length=cl),
+            sim_model=model.derive(camera_length=cl),
         )
 
     # Calculate CoM regressions with LiberTEM
     ctx = Context.make_with('inline')
     udf = CoMUDF.with_params(
         regression=RegressionOptions.SUBTRACT_LINEAR,
-        cy=params.detector_center.y,
-        cx=params.detector_center.x,
+        cy=model.detector_center.y,
+        cx=model.detector_center.x,
     )
     regs = {}
     for (cl, sim) in sims.items():
@@ -362,14 +362,14 @@ def test_full_descan_error(scan_rotation, flip_factor, detector_rotation, descan
     # values of there regressions should be
     exact_regs = {}
     for cl in sims.keys():
-        exact_params = params.derive(
+        exact_model = model.derive(
             camera_length=cl
         )
-        res_0 = exact_params.trace(scan_pos=PixelYX(y=0., x=0.), source_dy=0., source_dx=0.)
-        res_y = exact_params.trace(scan_pos=PixelYX(y=1., x=0.), source_dy=0., source_dx=0.)
-        res_x = exact_params.trace(scan_pos=PixelYX(y=0., x=1.), source_dy=0., source_dx=0.)
-        dy = res_0['detector'].sampling['detector_px'].y - params.detector_center.y
-        dx = res_0['detector'].sampling['detector_px'].x - params.detector_center.x
+        res_0 = exact_model.trace(scan_pos=PixelYX(y=0., x=0.), source_dy=0., source_dx=0.)
+        res_y = exact_model.trace(scan_pos=PixelYX(y=1., x=0.), source_dy=0., source_dx=0.)
+        res_x = exact_model.trace(scan_pos=PixelYX(y=0., x=1.), source_dy=0., source_dx=0.)
+        dy = res_0['detector'].sampling['detector_px'].y - model.detector_center.y
+        dx = res_0['detector'].sampling['detector_px'].x - model.detector_center.x
         dydy = (
             res_y['detector'].sampling['detector_px'].y
             - res_0['detector'].sampling['detector_px'].y
@@ -400,26 +400,26 @@ def test_full_descan_error(scan_rotation, flip_factor, detector_rotation, descan
         assert_allclose(regs[cl], exact_regs[cl], rtol=5e-2, atol=5e-2)
 
     opt_res, residual = solve_full_descan_error(
-        ref_params=params.derive(
+        ref_model=model.derive(
             descan_error=DescanError(),
         ),
         regressions=exact_regs,
     )
 
-    assert_allclose(params.descan_error, opt_res.descan_error, atol=1e-11)
+    assert_allclose(model.descan_error, opt_res.descan_error, atol=1e-11)
     assert_allclose(residual, 0., atol=1e-11)
 
 
-def test_normalize_descan(random_params):
-    print(random_params)
-    normalized, residual = normalize_descan_error(random_params)
+def test_normalize_descan(random_model):
+    print(random_model)
+    normalized, residual = normalize_descan_error(random_model)
     assert_allclose(residual, 0, atol=1e-11)
 
     for cl in (0.1, 3):
         for sy in (0, 1):
             for sx in (-1, 3):
                 print(cl, sy, sx)
-                pr = random_params.derive(
+                pr = random_model.derive(
                     camera_length=cl,
                 )
                 pn = normalized.derive(
@@ -466,7 +466,7 @@ def test_tilt_descan_error(scan_rotation, flip_factor, detector_rotation, descan
     # Small epsilon to combat aliasing
     angle = np.arctan2(obj_half_size*detector_pixel_pitch/2*2 + 0.001, propagation_distance)
 
-    params = Model4DSTEM(
+    model = Model4DSTEM(
         overfocus=overfocus,
         scan_pixel_pitch=scan_pixel_pitch,
         camera_length=camera_length,
@@ -499,15 +499,15 @@ def test_tilt_descan_error(scan_rotation, flip_factor, detector_rotation, descan
             image=obj,
             detector_shape=(16*obj_half_size, 16*obj_half_size),
             scan_shape=(2*obj_half_size, 2*obj_half_size),
-            sim_params=params,
+            sim_model=model,
         )
 
     # Calculate CoM regressions with LiberTEM
     ctx = Context.make_with('inline')
     udf = CoMUDF.with_params(
         regression=RegressionOptions.SUBTRACT_LINEAR,
-        cy=params.detector_center.y,
-        cx=params.detector_center.x,
+        cy=model.detector_center.y,
+        cx=model.detector_center.x,
     )
     ds = ctx.load('memory', data=sim)
     res = ctx.run_udf(dataset=ds, udf=udf)
@@ -516,11 +516,11 @@ def test_tilt_descan_error(scan_rotation, flip_factor, detector_rotation, descan
     # The regressions from CoM suffer from imprecision due to aliasing
     # To check optimization accuracy and precision we calculate what the exact
     # values of there regressions should be
-    res_0 = params.trace(scan_pos=PixelYX(y=0., x=0.), source_dy=0., source_dx=0.)
-    res_y = params.trace(scan_pos=PixelYX(y=1., x=0.), source_dy=0., source_dx=0.)
-    res_x = params.trace(scan_pos=PixelYX(y=0., x=1.), source_dy=0., source_dx=0.)
-    dy = res_0['detector'].sampling['detector_px'].y - params.detector_center.y
-    dx = res_0['detector'].sampling['detector_px'].x - params.detector_center.x
+    res_0 = model.trace(scan_pos=PixelYX(y=0., x=0.), source_dy=0., source_dx=0.)
+    res_y = model.trace(scan_pos=PixelYX(y=1., x=0.), source_dy=0., source_dx=0.)
+    res_x = model.trace(scan_pos=PixelYX(y=0., x=1.), source_dy=0., source_dx=0.)
+    dy = res_0['detector'].sampling['detector_px'].y - model.detector_center.y
+    dx = res_0['detector'].sampling['detector_px'].x - model.detector_center.x
     dydy = (
         res_y['detector'].sampling['detector_px'].y
         - res_0['detector'].sampling['detector_px'].y
@@ -549,8 +549,8 @@ def test_tilt_descan_error(scan_rotation, flip_factor, detector_rotation, descan
     assert_allclose(reg, exact_reg, rtol=5e-2, atol=5e-2)
 
     opt_res, residual = solve_tilt_descan_error(
-        ref_params=params.derive(
-            descan_error=_tilt_descan(de=params.descan_error, y=np.zeros(6)),
+        ref_model=model.derive(
+            descan_error=_tilt_descan(de=model.descan_error, y=np.zeros(6)),
         ),
         regression=exact_reg,
     )
@@ -559,7 +559,7 @@ def test_tilt_descan_error(scan_rotation, flip_factor, detector_rotation, descan
                 'sxo_pxi', 'syo_pyi', 'syo_pxi', 'sxo_pyi'):
         print(key)
         assert_allclose(
-            getattr(params.descan_error, key),
+            getattr(model.descan_error, key),
             getattr(opt_res.descan_error, key),
             atol=1e-11
         )
@@ -597,7 +597,7 @@ def test_tilt_descan_error_points(
     # Small epsilon to combat aliasing
     angle = np.arctan2(obj_half_size*detector_pixel_pitch/2*2 + 0.001, propagation_distance)
 
-    params = Model4DSTEM(
+    model = Model4DSTEM(
         overfocus=overfocus,
         scan_pixel_pitch=scan_pixel_pitch,
         camera_length=camera_length,
@@ -626,16 +626,16 @@ def test_tilt_descan_error_points(
 
     points = []
     for (scan_y, scan_x) in scan_pos:
-        res = params.trace(
+        res = model.trace(
             scan_pos=PixelYX(y=scan_y, x=scan_x),
             source_dx=0., source_dy=0.,
         )
         detector_center = res['detector'].sampling['detector_px']
         points.append((scan_y, scan_x, detector_center.y, detector_center.x))
     opt_res, residual = solve_tilt_descan_error_points(
-        ref_params=params.derive(
+        ref_model=model.derive(
             # Blank out the tilt parts of the descan error
-            descan_error=_tilt_descan(de=params.descan_error, y=np.zeros(6)),
+            descan_error=_tilt_descan(de=model.descan_error, y=np.zeros(6)),
         ),
         points=points,
     )
@@ -650,10 +650,10 @@ def test_tilt_descan_error_points(
     for key in attrs:
         print(key)
         assert_allclose(
-            getattr(params.descan_error, key),
+            getattr(model.descan_error, key),
             getattr(opt_res.descan_error, key),
             # For some reason less accurate than in other tests
             atol=1e-8
         )
-        assert isinstance(getattr(params.descan_error, key), float)
+        assert isinstance(getattr(model.descan_error, key), float)
         assert isinstance(getattr(opt_res.descan_error, key), float)

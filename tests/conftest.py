@@ -6,7 +6,7 @@ from microscope_calibration.common.model import Model4DSTEM, PixelYX, DescanErro
 
 
 @pytest.fixture
-def random_params() -> Model4DSTEM:
+def random_model() -> Model4DSTEM:
     return Model4DSTEM(
         overfocus=np.random.uniform(0.1, 2),
         scan_pixel_pitch=np.random.uniform(0.01, 2),

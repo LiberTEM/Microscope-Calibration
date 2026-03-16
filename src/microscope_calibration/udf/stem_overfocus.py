@@ -24,27 +24,27 @@ log = logging.getLogger(__name__)
 class BaseCorrectionUDF(UDF):
     def __init__(
         self,
-        overfocus_params: dict,
+        overfocus_model: dict,
         *args,
         back_mat=None,
         corr_mat=None,
-        ref_params=None,
+        ref_model=None,
         **kwargs,
     ):
         """
-        Params are wrapped in a dict since that allows in-place updates, see
+        model are wrapped in a dict since that allows in-place updates, see
         https://github.com/LiberTEM/LiberTEM/issues/1780
         """
         # Detect changes so that the mapping matrices are recalculated
-        if overfocus_params["params"] != ref_params:
-            back_mat = self._back_mat(rec_params=overfocus_params["params"])
-            corr_mat = self._corr_mat(rec_params=overfocus_params["params"])
+        if overfocus_model["model"] != ref_model:
+            back_mat = self._back_mat(rec_model=overfocus_model["model"])
+            corr_mat = self._corr_mat(rec_model=overfocus_model["model"])
         return super().__init__(
             *args,
-            overfocus_params=overfocus_params,
+            overfocus_model=overfocus_model,
             back_mat=back_mat,
             corr_mat=corr_mat,
-            ref_params=overfocus_params["params"],
+            ref_model=overfocus_model["model"],
             **kwargs,
         )
 
@@ -92,17 +92,17 @@ class OverfocusUDF(BaseCorrectionUDF):
 
     def process_frame(self, frame):
         scan_y, scan_x = self.meta.coordinates[0]
-        overfocus_params: Model4DSTEM = self.params.overfocus_params["params"]
+        overfocus_model: Model4DSTEM = self.params.overfocus_model["model"]
         if self.has_backprojection:
             project_frame_backwards(
                 frame=frame,
-                source_semiconv=overfocus_params.semiconv,
+                source_semiconv=overfocus_model.semiconv,
                 scan_y=scan_y,
                 scan_x=scan_x,
                 mat=self.params.back_mat,
                 image_out=self.results.backprojected_sum,
             )
-        center = overfocus_params.detector_center
+        center = overfocus_model.detector_center
         if self.has_correction:
             det_y = corrected_det_y(
                 det_corr_y=center.y,
@@ -148,16 +148,16 @@ class OverfocusUDF(BaseCorrectionUDF):
 class CorrectedPickUDF(BaseCorrectionUDF):
     def __init__(
         self,
-        overfocus_params,
+        overfocus_model,
         back_mat=None,
         corr_mat=None,
-        ref_params=None,
+        ref_model=None,
     ):
         super().__init__(
-            overfocus_params,
+            overfocus_model,
             back_mat=back_mat,
             corr_mat=corr_mat,
-            ref_params=ref_params,
+            ref_model=ref_model,
         )
 
     def get_preferred_input_dtype(self):
@@ -197,7 +197,7 @@ class CorrectedPickUDF(BaseCorrectionUDF):
     def process_frame(self, frame):
         ""
         scan_y, scan_x = self.meta.coordinates[0]
-        overfocus_params: Model4DSTEM = self.params.overfocus_params["params"]
+        overfocus_model: Model4DSTEM = self.params.overfocus_model["model"]
         # We work in flattened nav space with ROI applied
         sl = self.meta.slice.get()
         if self.has_correction:
@@ -211,7 +211,7 @@ class CorrectedPickUDF(BaseCorrectionUDF):
         if self.has_backprojection:
             project_frame_backwards(
                 frame=frame,
-                source_semiconv=overfocus_params.semiconv,
+                source_semiconv=overfocus_model.semiconv,
                 scan_y=scan_y,
                 scan_x=scan_x,
                 mat=self.params.back_mat,

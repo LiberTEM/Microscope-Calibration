@@ -16,7 +16,7 @@ from libertem.corrections.coordinates import scale, rotate
 
 
 def test_model_consistency_backproject():
-    params = Model4DSTEM(
+    model = Model4DSTEM(
         overfocus=0.123,
         scan_pixel_pitch=0.234,
         camera_length=0.73,
@@ -42,7 +42,7 @@ def test_model_consistency_backproject():
             offsyi=0.37
         )
     )
-    mat = get_backward_transformation_matrix(rec_params=params)
+    mat = get_backward_transformation_matrix(rec_model=model)
 
     inp = np.array((2, 3, 5, 7, 1))
     out = inp @ mat
@@ -54,7 +54,7 @@ def test_model_consistency_backproject():
     source_dx = out[3]
 
     assert_allclose(out[4], 1)
-    res = params.trace(scan_pos=scan_pos, source_dx=source_dx, source_dy=source_dy)
+    res = model.trace(scan_pos=scan_pos, source_dx=source_dx, source_dy=source_dy)
     assert_allclose(out[0], res['detector'].sampling['detector_px'].y, rtol=1e-12, atol=1e-12)
     assert_allclose(out[1], res['detector'].sampling['detector_px'].x, rtol=1e-12, atol=1e-12)
     assert_allclose(inp[2], res['specimen'].sampling['scan_px'].y, rtol=1e-12, atol=1e-12)
@@ -62,7 +62,7 @@ def test_model_consistency_backproject():
 
 
 def test_model_consistency_correct():
-    params = Model4DSTEM(
+    model = Model4DSTEM(
         overfocus=0.123,
         scan_pixel_pitch=0.234,
         camera_length=0.73,
@@ -88,7 +88,7 @@ def test_model_consistency_correct():
             offsyi=0.37
         )
     )
-    ref_params = Model4DSTEM(
+    ref_model = Model4DSTEM(
         overfocus=1.1523,
         scan_pixel_pitch=0.4234,
         camera_length=0.7453,
@@ -114,7 +114,7 @@ def test_model_consistency_correct():
             offsyi=0.373
         )
     )
-    mat = get_detector_correction_matrix(rec_params=params, ref_params=ref_params)
+    mat = get_detector_correction_matrix(rec_model=model, ref_model=ref_model)
 
     inp = np.array((2, 3, 5, 7, 1))
     out = inp @ mat
@@ -126,9 +126,9 @@ def test_model_consistency_correct():
     source_dx = out[3]
 
     assert_allclose(out[4], 1)
-    res = params.trace(scan_pos=scan_pos, source_dx=source_dx, source_dy=source_dy)
+    res = model.trace(scan_pos=scan_pos, source_dx=source_dx, source_dy=source_dy)
 
-    ref_res = ref_params.trace(scan_pos=scan_pos, source_dx=source_dx, source_dy=source_dy)
+    ref_res = ref_model.trace(scan_pos=scan_pos, source_dx=source_dx, source_dy=source_dy)
 
     assert_allclose(inp[2], ref_res['detector'].sampling['detector_px'].y, rtol=1e-12, atol=1e-12)
     assert_allclose(inp[3], ref_res['detector'].sampling['detector_px'].x, rtol=1e-12, atol=1e-12)
@@ -138,7 +138,7 @@ def test_model_consistency_correct():
 
 def test_backproject_identity():
     # 1:1 size mapping between detector and specimen
-    params = Model4DSTEM(
+    model = Model4DSTEM(
         overfocus=1,
         scan_pixel_pitch=1,
         camera_length=1,
@@ -152,7 +152,7 @@ def test_backproject_identity():
     )
     obj = np.random.random((32, 13))
     res = np.zeros_like(obj)
-    mat = get_backward_transformation_matrix(rec_params=params)
+    mat = get_backward_transformation_matrix(rec_model=model)
     project_frame_backwards(
         frame=obj,
         source_semiconv=np.pi/2,
@@ -168,7 +168,7 @@ def test_backproject_counterrotate():
     # 1:1 size mapping between detector and specimen
     # Rotating detector and scan rotates the whole reference frame
     # so that the result is identity
-    params = Model4DSTEM(
+    model = Model4DSTEM(
         overfocus=1,
         scan_pixel_pitch=1,
         camera_length=1,
@@ -183,7 +183,7 @@ def test_backproject_counterrotate():
     )
     obj = np.random.random((32, 32))
     res = np.zeros_like(obj)
-    mat = get_backward_transformation_matrix(rec_params=params)
+    mat = get_backward_transformation_matrix(rec_model=model)
     project_frame_backwards(
         frame=obj,
         source_semiconv=np.pi/2,
@@ -223,7 +223,7 @@ def test_backproject_rot90_flip(rotate_scan, rotate_detector, fixed_reference, f
     else:
         scan_rotation = 0.
 
-    params = Model4DSTEM(
+    model = Model4DSTEM(
         overfocus=1,
         scan_pixel_pitch=1,
         camera_length=1,
@@ -253,11 +253,11 @@ def test_backproject_rot90_flip(rotate_scan, rotate_detector, fixed_reference, f
         image=obj,
         scan_shape=((32, 32)),
         detector_shape=((32, 32)),
-        sim_params=params,
+        sim_model=model,
         specimen_to_image=map_coord,
     )
     mat = get_backward_transformation_matrix(
-        rec_params=params,
+        rec_model=model,
         specimen_to_image=map_coord,
     )
     # We back-project several scan positions and confirm that
@@ -281,7 +281,7 @@ def test_backproject_rot90_flip(rotate_scan, rotate_detector, fixed_reference, f
 def test_backproject_scale_fixed():
     # scan coordinates are 2x detector coordinates relative to object,
     # but we project from and back-project into fixed 1:1 reference coordinates
-    params = Model4DSTEM(
+    model = Model4DSTEM(
         overfocus=1,
         scan_pixel_pitch=2,
         camera_length=1,
@@ -308,12 +308,12 @@ def test_backproject_scale_fixed():
         image=obj,
         scan_shape=((32, 32)),
         detector_shape=((64, 64)),
-        sim_params=params,
+        sim_model=model,
         specimen_to_image=map_coord,
     )
 
     mat = get_backward_transformation_matrix(
-        rec_params=params,
+        rec_model=model,
         specimen_to_image=map_coord
     )
     project_frame_backwards(
@@ -331,7 +331,7 @@ def test_backproject_scale_fixed():
 def test_backproject_scale_scanref():
     # scan coordinates are 2x detector coordinates,
     # and we project from and back-project into that coordinate system
-    params = Model4DSTEM(
+    model = Model4DSTEM(
         overfocus=1,
         scan_pixel_pitch=2,
         camera_length=1,
@@ -351,12 +351,12 @@ def test_backproject_scale_scanref():
         image=obj,
         scan_shape=((32, 32)),
         detector_shape=((64, 64)),
-        sim_params=params,
+        sim_model=model,
         specimen_to_image=None,
     )
 
     mat = get_backward_transformation_matrix(
-        rec_params=params,
+        rec_model=model,
         specimen_to_image=None
     )
     project_frame_backwards(
@@ -393,7 +393,7 @@ def test_correct(scan_rotation, detector_rotation, flip_factor, manual_reference
     obj_half_size = 16
     angle = np.arctan2(obj_half_size*detector_pixel_pitch/2 + 0.00314157, propagation_distance)
 
-    params = Model4DSTEM(
+    model = Model4DSTEM(
         overfocus=overfocus,
         scan_pixel_pitch=scan_pixel_pitch,
         camera_length=camera_length,
@@ -421,7 +421,7 @@ def test_correct(scan_rotation, detector_rotation, flip_factor, manual_reference
     # Should be identical to the default calculated by get_detector_correction_matrix()
     # Note that this rotates the detector to follow the scan in order to cancel out
     # the scan rotation.
-    params_ref_manual = Model4DSTEM(
+    model_ref_manual = Model4DSTEM(
         overfocus=overfocus,
         scan_pixel_pitch=scan_pixel_pitch,
         camera_length=camera_length,
@@ -435,7 +435,7 @@ def test_correct(scan_rotation, detector_rotation, flip_factor, manual_reference
         descan_error=DescanError()
     )
     # Parameters for simulated result without aberrations
-    params_ref_sim = Model4DSTEM(
+    model_ref_sim = Model4DSTEM(
         overfocus=overfocus,
         scan_pixel_pitch=scan_pixel_pitch,
         camera_length=camera_length,
@@ -451,15 +451,15 @@ def test_correct(scan_rotation, detector_rotation, flip_factor, manual_reference
     # Obtain correction matrix for 4D STEM dataset, i.e. transform the data as
     # if the rotations were 0, no flip, and the descan error was 0.
     mat = get_detector_correction_matrix(
-        rec_params=params,
-        ref_params=params_ref_manual if manual_reference else None,
+        rec_model=model,
+        ref_model=model_ref_manual if manual_reference else None,
     )
     obj = np.random.random((obj_half_size * 2, obj_half_size * 2))
     projected = project(
         image=obj,
         detector_shape=(obj_half_size * 4, obj_half_size * 4),
         scan_shape=(obj_half_size * 2, obj_half_size * 2),
-        sim_params=params,
+        sim_model=model,
     )
     # Calculate corrected 4D STEM dataset, i.e. as if the rotations were 0,
     # no flip, and the descan error was 0.
@@ -477,7 +477,7 @@ def test_correct(scan_rotation, detector_rotation, flip_factor, manual_reference
         image=obj,
         detector_shape=(obj_half_size * 4, obj_half_size * 4),
         scan_shape=(obj_half_size * 2, obj_half_size * 2),
-        sim_params=params_ref_sim,
+        sim_model=model_ref_sim,
     )
     # 100 % match between corrected frames and simulated reference without aberrations
     assert_allclose(projected_ref, out)
@@ -503,7 +503,7 @@ def test_correct_flip(scan_rotation, detector_rotation):
     obj_half_size = 16
     angle = np.arctan2(obj_half_size*detector_pixel_pitch/2 + 0.00314157, propagation_distance)
 
-    params = Model4DSTEM(
+    model = Model4DSTEM(
         overfocus=overfocus,
         scan_pixel_pitch=scan_pixel_pitch,
         camera_length=camera_length,
@@ -529,7 +529,7 @@ def test_correct_flip(scan_rotation, detector_rotation):
     )
     # Manual reference parametes that introduce flip_y
     # and compensate the rotations
-    params_ref_manual = Model4DSTEM(
+    model_ref_manual = Model4DSTEM(
         overfocus=overfocus,
         scan_pixel_pitch=scan_pixel_pitch,
         camera_length=camera_length,
@@ -543,7 +543,7 @@ def test_correct_flip(scan_rotation, detector_rotation):
         descan_error=DescanError()
     )
     # Parameters for simulated result with flip_y
-    params_ref_sim = Model4DSTEM(
+    model_ref_sim = Model4DSTEM(
         overfocus=overfocus,
         scan_pixel_pitch=scan_pixel_pitch,
         camera_length=camera_length,
@@ -559,15 +559,15 @@ def test_correct_flip(scan_rotation, detector_rotation):
     # Obtain correction matrix for 4D STEM dataset that transforms the data as
     # if the rotations were 0, flip_y, and the descan error was 0.
     mat = get_detector_correction_matrix(
-        rec_params=params,
-        ref_params=params_ref_manual,
+        rec_model=model,
+        ref_model=model_ref_manual,
     )
     obj = np.random.random((obj_half_size * 2, obj_half_size * 2))
     projected = project(
         image=obj,
         detector_shape=(obj_half_size * 4, obj_half_size * 4),
         scan_shape=(obj_half_size * 2, obj_half_size * 2),
-        sim_params=params,
+        sim_model=model,
     )
     # Calculate corrected 4D STEM dataset with the rotations were 0,
     # flip, and no descan error.
@@ -585,7 +585,7 @@ def test_correct_flip(scan_rotation, detector_rotation):
         image=obj,
         detector_shape=(obj_half_size * 4, obj_half_size * 4),
         scan_shape=(obj_half_size * 2, obj_half_size * 2),
-        sim_params=params_ref_sim,
+        sim_model=model_ref_sim,
     )
     # 100 % match between corrected frames and simulated reference without aberrations
     assert_allclose(projected_ref, out)
@@ -614,7 +614,7 @@ def test_correct_fixed_manualref(scan_rotation, detector_rotation):
         y, x = rotate(-np.pi/2) @ scale(1/scan_pixel_pitch) @ inp_vec
         return PixelYX(y=y+cy + 2, x=x+cx - 3)
 
-    params = Model4DSTEM(
+    model = Model4DSTEM(
         overfocus=overfocus,
         scan_pixel_pitch=scan_pixel_pitch,
         camera_length=camera_length,
@@ -640,7 +640,7 @@ def test_correct_fixed_manualref(scan_rotation, detector_rotation):
     )
     # Manual reference parametes that introduce flip_y
     # and compensate the rotations
-    params_ref_manual = Model4DSTEM(
+    model_ref_manual = Model4DSTEM(
         overfocus=overfocus,
         # No impact on correction
         scan_pixel_pitch=scan_pixel_pitch * 42,
@@ -657,7 +657,7 @@ def test_correct_fixed_manualref(scan_rotation, detector_rotation):
         descan_error=DescanError()
     )
     # Parameters for simulated result with flip_y
-    params_ref_sim = Model4DSTEM(
+    model_ref_sim = Model4DSTEM(
         overfocus=overfocus,
         scan_pixel_pitch=scan_pixel_pitch,
         camera_length=camera_length,
@@ -675,15 +675,15 @@ def test_correct_fixed_manualref(scan_rotation, detector_rotation):
     # Obtain correction matrix for 4D STEM dataset that transforms the data as
     # if the rotations were 0, flip_y, and the descan error was 0.
     mat = get_detector_correction_matrix(
-        rec_params=params,
-        ref_params=params_ref_manual,
+        rec_model=model,
+        ref_model=model_ref_manual,
     )
     obj = np.random.random((obj_half_size * 2, obj_half_size * 2))
     projected = project(
         image=obj,
         detector_shape=(obj_half_size * 4, obj_half_size * 4),
         scan_shape=(obj_half_size * 2, obj_half_size * 2),
-        sim_params=params,
+        sim_model=model,
         # Detector image correction doesn't interfere with
         # how scan positions are mapped
         specimen_to_image=map_coord,
@@ -704,7 +704,7 @@ def test_correct_fixed_manualref(scan_rotation, detector_rotation):
         image=obj,
         detector_shape=(obj_half_size * 4, obj_half_size * 4),
         scan_shape=(obj_half_size * 2, obj_half_size * 2),
-        sim_params=params_ref_sim,
+        sim_model=model_ref_sim,
         # Detector image correction doesn't interfere with
         # how scan positions are mapped, so we have to use the same mapping here
         specimen_to_image=map_coord,
