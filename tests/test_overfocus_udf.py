@@ -10,14 +10,13 @@ from microscope_calibration.common.stem_overfocus import (
 )
 from microscope_calibration.udf.stem_overfocus import OverfocusUDF
 from microscope_calibration.common.model import (
-    Parameters4DSTEM, PixelYX, DescanError, trace
+    Parameters4DSTEM, PixelYX, DescanError
 )
 
 
 @jax.jit
 def get_beam_center(params: Parameters4DSTEM, scan_y, scan_x):
-    res = trace(
-        params=params,
+    res = params.trace(
         scan_pos=PixelYX(y=scan_y, x=scan_x),
         source_dx=0.,
         source_dy=0.

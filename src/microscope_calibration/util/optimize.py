@@ -14,7 +14,6 @@ from microscope_calibration.common.model import (
     Parameters4DSTEM,
     PixelYX,
     DescanError,
-    trace,
 )
 
 if TYPE_CHECKING:
@@ -168,14 +167,12 @@ class _CLArgs(NamedTuple):
 @jax.jit
 def _cl_loss(y, args: _CLArgs):
     opt_params = args.ref_params.derive(camera_length=y[0], overfocus=0.0)
-    opt_res_1 = trace(
-        opt_params,
+    opt_res_1 = opt_params.trace(
         scan_pos=PixelYX(y=0.0, x=0.0),
         source_dx=args.test_dx,
         source_dy=0.0,
     )
-    opt_res_2 = trace(
-        opt_params,
+    opt_res_2 = opt_params.trace(
         scan_pos=PixelYX(y=0.0, x=0.0),
         source_dx=-args.test_dx,
         source_dy=0.0,
@@ -215,8 +212,8 @@ class _SPPArgs(NamedTuple):
 @jax.jit
 def _spp_loss(y, args: _SPPArgs):
     opt_params = args.ref_params.derive(scan_pixel_pitch=y[0], overfocus=0.0)
-    opt_res_1 = trace(opt_params, scan_pos=args.point_1, source_dx=0.0, source_dy=0.0)
-    opt_res_2 = trace(opt_params, scan_pos=args.point_2, source_dx=0.0, source_dy=0.0)
+    opt_res_1 = opt_params.trace(scan_pos=args.point_1, source_dx=0.0, source_dy=0.0)
+    opt_res_2 = opt_params.trace(scan_pos=args.point_2, source_dx=0.0, source_dy=0.0)
     dx = opt_res_2["specimen"].ray.x - opt_res_1["specimen"].ray.x
     dy = opt_res_2["specimen"].ray.y - opt_res_1["specimen"].ray.y
     opt_distance = jnp.linalg.norm(jnp.array((dy, dx)))
@@ -294,8 +291,7 @@ def _de_full_loss(y, args: _DEFullArgs):
                 det_x = opt_params.detector_center.x + (
                     dx + dxdy * scan_y + dxdx * scan_x
                 )
-                res = trace(
-                    opt_params,
+                res = opt_params.trace(
                     scan_pos=PixelYX(y=scan_y, x=scan_x),
                     source_dx=0.0,
                     source_dy=0.0,
@@ -389,14 +385,12 @@ def _norm_loss(y, args: _NormArgs):
             1.0,
         ):
             for scan_x in (0.0, 1.0):
-                res = trace(
-                    opt_params,
+                res = opt_params.trace(
                     scan_pos=PixelYX(y=scan_y, x=scan_x),
                     source_dy=0.0,
                     source_dx=0.0,
                 )
-                ref = trace(
-                    ref_params,
+                ref = ref_params.trace(
                     scan_pos=PixelYX(y=scan_y, x=scan_x),
                     source_dy=0.0,
                     source_dx=0.0,
@@ -482,8 +476,7 @@ def _de_tilt_loss(y, args: _DETiltArgs):
             dxdx = reg[2, 1]
             det_y = opt_params.detector_center.y + (dy + dydy * scan_y + dydx * scan_x)
             det_x = opt_params.detector_center.x + (dx + dxdy * scan_y + dxdx * scan_x)
-            res = trace(
-                opt_params,
+            res = opt_params.trace(
                 scan_pos=PixelYX(y=scan_y, x=scan_x),
                 source_dx=0.0,
                 source_dy=0.0,
@@ -560,8 +553,7 @@ def _de_tilt_point_loss(y, args: _DETiltPointArgs):
 
     distances = []
     for scan_y, scan_x, det_y, det_x in args.points:
-        res = trace(
-            opt_params,
+        res = opt_params.trace(
             scan_pos=PixelYX(y=scan_y, x=scan_x),
             source_dx=0.0,
             source_dy=0.0,
@@ -626,9 +618,7 @@ def _coords_point_loss(y, args: _CoordPointArgs):
     specimen_distances = []
     for i, (scan_y, scan_x, spec_y, spec_x, det_y, det_x) in enumerate(args.points):
         dy, dx = tilts[2 * i:2 * i + 2]
-        res = trace(
-            opt_params, scan_pos=PixelYX(y=scan_y, x=scan_x), source_dx=dx, source_dy=dy
-        )
+        res = opt_params.trace(scan_pos=PixelYX(y=scan_y, x=scan_x), source_dx=dx, source_dy=dy)
         detector_distances.extend(
             (
                 res["detector"].sampling["detector_px"].y - det_y,
@@ -689,7 +679,7 @@ def _hit_specimen_loss(y, args: _HitSpecimenArgs):
     dy, dx = y
     opt_params = args.params
 
-    res = trace(opt_params, scan_pos=args.scan_pos, source_dx=dx, source_dy=dy)
+    res = opt_params.trace(scan_pos=args.scan_pos, source_dx=dx, source_dy=dy)
     specimen_px = res["specimen"].sampling["scan_px"]
     return jnp.array(
         (specimen_px.x - args.specimen_px.x, specimen_px.y - args.specimen_px.y)

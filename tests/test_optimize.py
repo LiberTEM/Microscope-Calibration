@@ -13,7 +13,7 @@ import jax.numpy as jnp
 from microscope_calibration.util.stem_overfocus_sim import project
 from microscope_calibration.udf.stem_overfocus import OverfocusUDF
 from microscope_calibration.common.model import (
-    Parameters4DSTEM, PixelYX, DescanError, trace
+    Parameters4DSTEM, PixelYX, DescanError
 )
 from microscope_calibration.util.optimize import (
     optimize, make_overfocus_loss_function,
@@ -148,8 +148,8 @@ def test_descan_error():
 
     target_px = []
     for scan_y, scan_x in test_positions:
-        target_res = trace(
-            params=params, scan_pos=PixelYX(y=scan_y, x=scan_x), source_dy=0, source_dx=0)
+        target_res = params.trace(
+            scan_pos=PixelYX(y=scan_y, x=scan_x), source_dy=0, source_dx=0)
         target_px.append((
             target_res['detector'].sampling['detector_px'].x,
             target_res['detector'].sampling['detector_px'].y,
@@ -168,8 +168,8 @@ def test_descan_error():
         ))
         res = []
         for scan_y, scan_x in test_positions:
-            opt_res = trace(
-                params=opt_params, scan_pos=PixelYX(y=scan_y, x=scan_x), source_dy=0, source_dx=0)
+            opt_res = opt_params.trace(
+                scan_pos=PixelYX(y=scan_y, x=scan_x), source_dy=0, source_dx=0)
             res.append((
                 opt_res['detector'].sampling['detector_px'].x,
                 opt_res['detector'].sampling['detector_px'].y,
@@ -365,9 +365,9 @@ def test_full_descan_error(scan_rotation, flip_factor, detector_rotation, descan
         exact_params = params.derive(
             camera_length=cl
         )
-        res_0 = trace(params=exact_params, scan_pos=PixelYX(y=0., x=0.), source_dy=0., source_dx=0.)
-        res_y = trace(params=exact_params, scan_pos=PixelYX(y=1., x=0.), source_dy=0., source_dx=0.)
-        res_x = trace(params=exact_params, scan_pos=PixelYX(y=0., x=1.), source_dy=0., source_dx=0.)
+        res_0 = exact_params.trace(scan_pos=PixelYX(y=0., x=0.), source_dy=0., source_dx=0.)
+        res_y = exact_params.trace(scan_pos=PixelYX(y=1., x=0.), source_dy=0., source_dx=0.)
+        res_x = exact_params.trace(scan_pos=PixelYX(y=0., x=1.), source_dy=0., source_dx=0.)
         dy = res_0['detector'].sampling['detector_px'].y - params.detector_center.y
         dx = res_0['detector'].sampling['detector_px'].x - params.detector_center.x
         dydy = (
@@ -425,8 +425,8 @@ def test_normalize_descan(random_params):
                 pn = normalized.derive(
                     camera_length=cl,
                 )
-                ref = trace(params=pr, scan_pos=PixelYX(y=sy, x=sx), source_dy=0., source_dx=0.)
-                norm = trace(params=pn, scan_pos=PixelYX(y=sy, x=sx), source_dy=0., source_dx=0.)
+                ref = pr.trace(scan_pos=PixelYX(y=sy, x=sx), source_dy=0., source_dx=0.)
+                norm = pn.trace(scan_pos=PixelYX(y=sy, x=sx), source_dy=0., source_dx=0.)
                 assert_allclose(
                     ref['detector'].sampling['detector_px'].x,
                     norm['detector'].sampling['detector_px'].x,
@@ -516,9 +516,9 @@ def test_tilt_descan_error(scan_rotation, flip_factor, detector_rotation, descan
     # The regressions from CoM suffer from imprecision due to aliasing
     # To check optimization accuracy and precision we calculate what the exact
     # values of there regressions should be
-    res_0 = trace(params=params, scan_pos=PixelYX(y=0., x=0.), source_dy=0., source_dx=0.)
-    res_y = trace(params=params, scan_pos=PixelYX(y=1., x=0.), source_dy=0., source_dx=0.)
-    res_x = trace(params=params, scan_pos=PixelYX(y=0., x=1.), source_dy=0., source_dx=0.)
+    res_0 = params.trace(scan_pos=PixelYX(y=0., x=0.), source_dy=0., source_dx=0.)
+    res_y = params.trace(scan_pos=PixelYX(y=1., x=0.), source_dy=0., source_dx=0.)
+    res_x = params.trace(scan_pos=PixelYX(y=0., x=1.), source_dy=0., source_dx=0.)
     dy = res_0['detector'].sampling['detector_px'].y - params.detector_center.y
     dx = res_0['detector'].sampling['detector_px'].x - params.detector_center.x
     dydy = (
@@ -626,8 +626,7 @@ def test_tilt_descan_error_points(
 
     points = []
     for (scan_y, scan_x) in scan_pos:
-        res = trace(
-            params=params,
+        res = params.trace(
             scan_pos=PixelYX(y=scan_y, x=scan_x),
             source_dx=0., source_dy=0.,
         )

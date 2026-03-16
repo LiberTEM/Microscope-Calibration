@@ -5,14 +5,17 @@ import jax; jax.config.update("jax_enable_x64", True)  # noqa
 import numpy as np
 import jax.numpy as jnp
 
+
+from libertem.corrections.coordinates import identity
 from microscope_calibration.util.stem_overfocus_sim import (
     get_forward_transformation_matrix, project_frame_forward,
     project
 )
 from microscope_calibration.common.model import (
-    Parameters4DSTEM, Model4DSTEM, PixelYX, DescanError, Result4DSTEM, ResultSection,
-    identity, scale, rotate, flip_y
+    Parameters4DSTEM, PixelYX, DescanError, Result4DSTEM, ResultSection,
 )
+
+from libertem.corrections.coordinates import scale, rotate, flip_y
 
 
 def test_project_frame_forward():
@@ -98,9 +101,7 @@ def test_model_consistency():
     source_dx = out[3]
 
     assert_allclose(out[4], 1)
-    model = Model4DSTEM.build(params=params, scan_pos=scan_pos)
-    ray = model.make_source_ray(source_dx=source_dx, source_dy=source_dy).ray
-    res = model.trace(ray)
+    res = params.trace(scan_pos=scan_pos, source_dx=source_dx, source_dy=source_dy)
     assert_allclose(inp[2], res['detector'].sampling['detector_px'].y, rtol=1e-12, atol=1e-12)
     assert_allclose(inp[3], res['detector'].sampling['detector_px'].x, rtol=1e-12, atol=1e-12)
     assert_allclose(out[0], res['specimen'].sampling['scan_px'].y, rtol=1e-12, atol=1e-12)
@@ -111,11 +112,11 @@ def distort(x):
     return np.sign(x) * np.abs(x)**1.0001
 
 
-class BadModel(Model4DSTEM):
-    def trace(self, ray):
-        sup = super().trace(ray)
-        res = Result4DSTEM()
-        for key, val in sup.items():
+class BadParams4DSTEM(Parameters4DSTEM):
+    def trace(self, scan_pos, source_dx, source_dy, specimen=None, _one=1.0):
+        res = super().trace(scan_pos, source_dx, source_dy, specimen, _one)
+        distorted_res = Result4DSTEM()
+        for key, val in res.items():
             r = val.ray
             bad_ray = r.derive(
                 x=distort(r.x),
@@ -125,7 +126,7 @@ class BadModel(Model4DSTEM):
             )
             if key == 'specimen':
                 s = val.sampling['scan_px']
-                res[key] = ResultSection(
+                distorted_res[key] = ResultSection(
                     component=val.component,
                     ray=bad_ray,
                     sampling={
@@ -137,7 +138,7 @@ class BadModel(Model4DSTEM):
                 )
             elif key == 'detector':
                 s = val.sampling['detector_px']
-                res[key] = ResultSection(
+                distorted_res[key] = ResultSection(
                     component=val.component,
                     ray=bad_ray,
                     sampling={
@@ -148,15 +149,15 @@ class BadModel(Model4DSTEM):
                     }
                 )
             else:
-                res[key] = ResultSection(
+                distorted_res[key] = ResultSection(
                     component=val.component,
                     ray=bad_ray
                 )
-        return res
+        return distorted_res
 
 
-def test_nonlinear_model(monkeypatch):
-    params = Parameters4DSTEM(
+def test_nonlinear_model():
+    params = BadParams4DSTEM(
         overfocus=0.123,
         scan_pixel_pitch=0.234,
         camera_length=0.73,
@@ -182,18 +183,12 @@ def test_nonlinear_model(monkeypatch):
         )
     )
 
-    import microscope_calibration.common.model
-    monkeypatch.setattr(
-        target=microscope_calibration.common.model,
-        name='Model4DSTEM',
-        value=BadModel
-    )
     with pytest.raises(RuntimeError, match="not linear"):
         get_forward_transformation_matrix(sim_params=params)
 
 
 def test_no_precision(monkeypatch):
-    params = Parameters4DSTEM(
+    params = BadParams4DSTEM(
         overfocus=0.123,
         scan_pixel_pitch=0.234,
         camera_length=0.73,
@@ -220,12 +215,6 @@ def test_no_precision(monkeypatch):
     )
     # We cause discrepancies and "blame" it on lack of precision
     # to test this code path
-    import microscope_calibration.common.model
-    monkeypatch.setattr(
-        target=microscope_calibration.common.model,
-        name='Model4DSTEM',
-        value=BadModel
-    )
     import microscope_calibration.common.stem_overfocus
     monkeypatch.setattr(
         target=microscope_calibration.common.stem_overfocus,

@@ -10,9 +10,9 @@ from microscope_calibration.common.stem_overfocus import (
 )
 from microscope_calibration.util.stem_overfocus_sim import project
 from microscope_calibration.common.model import (
-    Parameters4DSTEM, Model4DSTEM, PixelYX, DescanError,
-    scale, rotate, trace
+    Parameters4DSTEM, PixelYX, DescanError,
 )
+from libertem.corrections.coordinates import scale, rotate
 
 
 def test_model_consistency_backproject():
@@ -54,8 +54,7 @@ def test_model_consistency_backproject():
     source_dx = out[3]
 
     assert_allclose(out[4], 1)
-    res = trace(
-        params=params, scan_pos=scan_pos, source_dx=source_dx, source_dy=source_dy)
+    res = params.trace(scan_pos=scan_pos, source_dx=source_dx, source_dy=source_dy)
     assert_allclose(out[0], res['detector'].sampling['detector_px'].y, rtol=1e-12, atol=1e-12)
     assert_allclose(out[1], res['detector'].sampling['detector_px'].x, rtol=1e-12, atol=1e-12)
     assert_allclose(inp[2], res['specimen'].sampling['scan_px'].y, rtol=1e-12, atol=1e-12)
@@ -127,13 +126,9 @@ def test_model_consistency_correct():
     source_dx = out[3]
 
     assert_allclose(out[4], 1)
-    model = Model4DSTEM.build(params=params, scan_pos=scan_pos)
-    ray = model.make_source_ray(source_dx=source_dx, source_dy=source_dy).ray
-    res = model.trace(ray)
+    res = params.trace(scan_pos=scan_pos, source_dx=source_dx, source_dy=source_dy)
 
-    ref_model = Model4DSTEM.build(params=ref_params, scan_pos=scan_pos)
-    ref_ray = ref_model.make_source_ray(source_dx=source_dx, source_dy=source_dy).ray
-    ref_res = ref_model.trace(ref_ray)
+    ref_res = ref_params.trace(scan_pos=scan_pos, source_dx=source_dx, source_dy=source_dy)
 
     assert_allclose(inp[2], ref_res['detector'].sampling['detector_px'].y, rtol=1e-12, atol=1e-12)
     assert_allclose(inp[3], ref_res['detector'].sampling['detector_px'].x, rtol=1e-12, atol=1e-12)
