@@ -26,7 +26,7 @@ from libertem_ui.display.lines import Curve
 from bokeh.plotting import ColumnDataSource
 from bokeh.events import DoubleTap, Tap
 
-from .common.model import Parameters4DSTEM, DescanError, PixelYX
+from .common.model import Model4DSTEM, DescanError, PixelYX
 from .util.optimize import (
     solve_tilt_descan_error_points,
     solve_tilt_descan_error,
@@ -668,7 +668,7 @@ class CoordinateCorrectionLayout:
         t.value = t.value.drop(t.value.index)
         self.coords_adjusted = False
 
-    def default_params(self) -> Parameters4DSTEM:
+    def default_params(self) -> Model4DSTEM:
         ds = self.dataset
         if ds is None:
             scan_center = PixelYX(0.0, 0.0)
@@ -682,7 +682,7 @@ class CoordinateCorrectionLayout:
                 y=ds.shape.sig[0] / 2,
                 x=ds.shape.sig[1] / 2,
             )
-        return Parameters4DSTEM(
+        return Model4DSTEM(
             overfocus=0.0,
             scan_pixel_pitch=1e-6,
             scan_center=scan_center,
@@ -695,7 +695,7 @@ class CoordinateCorrectionLayout:
             # descan_error=DescanError(sxo_pxi=1, syo_pyi=-3)
         )
 
-    def get_params(self, model_data) -> Parameters4DSTEM:
+    def get_params(self, model_data) -> Model4DSTEM:
         return self.deserialize(model_data["params"][0])
 
     @staticmethod
@@ -733,7 +733,7 @@ class CoordinateCorrectionLayout:
 
     @staticmethod
     def get_feature_on_detector(
-        params: Parameters4DSTEM, scan_pos: PixelYX, specimen_px: PixelYX
+        params: Model4DSTEM, scan_pos: PixelYX, specimen_px: PixelYX
     ) -> PixelYX:
         slope, residual = solve_hit_specimen(
             params=params,
@@ -748,7 +748,7 @@ class CoordinateCorrectionLayout:
         return res["detector"].sampling["detector_px"]
 
     @property
-    def params(self) -> Parameters4DSTEM:
+    def params(self) -> Model4DSTEM:
         return self.get_params(self.model_params.data)
 
     @property
@@ -821,7 +821,7 @@ class CoordinateCorrectionLayout:
         }
 
     @staticmethod
-    def serialize(params: Parameters4DSTEM):
+    def serialize(params: Model4DSTEM):
         return flax.serialization.to_state_dict(params.normalize_types())
 
     def deserialize(self, state_dict):
@@ -830,7 +830,7 @@ class CoordinateCorrectionLayout:
         ).normalize_types()
         return res
 
-    def params_update(self, params: Parameters4DSTEM):
+    def params_update(self, params: Model4DSTEM):
         return {"params": [self.serialize(params)]}
 
     @staticmethod

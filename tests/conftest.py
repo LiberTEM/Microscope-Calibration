@@ -2,12 +2,12 @@ import pytest
 
 import numpy as np
 
-from microscope_calibration.common.model import Parameters4DSTEM, PixelYX, DescanError
+from microscope_calibration.common.model import Model4DSTEM, PixelYX, DescanError
 
 
 @pytest.fixture
-def random_params() -> Parameters4DSTEM:
-    return Parameters4DSTEM(
+def random_params() -> Model4DSTEM:
+    return Model4DSTEM(
         overfocus=np.random.uniform(0.1, 2),
         scan_pixel_pitch=np.random.uniform(0.01, 2),
         scan_center=PixelYX(

@@ -13,7 +13,7 @@ import jax.numpy as jnp
 from microscope_calibration.util.stem_overfocus_sim import project
 from microscope_calibration.udf.stem_overfocus import OverfocusUDF
 from microscope_calibration.common.model import (
-    Parameters4DSTEM, PixelYX, DescanError
+    Model4DSTEM, PixelYX, DescanError
 )
 from microscope_calibration.util.optimize import (
     optimize, make_overfocus_loss_function,
@@ -37,7 +37,7 @@ def test_optimize():
     obj_half_size = 16
     angle = np.arctan2(obj_half_size*detector_pixel_pitch/2 + 0.00314157, propagation_distance)
 
-    params = Parameters4DSTEM(
+    params = Model4DSTEM(
         overfocus=overfocus,
         scan_pixel_pitch=scan_pixel_pitch,
         camera_length=camera_length,
@@ -122,7 +122,7 @@ def test_descan_error():
     obj_half_size = 16
     angle = np.arctan2(obj_half_size*detector_pixel_pitch/2 + 0.00314157, propagation_distance)
 
-    params = Parameters4DSTEM(
+    params = Model4DSTEM(
         overfocus=overfocus,
         scan_pixel_pitch=scan_pixel_pitch,
         camera_length=camera_length,
@@ -221,7 +221,7 @@ def test_camera_length():
     # This is known, e.g. from crystal structure, diffraction order and
     # wavelength
     angle = np.arctan2(obj_half_size*detector_pixel_pitch/2 + 0.00314157, propagation_distance)
-    params = Parameters4DSTEM(
+    params = Model4DSTEM(
         overfocus=overfocus,
         scan_pixel_pitch=scan_pixel_pitch,
         camera_length=camera_length,
@@ -253,7 +253,7 @@ def test_scan_pixel_pitch():
     propagation_distance = overfocus + camera_length
     obj_half_size = 16
     angle = np.arctan2(obj_half_size*detector_pixel_pitch/2 + 0.00314157, propagation_distance)
-    params = Parameters4DSTEM(
+    params = Model4DSTEM(
         overfocus=overfocus,
         scan_pixel_pitch=scan_pixel_pitch,
         camera_length=camera_length,
@@ -306,7 +306,7 @@ def test_full_descan_error(scan_rotation, flip_factor, detector_rotation, descan
     # Small epsilon to combat aliasing
     angle = np.arctan2(obj_half_size*detector_pixel_pitch/2*2 + 0.001, propagation_distance)
 
-    params = Parameters4DSTEM(
+    params = Model4DSTEM(
         overfocus=overfocus,
         scan_pixel_pitch=scan_pixel_pitch,
         camera_length=camera_length,
@@ -466,7 +466,7 @@ def test_tilt_descan_error(scan_rotation, flip_factor, detector_rotation, descan
     # Small epsilon to combat aliasing
     angle = np.arctan2(obj_half_size*detector_pixel_pitch/2*2 + 0.001, propagation_distance)
 
-    params = Parameters4DSTEM(
+    params = Model4DSTEM(
         overfocus=overfocus,
         scan_pixel_pitch=scan_pixel_pitch,
         camera_length=camera_length,
@@ -597,7 +597,7 @@ def test_tilt_descan_error_points(
     # Small epsilon to combat aliasing
     angle = np.arctan2(obj_half_size*detector_pixel_pitch/2*2 + 0.001, propagation_distance)
 
-    params = Parameters4DSTEM(
+    params = Model4DSTEM(
         overfocus=overfocus,
         scan_pixel_pitch=scan_pixel_pitch,
         camera_length=camera_length,

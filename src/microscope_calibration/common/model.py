@@ -59,7 +59,7 @@ Result4DSTEM = OrderedDict[str, ResultSection]
 
 # TODO use LiberTEM-schema later
 @jdc.pytree_dataclass
-class Parameters4DSTEM:
+class Model4DSTEM:
     overfocus: float  # m
     scan_pixel_pitch: float  # m
     scan_center: PixelYX
@@ -86,13 +86,13 @@ class Parameters4DSTEM:
         flip_y: bool | None = None,
         flip_factor: float | None = None,
         descan_error: DescanError | None = None,
-    ) -> "Parameters4DSTEM":
+    ) -> "Model4DSTEM":
         if flip_factor is not None:
             assert flip_y is None
         if flip_y is not None:
             flip_factor = -1. if flip_y else 1.
 
-        return Parameters4DSTEM(
+        return Model4DSTEM(
             overfocus=overfocus if overfocus is not None else self.overfocus,
             scan_pixel_pitch=(
                 scan_pixel_pitch
@@ -126,7 +126,7 @@ class Parameters4DSTEM:
             else self.descan_error,
         )
 
-    def normalize_types(self) -> 'Parameters4DSTEM':
+    def normalize_types(self) -> 'Model4DSTEM':
         return self.derive(
             overfocus=float(self.overfocus),
             scan_pixel_pitch=float(self.scan_pixel_pitch),
@@ -387,7 +387,7 @@ class Parameters4DSTEM:
         assert len(run_result) == 0
         return result
 
-    def adjust_scan_rotation(self, scan_rotation: float) -> "Parameters4DSTEM":
+    def adjust_scan_rotation(self, scan_rotation: float) -> "Model4DSTEM":
         """
         Adjust the scan rotation while keeping the effective descan error
         compensation the same.
@@ -424,7 +424,7 @@ class Parameters4DSTEM:
             descan_error=new_de,
         )
 
-    def adjust_scan_pixel_pitch(self, scan_pixel_pitch: float) -> "Parameters4DSTEM":
+    def adjust_scan_pixel_pitch(self, scan_pixel_pitch: float) -> "Model4DSTEM":
         """
         Adjust the scan pixel pitch while keeping the effective descan error
         compensation the same.
@@ -453,7 +453,7 @@ class Parameters4DSTEM:
             descan_error=new_de,
         )
 
-    def adjust_scan_center(self, scan_center: PixelYX) -> "Parameters4DSTEM":
+    def adjust_scan_center(self, scan_center: PixelYX) -> "Model4DSTEM":
         # Compensate effect of different scan centers with
         # constant offsets of the descanner. We simply measure how much these offsets should be
         # by comparing rays along the optical axis
@@ -485,7 +485,7 @@ class Parameters4DSTEM:
             descan_error=new_de,
         )
 
-    def adjust_detector_rotation(self, detector_rotation: float) -> "Parameters4DSTEM":
+    def adjust_detector_rotation(self, detector_rotation: float) -> "Model4DSTEM":
         de = self.descan_error
         angle = detector_rotation - self.detector_rotation
         # rotate the output direction
@@ -519,7 +519,7 @@ class Parameters4DSTEM:
             descan_error=new_de,
         )
 
-    def adjust_flip_factor(self, flip_factor: float) -> "Parameters4DSTEM":
+    def adjust_flip_factor(self, flip_factor: float) -> "Model4DSTEM":
         # Some import gymnastic to keep the naming clean
         from .model import flip_y
 
@@ -567,7 +567,7 @@ class Parameters4DSTEM:
         else:
             return self
 
-    def adjust_detector_center(self, detector_center: PixelYX) -> "Parameters4DSTEM":
+    def adjust_detector_center(self, detector_center: PixelYX) -> "Model4DSTEM":
         de = self.descan_error
         zero = PixelYX(0, 0)
         other = self.derive(
@@ -599,7 +599,7 @@ class Parameters4DSTEM:
 
     def adjust_detector_pixel_pitch(
         self, detector_pixel_pitch: float
-    ) -> "Parameters4DSTEM":
+    ) -> "Model4DSTEM":
         de = self.descan_error
         ratio = detector_pixel_pitch / self.detector_pixel_pitch
 
@@ -622,7 +622,7 @@ class Parameters4DSTEM:
             descan_error=new_de,
         )
 
-    def adjust_camera_length(self, camera_length: float) -> "Parameters4DSTEM":
+    def adjust_camera_length(self, camera_length: float) -> "Model4DSTEM":
         de = self.descan_error
         ratio = self.camera_length / camera_length
 

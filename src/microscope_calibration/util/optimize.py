@@ -11,7 +11,7 @@ import jax.numpy as jnp
 import optimistix
 
 from microscope_calibration.common.model import (
-    Parameters4DSTEM,
+    Model4DSTEM,
     PixelYX,
     DescanError,
 )
@@ -25,7 +25,7 @@ if TYPE_CHECKING:
 
 
 def make_overfocus_loss_function(
-    params: Parameters4DSTEM,
+    params: Model4DSTEM,
     ctx: "Context",
     dataset: "DataSet",
     overfocus_udf: "OverfocusUDF",
@@ -93,7 +93,7 @@ def make_overfocus_loss_function(
     if blur_function is None:
         blur_function = blur_effect
 
-    def make_new_params(args) -> Parameters4DSTEM:
+    def make_new_params(args) -> Model4DSTEM:
         """
         Map parameters from +-10 to original range
 
@@ -159,7 +159,7 @@ def optimize(loss, bounds=None, minimizer_kwargs=None, **kwargs):
 
 
 class _CLArgs(NamedTuple):
-    ref_params: Parameters4DSTEM
+    ref_params: Model4DSTEM
     test_dx: float
     radius_px: float
 
@@ -185,7 +185,7 @@ def _cl_loss(y, args: _CLArgs):
 
 # FIXME include wavelength calculation etc for more practical
 # input parameters
-def solve_camera_length(ref_params: Parameters4DSTEM, diffraction_angle, radius_px):
+def solve_camera_length(ref_params: Model4DSTEM, diffraction_angle, radius_px):
     args = _CLArgs(
         radius_px=radius_px, test_dx=jnp.tan(diffraction_angle), ref_params=ref_params
     )
@@ -203,7 +203,7 @@ def solve_camera_length(ref_params: Parameters4DSTEM, diffraction_angle, radius_
 
 
 class _SPPArgs(NamedTuple):
-    ref_params: Parameters4DSTEM
+    ref_params: Model4DSTEM
     point_1: PixelYX
     point_2: PixelYX
     physical_distance: float
@@ -221,7 +221,7 @@ def _spp_loss(y, args: _SPPArgs):
 
 
 def solve_scan_pixel_pitch(
-    ref_params: Parameters4DSTEM,
+    ref_params: Model4DSTEM,
     point_1: PixelYX,
     point_2: PixelYX,
     physical_distance: float,
@@ -264,7 +264,7 @@ CoMRegressions = dict[float, CoMRegression]
 class _DEFullArgs(NamedTuple):
     # Aligned with the CoM regression coordinate system.
     # Currently only tested for no scan rotation and no flip_y
-    aligned_params: Parameters4DSTEM
+    aligned_params: Model4DSTEM
     regressions: CoMRegressions
 
 
@@ -305,7 +305,7 @@ def _de_full_loss(y, args: _DEFullArgs):
     return jnp.array(distances)
 
 
-def solve_full_descan_error(ref_params: Parameters4DSTEM, regressions: CoMRegressions):
+def solve_full_descan_error(ref_params: Model4DSTEM, regressions: CoMRegressions):
     # Caveat: scan and detector center of ref_params and of regressions should
     # match.
 
@@ -345,7 +345,7 @@ def solve_full_descan_error(ref_params: Parameters4DSTEM, regressions: CoMRegres
 
 
 class _NormArgs(NamedTuple):
-    ref_params: Parameters4DSTEM
+    ref_params: Model4DSTEM
 
 
 def _zero_const(de: DescanError) -> DescanError:
@@ -406,7 +406,7 @@ def _norm_loss(y, args: _NormArgs):
     return jnp.array(distances)
 
 
-def normalize_descan_error(ref_params: Parameters4DSTEM):
+def normalize_descan_error(ref_params: Model4DSTEM):
     args = _NormArgs(
         ref_params=ref_params,
     )
@@ -437,7 +437,7 @@ def normalize_descan_error(ref_params: Parameters4DSTEM):
 class _DETiltArgs(NamedTuple):
     # Aligned with the CoM regression coordinate system.
     # Currently only tested for no scan rotation and no flip_y
-    aligned_params: Parameters4DSTEM
+    aligned_params: Model4DSTEM
     regression: CoMRegression
 
 
@@ -490,7 +490,7 @@ def _de_tilt_loss(y, args: _DETiltArgs):
     return jnp.array(distances)
 
 
-def solve_tilt_descan_error(ref_params: Parameters4DSTEM, regression: CoMRegression):
+def solve_tilt_descan_error(ref_params: Model4DSTEM, regression: CoMRegression):
     # Caveat: scan and detector center of ref_params and of regressions should
     # match.
 
@@ -540,7 +540,7 @@ def solve_tilt_descan_error(ref_params: Parameters4DSTEM, regression: CoMRegress
 
 
 class _DETiltPointArgs(NamedTuple):
-    params: Parameters4DSTEM
+    params: Model4DSTEM
     # [(scan_y, scan_x, detector_cy, detector_cx) * n]
     points: jnp.ndarray
 
@@ -567,7 +567,7 @@ def _de_tilt_point_loss(y, args: _DETiltPointArgs):
     return jnp.array(distances)
 
 
-def solve_tilt_descan_error_points(ref_params: Parameters4DSTEM, points: jnp.ndarray):
+def solve_tilt_descan_error_points(ref_params: Model4DSTEM, points: jnp.ndarray):
     args = _DETiltPointArgs(
         params=ref_params,
         points=points,
@@ -594,7 +594,7 @@ def solve_tilt_descan_error_points(ref_params: Parameters4DSTEM, points: jnp.nda
 
 
 class _CoordPointArgs(NamedTuple):
-    params: Parameters4DSTEM
+    params: Model4DSTEM
     # [(scan_y, scan_x, specimen_y (px), specimen_x (px), detector_y, detector_x) * n]
     points: jnp.array
 
@@ -639,7 +639,7 @@ def _coords_point_loss(y, args: _CoordPointArgs):
     )
 
 
-def solve_coords_points(ref_params: Parameters4DSTEM, points: jnp.ndarray):
+def solve_coords_points(ref_params: Model4DSTEM, points: jnp.ndarray):
     args = _CoordPointArgs(
         params=ref_params,
         points=points,
@@ -669,7 +669,7 @@ def solve_coords_points(ref_params: Parameters4DSTEM, points: jnp.ndarray):
 
 
 class _HitSpecimenArgs(NamedTuple):
-    params: Parameters4DSTEM
+    params: Model4DSTEM
     scan_pos: PixelYX
     specimen_px: PixelYX
 
@@ -692,7 +692,7 @@ class SlopeYX(NamedTuple):
 
 
 def solve_hit_specimen(
-    params: Parameters4DSTEM, scan_pos: PixelYX, specimen_px: PixelYX
+    params: Model4DSTEM, scan_pos: PixelYX, specimen_px: PixelYX
 ):
     args = _HitSpecimenArgs(
         params=params,

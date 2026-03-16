@@ -12,7 +12,7 @@ from microscope_calibration.util.stem_overfocus_sim import (
     project
 )
 from microscope_calibration.common.model import (
-    Parameters4DSTEM, PixelYX, DescanError, Result4DSTEM, ResultSection,
+    Model4DSTEM, PixelYX, DescanError, Result4DSTEM, ResultSection,
 )
 
 from libertem.corrections.coordinates import scale, rotate, flip_y
@@ -64,7 +64,7 @@ def test_project_frame_forward():
 
 
 def test_model_consistency():
-    params = Parameters4DSTEM(
+    params = Model4DSTEM(
         overfocus=0.123,
         scan_pixel_pitch=0.234,
         camera_length=0.73,
@@ -112,7 +112,7 @@ def distort(x):
     return np.sign(x) * np.abs(x)**1.0001
 
 
-class BadParams4DSTEM(Parameters4DSTEM):
+class BadParams4DSTEM(Model4DSTEM):
     def trace(self, scan_pos, source_dx, source_dy, specimen=None, _one=1.0):
         res = super().trace(scan_pos, source_dx, source_dy, specimen, _one)
         distorted_res = Result4DSTEM()
@@ -227,7 +227,7 @@ def test_no_precision(monkeypatch):
 
 def test_project_identity():
     # 1:1 size mapping between detector and specimen
-    params = Parameters4DSTEM(
+    params = Model4DSTEM(
         overfocus=1,
         scan_pixel_pitch=1,
         camera_length=1,
@@ -252,7 +252,7 @@ def test_project_identity():
 
 def test_project_scale():
     # 1:2 upscaling on the detector
-    params = Parameters4DSTEM(
+    params = Model4DSTEM(
         overfocus=1,
         scan_pixel_pitch=1,
         camera_length=1,
@@ -276,7 +276,7 @@ def test_project_scale():
 
 def test_project_shift():
     # 1:1 size mapping between detector and specimen
-    params = Parameters4DSTEM(
+    params = Model4DSTEM(
         overfocus=1,
         scan_pixel_pitch=1,
         camera_length=1,
@@ -300,7 +300,7 @@ def test_project_shift():
 
 def test_project_rotate():
     # 1:1 size mapping between detector and specimen
-    params = Parameters4DSTEM(
+    params = Model4DSTEM(
         overfocus=1,
         scan_pixel_pitch=1,
         camera_length=1,
@@ -324,7 +324,7 @@ def test_project_rotate():
 
 def test_project_flip():
     # 1:1 size mapping between detector and specimen
-    params = Parameters4DSTEM(
+    params = Model4DSTEM(
         overfocus=1,
         scan_pixel_pitch=1,
         camera_length=1,
@@ -348,7 +348,7 @@ def test_project_flip():
 
 def test_project_detector_rotate():
     # 1:1 size mapping between detector and specimen
-    params = Parameters4DSTEM(
+    params = Model4DSTEM(
         overfocus=1,
         scan_pixel_pitch=1,
         camera_length=1,
@@ -373,7 +373,7 @@ def test_project_detector_rotate():
 
 def test_project_map_identity():
     # 1:1 size mapping between detector and specimen
-    params = Parameters4DSTEM(
+    params = Model4DSTEM(
         overfocus=1,
         scan_pixel_pitch=1,
         camera_length=1,
@@ -407,7 +407,7 @@ def test_project_map_identity():
 
 def test_project_map_scale():
     # 1:1 size mapping between detector and specimen
-    params = Parameters4DSTEM(
+    params = Model4DSTEM(
         overfocus=1,
         scan_pixel_pitch=1,
         camera_length=1,
@@ -442,7 +442,7 @@ def test_project_map_scale():
 
 def test_project_map_rotate():
     # 1:1 size mapping between detector and specimen
-    params = Parameters4DSTEM(
+    params = Model4DSTEM(
         overfocus=1,
         scan_pixel_pitch=1,
         camera_length=1,
@@ -476,7 +476,7 @@ def test_project_map_rotate():
 
 def test_project_map_flip():
     # 1:1 size mapping between detector and specimen
-    params = Parameters4DSTEM(
+    params = Model4DSTEM(
         overfocus=1,
         scan_pixel_pitch=1,
         camera_length=1,
@@ -509,7 +509,7 @@ def test_project_map_flip():
 
 
 def test_project_fixref_scanscale():
-    params = Parameters4DSTEM(
+    params = Model4DSTEM(
         overfocus=1,
         scan_pixel_pitch=2,  # <--
         camera_length=1,
@@ -544,7 +544,7 @@ def test_project_fixref_scanscale():
 
 
 def test_project_fixref_scanshift():
-    params = Parameters4DSTEM(
+    params = Model4DSTEM(
         overfocus=1,
         scan_pixel_pitch=1,
         camera_length=1,
@@ -577,7 +577,7 @@ def test_project_fixref_scanshift():
 
 
 def test_project_fixref_scanrotate():
-    params = Parameters4DSTEM(
+    params = Model4DSTEM(
         overfocus=1,
         scan_pixel_pitch=1,
         camera_length=1,
@@ -619,7 +619,7 @@ def test_project_aperture():
     # Small epsilon to avoid hitting numerical errors at exactly the pixel boundary
     angle = np.arctan2(obj_half_size*detector_pixel_pitch/2 + 0.001, propagation_distance)
 
-    params = Parameters4DSTEM(
+    params = Model4DSTEM(
         overfocus=overfocus,
         scan_pixel_pitch=scan_pixel_pitch,
         camera_length=camera_length,
@@ -660,7 +660,7 @@ def test_project_descan():
     # Small epsilon to avoid hitting numerical errors at exactly the pixel boundary
     angle = np.arctan2(obj_half_size*detector_pixel_pitch/2 + 0.001, propagation_distance)
 
-    params = Parameters4DSTEM(
+    params = Model4DSTEM(
         overfocus=overfocus,
         scan_pixel_pitch=scan_pixel_pitch,
         camera_length=camera_length,

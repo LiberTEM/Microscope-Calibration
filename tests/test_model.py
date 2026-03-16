@@ -13,11 +13,11 @@ from temgym_core.propagator import Propagator
 from temgym_core.source import Source
 from temgym_core import PixelYX
 
-from microscope_calibration.common.model import Parameters4DSTEM
+from microscope_calibration.common.model import Model4DSTEM
 
 
 def test_trace_smoke():
-    params = Parameters4DSTEM(
+    params = Model4DSTEM(
         overfocus=0.7,
         scan_pixel_pitch=0.005,
         scan_center=PixelYX(y=17, x=13),
@@ -52,7 +52,7 @@ def test_trace_smoke():
 
 
 def test_trace_focused():
-    params = Parameters4DSTEM(
+    params = Model4DSTEM(
         overfocus=0.,
         scan_pixel_pitch=0.005,
         scan_center=PixelYX(y=17, x=13),
@@ -73,7 +73,7 @@ def test_trace_focused():
 
 
 def test_trace_noproject():
-    params = Parameters4DSTEM(
+    params = Model4DSTEM(
         overfocus=0.123,
         scan_pixel_pitch=0.005,
         scan_center=PixelYX(y=17, x=13),
@@ -89,7 +89,7 @@ def test_trace_noproject():
 
 
 def test_trace_underfocused_smoke():
-    params = Parameters4DSTEM(
+    params = Model4DSTEM(
         overfocus=-0.23,
         scan_pixel_pitch=0.005,
         scan_center=PixelYX(y=17, x=13),
@@ -107,7 +107,7 @@ def test_trace_underfocused_smoke():
 # Beam straight along the optical axis, no scan deflection, scan and detector
 # coordinate system identical with physical coordinates.
 def test_straight():
-    params = Parameters4DSTEM(
+    params = Model4DSTEM(
         overfocus=1,
         scan_pixel_pitch=1,
         scan_center=PixelYX(y=0., x=0.),
@@ -147,7 +147,7 @@ def test_straight():
     'scan_x', (-23, 0., 29)
 )
 def test_scan(dy, dx, scan_y, scan_x):
-    params = Parameters4DSTEM(
+    params = Model4DSTEM(
         overfocus=1,
         scan_pixel_pitch=1,
         scan_center=PixelYX(y=0., x=0.),
@@ -245,7 +245,7 @@ def test_detector_coordinate_shift_scale_flip(
     dy, dx = dydx
     scan_y = -17
     scan_x = 29
-    params = Parameters4DSTEM(
+    params = Model4DSTEM(
         overfocus=1,
         scan_pixel_pitch=scan_pixel_pitch,
         scan_center=PixelYX(y=scan_cy, x=scan_cx),
@@ -307,7 +307,7 @@ def test_scan_coordinate_shift_scale(scan_cy, scan_cx, scan_pixel_pitch):
     dx = 0.42
     scan_y = -17
     scan_x = 29
-    params = Parameters4DSTEM(
+    params = Model4DSTEM(
         overfocus=1,
         scan_pixel_pitch=scan_pixel_pitch,
         scan_center=PixelYX(y=scan_cy, x=scan_cx),
@@ -371,7 +371,7 @@ def test_com_validation(scan_rotation, flip_factor, detector_cy, detector_cx):
             else:
                 return ray
 
-    params = Parameters4DSTEM(
+    params = Model4DSTEM(
         overfocus=1,
         scan_pixel_pitch=1,
         scan_center=PixelYX(y=0., x=0.),
@@ -463,7 +463,7 @@ def test_rotation_direction_0():
     # https://libertem.github.io/LiberTEM/concepts.html#coordinate-system: y
     # points down, x to the right, z away, and therefore positive scan rotation
     # rotates the scan points to the right.
-    params = Parameters4DSTEM(
+    params = Model4DSTEM(
         overfocus=1,
         scan_pixel_pitch=1,
         scan_center=PixelYX(y=0., x=0.),
@@ -496,7 +496,7 @@ def test_rotation_direction_90(flip_factor):
     # https://libertem.github.io/LiberTEM/concepts.html#coordinate-system: y
     # points down, x to the right, z away, and therefore positive scan rotation
     # rotates the scan points to the right in physical coordinates
-    params = Parameters4DSTEM(
+    params = Model4DSTEM(
         overfocus=1,
         scan_pixel_pitch=1,
         scan_center=PixelYX(y=0., x=0.),
@@ -526,7 +526,7 @@ def test_detector_px():
     # Check conformance with
     # https://libertem.github.io/LiberTEM/concepts.html#coordinate-system: y
     # points down, x to the right, z away.
-    params = Parameters4DSTEM(
+    params = Model4DSTEM(
         overfocus=1,
         scan_pixel_pitch=1,
         scan_center=PixelYX(y=0., x=0.),
@@ -555,7 +555,7 @@ def test_detector_px_flipy():
     # Check conformance with
     # https://libertem.github.io/LiberTEM/concepts.html#coordinate-system: y
     # points down, x to the right, z away.
-    params = Parameters4DSTEM(
+    params = Model4DSTEM(
         overfocus=1,
         scan_pixel_pitch=1,
         scan_center=PixelYX(y=0., x=0.),
@@ -593,7 +593,7 @@ def test_detector_px_rotate():
     # Check conformance with
     # https://libertem.github.io/LiberTEM/concepts.html#coordinate-system: y
     # points down, x to the right, z away.
-    params = Parameters4DSTEM(
+    params = Model4DSTEM(
         overfocus=1,
         scan_pixel_pitch=1,
         scan_center=PixelYX(y=0., x=0.),
@@ -623,7 +623,7 @@ def test_detector_px_rotate_flipy():
     # Check conformance with
     # https://libertem.github.io/LiberTEM/concepts.html#coordinate-system: y
     # points down, x to the right, z away.
-    params = Parameters4DSTEM(
+    params = Model4DSTEM(
         overfocus=1,
         scan_pixel_pitch=1,
         scan_center=PixelYX(y=0., x=0.),
@@ -663,7 +663,7 @@ def test_detector_px_rotate_flipy():
 )
 def test_geometry(scan, overfocus, camera_length, dydx):
     dy, dx = dydx
-    params = Parameters4DSTEM(
+    params = Model4DSTEM(
         overfocus=overfocus,
         scan_pixel_pitch=1,
         scan_center=PixelYX(y=0., x=0.),
@@ -692,7 +692,7 @@ def test_geometry(scan, overfocus, camera_length, dydx):
 
 
 def test_descan_offset():
-    params_ref = Parameters4DSTEM(
+    params_ref = Model4DSTEM(
         overfocus=1,
         scan_pixel_pitch=1,
         scan_center=PixelYX(y=0., x=0.),
@@ -710,7 +710,7 @@ def test_descan_offset():
     offpyi = 0.13
     offsxi = 0.17
     offsyi = 0.19
-    params = Parameters4DSTEM(
+    params = Model4DSTEM(
         overfocus=1,
         scan_pixel_pitch=1,
         scan_center=PixelYX(y=0., x=0.),
@@ -785,7 +785,7 @@ def test_descan_offset():
     'scan', (PixelYX(y=0., x=0.), PixelYX(y=-3., x=5.), )
 )
 def test_descan_position(scan):
-    params_ref = Parameters4DSTEM(
+    params_ref = Model4DSTEM(
         overfocus=1.,
         scan_pixel_pitch=1.,
         scan_center=PixelYX(y=0., x=0.),
@@ -803,7 +803,7 @@ def test_descan_position(scan):
     pxo_pyi = 0.13
     pyo_pxi = 0.17
     pyo_pyi = 0.19
-    params = Parameters4DSTEM(
+    params = Model4DSTEM(
         overfocus=1.,
         scan_pixel_pitch=1.,
         scan_center=PixelYX(y=0., x=0.),
@@ -887,7 +887,7 @@ def test_descan_position(scan):
     'scan', (PixelYX(y=0., x=0.), PixelYX(y=-3., x=5.), )
 )
 def test_descan_slope(scan):
-    params_ref = Parameters4DSTEM(
+    params_ref = Model4DSTEM(
         overfocus=1.,
         scan_pixel_pitch=1.,
         scan_center=PixelYX(y=0., x=0.),
@@ -905,7 +905,7 @@ def test_descan_slope(scan):
     sxo_pyi = 0.13
     syo_pxi = 0.17
     syo_pyi = 0.19
-    params = Parameters4DSTEM(
+    params = Model4DSTEM(
         overfocus=1.,
         scan_pixel_pitch=1.,
         scan_center=PixelYX(y=0., x=0.),
@@ -986,7 +986,7 @@ def test_descan_slope(scan):
 
 
 def test_jax_smoke():
-    params = Parameters4DSTEM(
+    params = Model4DSTEM(
         overfocus=0.7,
         scan_pixel_pitch=0.005,
         scan_center=PixelYX(y=17, x=13),
@@ -1040,7 +1040,7 @@ def measure_descan_deviation(params, target_params):
     return jnp.linalg.norm(jnp.array(distances))
 
 
-def test_adjust_scan_rotation(random_params: Parameters4DSTEM):
+def test_adjust_scan_rotation(random_params: Model4DSTEM):
     scan_rotation = np.random.uniform(-np.pi, np.pi)
     modified = random_params.adjust_scan_rotation(
         scan_rotation=scan_rotation,

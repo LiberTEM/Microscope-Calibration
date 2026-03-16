@@ -6,7 +6,7 @@ import numpy as np
 from libertem.common.math import prod, count_nonzero
 from libertem.udf.base import UDF
 
-from microscope_calibration.common.model import Parameters4DSTEM
+from microscope_calibration.common.model import Model4DSTEM
 from microscope_calibration.common.stem_overfocus import (
     get_backward_transformation_matrix,
     get_detector_correction_matrix,
@@ -92,7 +92,7 @@ class OverfocusUDF(BaseCorrectionUDF):
 
     def process_frame(self, frame):
         scan_y, scan_x = self.meta.coordinates[0]
-        overfocus_params: Parameters4DSTEM = self.params.overfocus_params["params"]
+        overfocus_params: Model4DSTEM = self.params.overfocus_params["params"]
         if self.has_backprojection:
             project_frame_backwards(
                 frame=frame,
@@ -197,7 +197,7 @@ class CorrectedPickUDF(BaseCorrectionUDF):
     def process_frame(self, frame):
         ""
         scan_y, scan_x = self.meta.coordinates[0]
-        overfocus_params: Parameters4DSTEM = self.params.overfocus_params["params"]
+        overfocus_params: Model4DSTEM = self.params.overfocus_params["params"]
         # We work in flattened nav space with ROI applied
         sl = self.meta.slice.get()
         if self.has_correction:

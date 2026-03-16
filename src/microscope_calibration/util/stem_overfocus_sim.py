@@ -6,7 +6,7 @@ import numba
 
 from microscope_calibration.common.stem_overfocus import CoordMappingT, _do_lstsq
 from microscope_calibration.common.model import (
-    Parameters4DSTEM, PixelYX, CoordXY
+    Model4DSTEM, PixelYX, CoordXY
 )
 
 
@@ -52,7 +52,7 @@ def smiley(size):
 
 
 def get_forward_transformation_matrix(
-        sim_params: Parameters4DSTEM, specimen_to_image: Optional[CoordMappingT] = None):
+        sim_params: Model4DSTEM, specimen_to_image: Optional[CoordMappingT] = None):
     '''
     Calculate a transformation matrix that maps from scan position in scan pixel
     coordinates and detector pixel coordinates to specimen coordinates in scan
@@ -176,7 +176,7 @@ def project_frame_forward(obj, source_semiconv, mat, scan_y, scan_x, out):
 
 def project(
         image, scan_shape, detector_shape,
-        sim_params: Parameters4DSTEM,
+        sim_params: Model4DSTEM,
         specimen_to_image: Optional[CoordMappingT] = None):
     result = np.zeros(tuple(scan_shape) + tuple(detector_shape), dtype=image.dtype)
     mat = get_forward_transformation_matrix(
