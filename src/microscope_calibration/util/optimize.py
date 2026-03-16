@@ -25,7 +25,7 @@ if TYPE_CHECKING:
 
 
 def make_overfocus_loss_function(
-    params: Model4DSTEM,
+    model: Model4DSTEM,
     ctx: "Context",
     dataset: "DataSet",
     overfocus_udf: "OverfocusUDF",
@@ -49,7 +49,7 @@ def make_overfocus_loss_function(
 
     Parameters
     ----------
-    params
+    model
         Starting value for optimization
     ctx
         Run UDF using this Context
@@ -72,7 +72,7 @@ def make_overfocus_loss_function(
 
     Returns
     -------
-    make_new_params
+    make_new_model
         Function that updates a copy of the passed input parameters
         with an argument vector of the loss function. Since this vector
         is mapped into a [-10, 10] interval, this function is created to
@@ -84,16 +84,16 @@ def make_overfocus_loss_function(
     """
     # Rotate and scale the angle so that the optimizer works between +-10,
     # corresponding to +- 5 deg
-    rotation_diff = params.scan_rotation * 180 / np.pi
+    rotation_diff = model.scan_rotation * 180 / np.pi
     rotation_scale = 1
     # Values to shift and scale the overfocus so that the optimizer works between +-10
-    overfocus_diff = params.overfocus
-    overfocus_scale = 40 / np.abs(params.overfocus)
+    overfocus_diff = model.overfocus
+    overfocus_scale = 40 / np.abs(model.overfocus)
 
     if blur_function is None:
         blur_function = blur_effect
 
-    def make_new_params(args) -> Model4DSTEM:
+    def make_new_model(args) -> Model4DSTEM:
         """
         Map parameters from +-10 to original range
 
@@ -106,7 +106,7 @@ def make_overfocus_loss_function(
         transformed_rotation, transformed_overfocus = args
         rotation = transformed_rotation / rotation_scale + rotation_diff
         overfocus = transformed_overfocus / overfocus_scale + overfocus_diff
-        return params.derive(
+        return model.derive(
             overfocus=overfocus,
             scan_rotation=rotation / 180 * np.pi,
         )
@@ -126,18 +126,18 @@ def make_overfocus_loss_function(
         args
             (scan_rotation, overfocused) mapped to +-10 range
         """
-        params = make_new_params(args)
+        model = make_new_model(args)
         # Hack to make parameter update work
-        overfocus_udf.params.overfocus_params["params"] = params
+        overfocus_udf.params.overfocus_model["model"] = model
         res = ctx.run_udf(
             dataset=dataset, udf=[overfocus_udf] + list(extra_udfs), **kwargs
         )
         blur = blur_function(res[0]["backprojected_sum"].data)
         if callback is not None:
-            callback(args, overfocus_udf.params.overfocus_params["params"], res, blur)
+            callback(args, overfocus_udf.params.overfocus_model["model"], res, blur)
         return blur
 
-    return make_new_params, loss
+    return make_new_model, loss
 
 
 def optimize(loss, bounds=None, minimizer_kwargs=None, **kwargs):
@@ -159,20 +159,20 @@ def optimize(loss, bounds=None, minimizer_kwargs=None, **kwargs):
 
 
 class _CLArgs(NamedTuple):
-    ref_params: Model4DSTEM
+    ref_model: Model4DSTEM
     test_dx: float
     radius_px: float
 
 
 @jax.jit
 def _cl_loss(y, args: _CLArgs):
-    opt_params = args.ref_params.derive(camera_length=y[0], overfocus=0.0)
-    opt_res_1 = opt_params.trace(
+    opt_model = args.ref_model.derive(camera_length=y[0], overfocus=0.0)
+    opt_res_1 = opt_model.trace(
         scan_pos=PixelYX(y=0.0, x=0.0),
         source_dx=args.test_dx,
         source_dy=0.0,
     )
-    opt_res_2 = opt_params.trace(
+    opt_res_2 = opt_model.trace(
         scan_pos=PixelYX(y=0.0, x=0.0),
         source_dx=-args.test_dx,
         source_dy=0.0,
@@ -185,11 +185,11 @@ def _cl_loss(y, args: _CLArgs):
 
 # FIXME include wavelength calculation etc for more practical
 # input parameters
-def solve_camera_length(ref_params: Model4DSTEM, diffraction_angle, radius_px):
+def solve_camera_length(ref_model: Model4DSTEM, diffraction_angle, radius_px):
     args = _CLArgs(
-        radius_px=radius_px, test_dx=jnp.tan(diffraction_angle), ref_params=ref_params
+        radius_px=radius_px, test_dx=jnp.tan(diffraction_angle), ref_model=ref_model
     )
-    start = jnp.array((ref_params.camera_length,))
+    start = jnp.array((ref_model.camera_length,))
     opt_res = optimistix.least_squares(
         fn=_cl_loss, args=args, solver=optimistix.BFGS(atol=1e-12, rtol=1e-12), y0=start
     )
@@ -197,13 +197,13 @@ def solve_camera_length(ref_params: Model4DSTEM, diffraction_angle, radius_px):
     # The loss function has minima at camera_length and -camera_length.
     # we take the positive side since a negative camera length doesn't make sense
     # for a classical TEM, only for reflection.
-    return ref_params.derive(
+    return ref_model.derive(
         camera_length=jnp.abs(opt_res.value[0]),
     ).normalize_types(), residual
 
 
 class _SPPArgs(NamedTuple):
-    ref_params: Model4DSTEM
+    ref_model: Model4DSTEM
     point_1: PixelYX
     point_2: PixelYX
     physical_distance: float
@@ -211,9 +211,9 @@ class _SPPArgs(NamedTuple):
 
 @jax.jit
 def _spp_loss(y, args: _SPPArgs):
-    opt_params = args.ref_params.derive(scan_pixel_pitch=y[0], overfocus=0.0)
-    opt_res_1 = opt_params.trace(scan_pos=args.point_1, source_dx=0.0, source_dy=0.0)
-    opt_res_2 = opt_params.trace(scan_pos=args.point_2, source_dx=0.0, source_dy=0.0)
+    opt_model = args.ref_model.derive(scan_pixel_pitch=y[0], overfocus=0.0)
+    opt_res_1 = opt_model.trace(scan_pos=args.point_1, source_dx=0.0, source_dy=0.0)
+    opt_res_2 = opt_model.trace(scan_pos=args.point_2, source_dx=0.0, source_dy=0.0)
     dx = opt_res_2["specimen"].ray.x - opt_res_1["specimen"].ray.x
     dy = opt_res_2["specimen"].ray.y - opt_res_1["specimen"].ray.y
     opt_distance = jnp.linalg.norm(jnp.array((dy, dx)))
@@ -221,18 +221,18 @@ def _spp_loss(y, args: _SPPArgs):
 
 
 def solve_scan_pixel_pitch(
-    ref_params: Model4DSTEM,
+    ref_model: Model4DSTEM,
     point_1: PixelYX,
     point_2: PixelYX,
     physical_distance: float,
 ):
     args = _SPPArgs(
-        ref_params=ref_params,
+        ref_model=ref_model,
         point_1=point_1,
         point_2=point_2,
         physical_distance=physical_distance,
     )
-    start = jnp.array((ref_params.scan_pixel_pitch,))
+    start = jnp.array((ref_model.scan_pixel_pitch,))
     opt_res = optimistix.least_squares(
         fn=_spp_loss,
         args=args,
@@ -243,7 +243,7 @@ def solve_scan_pixel_pitch(
     # The loss function has minima at scan_pixel_pitch and -scan_pixel_pitch. we
     # take the positive side since the inversion can be better expressed with a
     # scan rotation.
-    return ref_params.derive(
+    return ref_model.derive(
         scan_pixel_pitch=jnp.abs(opt_res.value[0]),
     ).normalize_types(), residual
 
@@ -264,7 +264,7 @@ CoMRegressions = dict[float, CoMRegression]
 class _DEFullArgs(NamedTuple):
     # Aligned with the CoM regression coordinate system.
     # Currently only tested for no scan rotation and no flip_y
-    aligned_params: Model4DSTEM
+    aligned_model: Model4DSTEM
     regressions: CoMRegressions
 
 
@@ -273,7 +273,7 @@ def _de_full_loss(y, args: _DEFullArgs):
     de = DescanError(*y)
     distances = []
     for cl, reg in args.regressions.items():
-        opt_params = args.aligned_params.derive(
+        opt_model = args.aligned_model.derive(
             camera_length=cl,
             descan_error=de,
         )
@@ -285,13 +285,13 @@ def _de_full_loss(y, args: _DEFullArgs):
                 dxdy = reg[1, 1]
                 dydx = reg[2, 0]
                 dxdx = reg[2, 1]
-                det_y = opt_params.detector_center.y + (
+                det_y = opt_model.detector_center.y + (
                     dy + dydy * scan_y + dydx * scan_x
                 )
-                det_x = opt_params.detector_center.x + (
+                det_x = opt_model.detector_center.x + (
                     dx + dxdy * scan_y + dxdx * scan_x
                 )
-                res = opt_params.trace(
+                res = opt_model.trace(
                     scan_pos=PixelYX(y=scan_y, x=scan_x),
                     source_dx=0.0,
                     source_dy=0.0,
@@ -305,19 +305,19 @@ def _de_full_loss(y, args: _DEFullArgs):
     return jnp.array(distances)
 
 
-def solve_full_descan_error(ref_params: Model4DSTEM, regressions: CoMRegressions):
-    # Caveat: scan and detector center of ref_params and of regressions should
+def solve_full_descan_error(ref_model: Model4DSTEM, regressions: CoMRegressions):
+    # Caveat: scan and detector center of ref_model and of regressions should
     # match.
 
     # Align coordinate system directions with native CoM coordinate
     # system without corrections
-    aligned_params = ref_params.derive(
+    aligned_model = ref_model.derive(
         flip_factor=1.0,
         scan_rotation=0.0,
         detector_rotation=0.0,
     )
     args = _DEFullArgs(
-        aligned_params=aligned_params,
+        aligned_model=aligned_model,
         regressions=regressions,
     )
 
@@ -333,19 +333,19 @@ def solve_full_descan_error(ref_params: Model4DSTEM, regressions: CoMRegressions
     residual = _de_full_loss(opt_res.value, args)
 
     # Bring descan error back to original coordinate system
-    res_params = (
-        aligned_params.derive(descan_error=DescanError(*opt_res.value))
-        .adjust_scan_rotation(ref_params.scan_rotation)
-        .adjust_detector_rotation(ref_params.detector_rotation)
-        .adjust_flip_factor(ref_params.flip_factor)
+    res_model = (
+        aligned_model.derive(descan_error=DescanError(*opt_res.value))
+        .adjust_scan_rotation(ref_model.scan_rotation)
+        .adjust_detector_rotation(ref_model.detector_rotation)
+        .adjust_flip_factor(ref_model.flip_factor)
         .normalize_types()
     )
 
-    return res_params, residual
+    return res_model, residual
 
 
 class _NormArgs(NamedTuple):
-    ref_params: Model4DSTEM
+    ref_model: Model4DSTEM
 
 
 def _zero_const(de: DescanError) -> DescanError:
@@ -369,15 +369,15 @@ def _zero_const(de: DescanError) -> DescanError:
 def _norm_loss(y, args: _NormArgs):
     distances = []
     scy, scx, dcy, dcx = y
-    de_new = _zero_const(args.ref_params.descan_error)
+    de_new = _zero_const(args.ref_model.descan_error)
     for cl in (0, 1, 2):
-        opt_params = args.ref_params.derive(
+        opt_model = args.ref_model.derive(
             camera_length=cl,
             descan_error=de_new,
             scan_center=PixelYX(y=scy, x=scx),
             detector_center=PixelYX(y=dcy, x=dcx),
         )
-        ref_params = args.ref_params.derive(
+        ref_model = args.ref_model.derive(
             camera_length=cl,
         )
         for scan_y in (
@@ -385,12 +385,12 @@ def _norm_loss(y, args: _NormArgs):
             1.0,
         ):
             for scan_x in (0.0, 1.0):
-                res = opt_params.trace(
+                res = opt_model.trace(
                     scan_pos=PixelYX(y=scan_y, x=scan_x),
                     source_dy=0.0,
                     source_dx=0.0,
                 )
-                ref = ref_params.trace(
+                ref = ref_model.trace(
                     scan_pos=PixelYX(y=scan_y, x=scan_x),
                     source_dy=0.0,
                     source_dx=0.0,
@@ -406,16 +406,16 @@ def _norm_loss(y, args: _NormArgs):
     return jnp.array(distances)
 
 
-def normalize_descan_error(ref_params: Model4DSTEM):
+def normalize_descan_error(ref_model: Model4DSTEM):
     args = _NormArgs(
-        ref_params=ref_params,
+        ref_model=ref_model,
     )
     start = jnp.array(
         (
-            ref_params.scan_center.y,
-            ref_params.scan_center.x,
-            ref_params.detector_center.y,
-            ref_params.detector_center.x,
+            ref_model.scan_center.y,
+            ref_model.scan_center.x,
+            ref_model.detector_center.y,
+            ref_model.detector_center.x,
         )
     )
     opt_res = optimistix.least_squares(
@@ -426,18 +426,18 @@ def normalize_descan_error(ref_params: Model4DSTEM):
     )
     residual = _norm_loss(opt_res.value, args)
     scy, scx, dcy, dcx = opt_res.value
-    res_params = ref_params.derive(
+    res_model = ref_model.derive(
         scan_center=PixelYX(y=scy, x=scx),
         detector_center=PixelYX(y=dcy, x=dcx),
-        descan_error=_zero_const(ref_params.descan_error),
+        descan_error=_zero_const(ref_model.descan_error),
     ).normalize_types()
-    return res_params, residual
+    return res_model, residual
 
 
 class _DETiltArgs(NamedTuple):
     # Aligned with the CoM regression coordinate system.
     # Currently only tested for no scan rotation and no flip_y
-    aligned_params: Model4DSTEM
+    aligned_model: Model4DSTEM
     regression: CoMRegression
 
 
@@ -460,8 +460,8 @@ def _tilt_descan(de: DescanError, y) -> DescanError:
 
 @jax.jit
 def _de_tilt_loss(y, args: _DETiltArgs):
-    opt_params = args.aligned_params.derive(
-        descan_error=_tilt_descan(de=args.aligned_params.descan_error, y=y)
+    opt_model = args.aligned_model.derive(
+        descan_error=_tilt_descan(de=args.aligned_model.descan_error, y=y)
     )
 
     distances = []
@@ -474,9 +474,9 @@ def _de_tilt_loss(y, args: _DETiltArgs):
             dxdy = reg[1, 1]
             dydx = reg[2, 0]
             dxdx = reg[2, 1]
-            det_y = opt_params.detector_center.y + (dy + dydy * scan_y + dydx * scan_x)
-            det_x = opt_params.detector_center.x + (dx + dxdy * scan_y + dxdx * scan_x)
-            res = opt_params.trace(
+            det_y = opt_model.detector_center.y + (dy + dydy * scan_y + dydx * scan_x)
+            det_x = opt_model.detector_center.x + (dx + dxdy * scan_y + dxdx * scan_x)
+            res = opt_model.trace(
                 scan_pos=PixelYX(y=scan_y, x=scan_x),
                 source_dx=0.0,
                 source_dy=0.0,
@@ -490,15 +490,15 @@ def _de_tilt_loss(y, args: _DETiltArgs):
     return jnp.array(distances)
 
 
-def solve_tilt_descan_error(ref_params: Model4DSTEM, regression: CoMRegression):
-    # Caveat: scan and detector center of ref_params and of regressions should
+def solve_tilt_descan_error(ref_model: Model4DSTEM, regression: CoMRegression):
+    # Caveat: scan and detector center of ref_model and of regressions should
     # match.
 
     # Align coordinate system directions with native CoM coordinate
     # system without corrections
     # We make sure that the offset-based descan error components are preserved
-    aligned_params = (
-        ref_params.adjust_flip_factor(
+    aligned_model = (
+        ref_model.adjust_flip_factor(
             flip_factor=1.0,
         )
         .adjust_scan_rotation(
@@ -509,7 +509,7 @@ def solve_tilt_descan_error(ref_params: Model4DSTEM, regression: CoMRegression):
         )
     )
     args = _DETiltArgs(
-        aligned_params=aligned_params,
+        aligned_model=aligned_model,
         regression=regression,
     )
 
@@ -526,34 +526,34 @@ def solve_tilt_descan_error(ref_params: Model4DSTEM, regression: CoMRegression):
     residual = _de_tilt_loss(opt_res.value, args)
 
     # Bring descan error back to original coordinate system
-    res_params = (
-        aligned_params.derive(
-            descan_error=_tilt_descan(aligned_params.descan_error, opt_res.value)
+    res_model = (
+        aligned_model.derive(
+            descan_error=_tilt_descan(aligned_model.descan_error, opt_res.value)
         )
-        .adjust_detector_rotation(ref_params.detector_rotation)
-        .adjust_scan_rotation(ref_params.scan_rotation)
-        .adjust_flip_factor(ref_params.flip_factor)
+        .adjust_detector_rotation(ref_model.detector_rotation)
+        .adjust_scan_rotation(ref_model.scan_rotation)
+        .adjust_flip_factor(ref_model.flip_factor)
         .normalize_types()
     )
 
-    return res_params, residual
+    return res_model, residual
 
 
 class _DETiltPointArgs(NamedTuple):
-    params: Model4DSTEM
+    model: Model4DSTEM
     # [(scan_y, scan_x, detector_cy, detector_cx) * n]
     points: jnp.ndarray
 
 
 @jax.jit
 def _de_tilt_point_loss(y, args: _DETiltPointArgs):
-    opt_params = args.params.derive(
-        descan_error=_tilt_descan(de=args.params.descan_error, y=y)
+    opt_model = args.model.derive(
+        descan_error=_tilt_descan(de=args.model.descan_error, y=y)
     )
 
     distances = []
     for scan_y, scan_x, det_y, det_x in args.points:
-        res = opt_params.trace(
+        res = opt_model.trace(
             scan_pos=PixelYX(y=scan_y, x=scan_x),
             source_dx=0.0,
             source_dy=0.0,
@@ -567,9 +567,9 @@ def _de_tilt_point_loss(y, args: _DETiltPointArgs):
     return jnp.array(distances)
 
 
-def solve_tilt_descan_error_points(ref_params: Model4DSTEM, points: jnp.ndarray):
+def solve_tilt_descan_error_points(ref_model: Model4DSTEM, points: jnp.ndarray):
     args = _DETiltPointArgs(
-        params=ref_params,
+        model=ref_model,
         points=points,
     )
 
@@ -587,14 +587,14 @@ def solve_tilt_descan_error_points(ref_params: Model4DSTEM, points: jnp.ndarray)
     )
     residual = _de_tilt_point_loss(opt_res.value, args)
     # Write the new tilts and offsets into the previous descan error
-    new_descan = _tilt_descan(ref_params.descan_error, opt_res.value)
-    res_params = ref_params.derive(descan_error=new_descan).normalize_types()
+    new_descan = _tilt_descan(ref_model.descan_error, opt_res.value)
+    res_model = ref_model.derive(descan_error=new_descan).normalize_types()
 
-    return res_params, residual
+    return res_model, residual
 
 
 class _CoordPointArgs(NamedTuple):
-    params: Model4DSTEM
+    model: Model4DSTEM
     # [(scan_y, scan_x, specimen_y (px), specimen_x (px), detector_y, detector_x) * n]
     points: jnp.array
 
@@ -608,7 +608,7 @@ def _coords_point_loss(y, args: _CoordPointArgs):
 
     assert len(tilts) == 2 * len(args.points)
 
-    opt_params = args.params.derive(
+    opt_model = args.model.derive(
         detector_rotation=detector_rotation,
         overfocus=overfocus,
         flip_factor=flip_factor,
@@ -618,7 +618,7 @@ def _coords_point_loss(y, args: _CoordPointArgs):
     specimen_distances = []
     for i, (scan_y, scan_x, spec_y, spec_x, det_y, det_x) in enumerate(args.points):
         dy, dx = tilts[2 * i:2 * i + 2]
-        res = opt_params.trace(scan_pos=PixelYX(y=scan_y, x=scan_x), source_dx=dx, source_dy=dy)
+        res = opt_model.trace(scan_pos=PixelYX(y=scan_y, x=scan_x), source_dx=dx, source_dy=dy)
         detector_distances.extend(
             (
                 res["detector"].sampling["detector_px"].y - det_y,
@@ -639,14 +639,14 @@ def _coords_point_loss(y, args: _CoordPointArgs):
     )
 
 
-def solve_coords_points(ref_params: Model4DSTEM, points: jnp.ndarray):
+def solve_coords_points(ref_model: Model4DSTEM, points: jnp.ndarray):
     args = _CoordPointArgs(
-        params=ref_params,
+        model=ref_model,
         points=points,
     )
 
     start = jnp.array(
-        [ref_params.detector_rotation, ref_params.overfocus, ref_params.flip_factor]
+        [ref_model.detector_rotation, ref_model.overfocus, ref_model.flip_factor]
         + [0.0, 0.0] * len(points)
     )
     opt_res = optimistix.least_squares(
@@ -659,17 +659,17 @@ def solve_coords_points(ref_params: Model4DSTEM, points: jnp.ndarray):
     residual = _coords_point_loss(opt_res.value, args)
     # Write the new values into the previous parameters
     detector_rotation, overfocus, flip_factor = opt_res.value[:3]
-    res_params = ref_params.derive(
+    res_model = ref_model.derive(
         detector_rotation=detector_rotation,
         overfocus=overfocus,
         flip_factor=flip_factor,
     ).normalize_types()
 
-    return res_params, residual
+    return res_model, residual
 
 
 class _HitSpecimenArgs(NamedTuple):
-    params: Model4DSTEM
+    model: Model4DSTEM
     scan_pos: PixelYX
     specimen_px: PixelYX
 
@@ -677,9 +677,9 @@ class _HitSpecimenArgs(NamedTuple):
 @jax.jit
 def _hit_specimen_loss(y, args: _HitSpecimenArgs):
     dy, dx = y
-    opt_params = args.params
+    opt_model = args.model
 
-    res = opt_params.trace(scan_pos=args.scan_pos, source_dx=dx, source_dy=dy)
+    res = opt_model.trace(scan_pos=args.scan_pos, source_dx=dx, source_dy=dy)
     specimen_px = res["specimen"].sampling["scan_px"]
     return jnp.array(
         (specimen_px.x - args.specimen_px.x, specimen_px.y - args.specimen_px.y)
@@ -692,10 +692,10 @@ class SlopeYX(NamedTuple):
 
 
 def solve_hit_specimen(
-    params: Model4DSTEM, scan_pos: PixelYX, specimen_px: PixelYX
+    model: Model4DSTEM, scan_pos: PixelYX, specimen_px: PixelYX
 ):
     args = _HitSpecimenArgs(
-        params=params,
+        model=model,
         scan_pos=scan_pos,
         specimen_px=specimen_px,
     )

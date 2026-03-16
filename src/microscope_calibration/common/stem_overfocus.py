@@ -78,7 +78,7 @@ def _do_lstsq(input_samples, output_samples):
 
 
 def get_backward_transformation_matrix(
-    rec_params: Model4DSTEM, specimen_to_image: Optional[CoordMappingT] = None
+    rec_model: Model4DSTEM, specimen_to_image: Optional[CoordMappingT] = None
 ):
     """
     Calculate a transformation matrix that maps from scan position in scan pixel
@@ -128,7 +128,7 @@ def get_backward_transformation_matrix(
             scan_pos = PixelYX(x=test_param[0], y=test_param[1])
             source_dy = test_param[2]
             source_dx = test_param[3]
-            res = rec_params.trace(
+            res = rec_model.trace(
                 scan_pos=scan_pos,
                 source_dy=source_dy,
                 source_dx=source_dx,
@@ -231,7 +231,7 @@ def project_frame_backwards(frame, source_semiconv, mat, scan_y, scan_x, image_o
 
 
 def get_detector_correction_matrix(
-    rec_params: Model4DSTEM, ref_params: Optional[Model4DSTEM] = None
+    rec_model: Model4DSTEM, ref_model: Optional[Model4DSTEM] = None
 ):
     """
     Calculate a transformation matrix that maps from scan position in scan pixel
@@ -280,12 +280,12 @@ def get_detector_correction_matrix(
     input_samples = []
     output_samples = []
 
-    if ref_params is None:
-        ref_params = rec_params.derive(
+    if ref_model is None:
+        ref_model = rec_model.derive(
             scan_rotation=0.0,
             flip_factor=1.,
             descan_error=DescanError(),
-            detector_rotation=rec_params.scan_rotation,
+            detector_rotation=rec_model.scan_rotation,
         )
 
     for test_param_raw in test_parameters:
@@ -295,13 +295,13 @@ def get_detector_correction_matrix(
             scan_pos = PixelYX(x=test_param[0], y=test_param[1])
             source_dy = test_param[2]
             source_dx = test_param[3]
-            res = rec_params.trace(
+            res = rec_model.trace(
                 scan_pos=scan_pos,
                 source_dy=source_dy,
                 source_dx=source_dx,
             )
 
-            ref_res = ref_params.trace(
+            ref_res = ref_model.trace(
                 scan_pos=scan_pos,
                 source_dy=source_dy,
                 source_dx=source_dx,
@@ -372,19 +372,19 @@ def correct_frame(frame, mat, scan_y, scan_x, detector_out):
 
 
 @jax.jit
-def get_diffraction_pixel_radius(params: Model4DSTEM, twotheta: float):
+def get_diffraction_pixel_radius(model: Model4DSTEM, twotheta: float):
     diffractor = Scanner(
-        z=params.overfocus,
+        z=model.overfocus,
         scan_pos_x=0.0,
         scan_pos_y=0.0,
         scan_tilt_x=jnp.tan(twotheta),
     )
-    center_res = params.trace(
+    center_res = model.trace(
         scan_pos=PixelYX(0.0, 0.0),
         source_dx=0.0,
         source_dy=0.0,
     )
-    diff_res = params.trace(
+    diff_res = model.trace(
         scan_pos=PixelYX(0.0, 0.0),
         source_dx=0.0,
         source_dy=0.0,
@@ -397,15 +397,15 @@ def get_diffraction_pixel_radius(params: Model4DSTEM, twotheta: float):
 
 
 @jax.jit
-def get_primary_beam_radius(params: Model4DSTEM):
-    center_res = params.trace(
+def get_primary_beam_radius(model: Model4DSTEM):
+    center_res = model.trace(
         scan_pos=PixelYX(0.0, 0.0),
         source_dx=0.0,
         source_dy=0.0,
     )
-    border_res = params.trace(
+    border_res = model.trace(
         scan_pos=PixelYX(0.0, 0.0),
-        source_dx=params.semiconv,
+        source_dx=model.semiconv,
         source_dy=0.0,
     )
     return jnp.linalg.norm(
@@ -415,22 +415,22 @@ def get_primary_beam_radius(params: Model4DSTEM):
 
 
 @jax.jit
-def ring_radii(params: Model4DSTEM, twothetas):
+def ring_radii(model: Model4DSTEM, twothetas):
     pixel_radii = jnp.array(
         [
-            get_diffraction_pixel_radius(params=params, twotheta=twotheta)
+            get_diffraction_pixel_radius(model=model, twotheta=twotheta)
             for twotheta in twothetas
         ]
     )
-    beam_radius = get_primary_beam_radius(params)
+    beam_radius = get_primary_beam_radius(model)
     ri = jnp.maximum(pixel_radii - beam_radius, 0)
     ro = pixel_radii + beam_radius
     return ri, ro
 
 
 @jax.jit
-def get_center(params: Model4DSTEM, scan_pos: PixelYX):
-    center_res = params.trace(
+def get_center(model: Model4DSTEM, scan_pos: PixelYX):
+    center_res = model.trace(
         scan_pos=scan_pos,
         source_dx=0.0,
         source_dy=0.0,

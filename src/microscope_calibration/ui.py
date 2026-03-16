@@ -69,7 +69,7 @@ class CoordinateCorrectionLayout:
         nav_mode: NavModeT = "point",
         sig_mode: SigModeT = "lin",
         twothetas: np.ndarray | None = None,
-        start_params=None,
+        start_model=None,
     ):
         # # Stuff
         self.executor = concurrent.futures.ThreadPoolExecutor(max_workers=1)
@@ -78,9 +78,9 @@ class CoordinateCorrectionLayout:
         self.nav_mode = nav_mode
         self.sig_mode = sig_mode
 
-        if start_params is None:
-            start_params = self.default_params()
-        self.start_params = start_params
+        if start_model is None:
+            start_model = self.default_model()
+        self.start_model = start_model
 
         if twothetas is None:
             twothetas = np.array((0.0,))
@@ -88,34 +88,34 @@ class CoordinateCorrectionLayout:
         self.coords_adjusted = False
 
         # # GUI state
-        self.model_params = ColumnDataSource(
+        self.model_model = ColumnDataSource(
             data=(
-                self.params_update(self.start_params)
-                | self.scan_pos_update(self.start_params.scan_center)
+                self.model_update(self.start_model)
+                | self.scan_pos_update(self.start_model.scan_center)
                 | self.twothetas_update(twothetas)
             ),
         )
 
-        self.scalebar_params = ColumnDataSource(
+        self.scalebar_model = ColumnDataSource(
             data=self.scale_update(
                 start=PixelYX(
-                    y=self.start_params.scan_center.y * 1.7,
-                    x=self.start_params.scan_center.x * 0.3,
+                    y=self.start_model.scan_center.y * 1.7,
+                    x=self.start_model.scan_center.x * 0.3,
                 ),
                 stop=PixelYX(
-                    y=self.start_params.scan_center.y * 1.7,
-                    x=self.start_params.scan_center.x * 1.7,
+                    y=self.start_model.scan_center.y * 1.7,
+                    x=self.start_model.scan_center.x * 1.7,
                 ),
             ),
         )
 
-        self.ring_params = ColumnDataSource(
-            data=self.ring_update(self.model_params.data)
+        self.ring_model = ColumnDataSource(
+            data=self.ring_update(self.model_model.data)
         )
-        self.centered_ring_params = ColumnDataSource(
+        self.centered_ring_model = ColumnDataSource(
             data=self.ring_update(
-                self.model_params.data,
-                detector_center=self.start_params.detector_center,
+                self.model_model.data,
+                detector_center=self.start_model.detector_center,
             )
         )
         self.descan_fixpoints = pd.DataFrame(columns=self.descan_columns).set_index(
@@ -123,21 +123,21 @@ class CoordinateCorrectionLayout:
         )
         # Don't use scan center because the glyphs cannot be moved separately
         feature_start = PixelYX(
-            y=self.start_params.scan_center.y + 5,
-            x=self.start_params.scan_center.x + 5,
+            y=self.start_model.scan_center.y + 5,
+            x=self.start_model.scan_center.x + 5,
         )
-        self.feature_params = ColumnDataSource(
+        self.feature_model = ColumnDataSource(
             data=self.scan_pos_update(feature_start)
         )
-        if self.start_params.overfocus != 0:
+        if self.start_model.overfocus != 0:
             feature_select_start = self.get_feature_on_detector(
-                params=self.start_params,
-                scan_pos=self.start_params.scan_center,
+                model=self.start_model,
+                scan_pos=self.start_model.scan_center,
                 specimen_px=feature_start,
             )
         else:
-            feature_select_start = self.start_params.detector_center
-        self.feature_select_params = ColumnDataSource(
+            feature_select_start = self.start_model.detector_center
+        self.feature_select_model = ColumnDataSource(
             data=self.feature_update(feature_select_start)
         )
 
@@ -151,7 +151,7 @@ class CoordinateCorrectionLayout:
         self.adjust_layout(self.nav_fig, shape=preview["nav"].shape)
 
         self.cursor = (
-            Cursor(cds=self.model_params, x="scan_x", y="scan_y")
+            Cursor(cds=self.model_model, x="scan_x", y="scan_y")
             .on(self.nav_fig.fig)
             # this adds the necessary components to make the cursor draggable
             .editable(selected=True)
@@ -164,18 +164,18 @@ class CoordinateCorrectionLayout:
         self.adjust_layout(self.pick_fig, shape=frames["raw"].shape)
 
         self.beam_centre = (
-            Cursor(cds=self.ring_params, x="detector_cx", y="detector_cy")
+            Cursor(cds=self.ring_model, x="detector_cx", y="detector_cy")
             .on(self.pick_fig.fig)
             .editable(selected=True)
         )
         self.beam_centre.glyph.line_color = "red"
         self.diffraction_ringsets = []
-        for i in range(self.ring_params.data["num_rings"][0]):
+        for i in range(self.ring_model.data["num_rings"][0]):
             rikey = f"ri_{i}"
             rokey = f"ro_{i}"
             self.diffraction_ringsets.append(
                 RingSet(
-                    cds=self.ring_params,
+                    cds=self.ring_model,
                     x="detector_cx",
                     y="detector_cy",
                     inner_radius=rikey,
@@ -188,7 +188,7 @@ class CoordinateCorrectionLayout:
         )
         self.adjust_layout(self.corr_point_fig, shape=preview["corrected_point"].shape)
         self.cursor_2 = (
-            Cursor(cds=self.model_params, x="scan_x", y="scan_y")
+            Cursor(cds=self.model_model, x="scan_x", y="scan_y")
             .on(self.corr_point_fig.fig)
             # this adds the necessary components to make the cursor draggable
             .editable(selected=True)
@@ -197,7 +197,7 @@ class CoordinateCorrectionLayout:
         self.cursor_2.cursor.line_color = "red"
 
         self.nav_feature_cursor = (
-            Cursor(cds=self.feature_params, x="scan_x", y="scan_y")
+            Cursor(cds=self.feature_model, x="scan_x", y="scan_y")
             .on(self.corr_point_fig.fig)
             # this adds the necessary components to make the cursor draggable
             .editable(selected=True)
@@ -206,12 +206,12 @@ class CoordinateCorrectionLayout:
         self.nav_feature_cursor.cursor.line_color = "lightgreen"
 
         self.scalebar_handles = (
-            PointSet(cds=self.scalebar_params, x="scalebar_x", y="scalebar_y")
+            PointSet(cds=self.scalebar_model, x="scalebar_x", y="scalebar_y")
             .on(self.corr_point_fig.fig)
             .editable(drag=True, tag_name="cursor")
         )
         self.scalebar_line = Curve(
-            cds=self.scalebar_params, xkey="scalebar_x", ykey="scalebar_y"
+            cds=self.scalebar_model, xkey="scalebar_x", ykey="scalebar_y"
         ).on(self.corr_point_fig.fig)
         self.scalebar_handles.glyph.line_color = "yellow"
         self.scalebar_handles.glyph.fill_color = None
@@ -223,16 +223,16 @@ class CoordinateCorrectionLayout:
         self.adjust_layout(self.corr_pick_fig, shape=frames["corrected"].shape)
 
         self.corr_beam_centre = Cursor(
-            cds=self.centered_ring_params, x="detector_cx", y="detector_cy"
+            cds=self.centered_ring_model, x="detector_cx", y="detector_cy"
         ).on(self.corr_pick_fig.fig)
         self.corr_beam_centre.glyph.line_color = "red"
         self.corr_diffraction_ringsets = []
-        for i in range(self.centered_ring_params.data["num_rings"][0]):
+        for i in range(self.centered_ring_model.data["num_rings"][0]):
             rikey = f"ri_{i}"
             rokey = f"ro_{i}"
             self.corr_diffraction_ringsets.append(
                 RingSet(
-                    cds=self.centered_ring_params,
+                    cds=self.centered_ring_model,
                     x="detector_cx",
                     y="detector_cy",
                     inner_radius=rikey,
@@ -245,16 +245,16 @@ class CoordinateCorrectionLayout:
         )
         self.adjust_layout(self.corr_sum_fig, shape=preview["corrected_sum"].shape)
         self.corr_beam_centre_2 = Cursor(
-            cds=self.centered_ring_params, x="detector_cx", y="detector_cy"
+            cds=self.centered_ring_model, x="detector_cx", y="detector_cy"
         ).on(self.corr_sum_fig.fig)
         self.corr_beam_centre_2.glyph.line_color = "red"
         self.corr_diffraction_ringsets_2 = []
-        for i in range(self.centered_ring_params.data["num_rings"][0]):
+        for i in range(self.centered_ring_model.data["num_rings"][0]):
             rikey = f"ri_{i}"
             rokey = f"ro_{i}"
             self.corr_diffraction_ringsets_2.append(
                 RingSet(
-                    cds=self.centered_ring_params,
+                    cds=self.centered_ring_model,
                     x="detector_cx",
                     y="detector_cy",
                     inner_radius=rikey,
@@ -266,7 +266,7 @@ class CoordinateCorrectionLayout:
         self.adjust_layout(self.nav_fig_2, shape=preview["nav"].shape)
 
         self.cursor_3 = (
-            Cursor(cds=self.model_params, x="scan_x", y="scan_y")
+            Cursor(cds=self.model_model, x="scan_x", y="scan_y")
             .on(self.nav_fig_2.fig)
             # this adds the necessary components to make the cursor draggable
             .editable(selected=True)
@@ -280,7 +280,7 @@ class CoordinateCorrectionLayout:
         self.adjust_layout(self.pick_fig_2, shape=frames["raw"].shape)
 
         self.nav_feature_select_cursor = (
-            Cursor(cds=self.feature_select_params, x="detector_x", y="detector_y")
+            Cursor(cds=self.feature_select_model, x="detector_x", y="detector_y")
             .on(self.pick_fig_2.fig)
             # this adds the necessary components to make the cursor draggable
             .editable(selected=True)
@@ -301,31 +301,31 @@ class CoordinateCorrectionLayout:
         self.adjust_layout(self.back_pick_fig, shape=frames["backprojected"].shape)
 
         self.cl_input = pn.widgets.FloatInput(
-            name="Camera length / m", step=0.01, value=self.start_params.camera_length
+            name="Camera length / m", step=0.01, value=self.start_model.camera_length
         )
         self.semiconv_input = pn.widgets.FloatInput(
             name="Convergence semi-angle / mrad",
             step=0.01,
-            value=start_params.semiconv * 1000,
+            value=start_model.semiconv * 1000,
         )
         self.scalebar_input = pn.widgets.FloatInput(
             name="Scale bar / nm",
             step=0.01,
             value=(
-                self.start_params.scan_pixel_pitch
-                * self.get_scalebar_length(self.scalebar_params.data)
+                self.start_model.scan_pixel_pitch
+                * self.get_scalebar_length(self.scalebar_model.data)
                 * 1e9
             ),
         )
         self.scan_rotation_input = pn.widgets.FloatInput(
             name="Scan rotation / degrees",
             step=0.1,
-            value=self.start_params.scan_rotation * 180 / np.pi,
+            value=self.start_model.scan_rotation * 180 / np.pi,
         )
         self.detector_pitch_input = pn.widgets.FloatInput(
             name="Detector pixel pitch / µm",
             step=0.1,
-            value=self.start_params.detector_pixel_pitch * 1e6,
+            value=self.start_model.detector_pixel_pitch * 1e6,
         )
 
         self.descan_fixpoint_table = pn.widgets.Tabulator(
@@ -368,10 +368,10 @@ class CoordinateCorrectionLayout:
 
         # ## state
         # trigger whenever the "data" attribute of the cursor ColumnDataSource changes
-        self.model_params.on_change("data", self.on_model_params_change)
-        # self.model_params.on_change("data", lambda attr, old, new: print(attr, old, new))
-        self.scalebar_params.on_change("data", self.on_scalebar_params_change)
-        self.feature_params.on_change("data", self.on_feature_params_change)
+        self.model_model.on_change("data", self.on_model_model_change)
+        # self.model_model.on_change("data", lambda attr, old, new: print(attr, old, new))
+        self.scalebar_model.on_change("data", self.on_scalebar_model_change)
+        self.feature_model.on_change("data", self.on_feature_model_change)
 
         # ## nav_fig
         self.nav_fig.fig.on_event(Tap, self.move_scan_to)
@@ -435,14 +435,14 @@ class CoordinateCorrectionLayout:
         plot.layout.max_height = 500
         # plot.layout.sizing_mode = "stretch_width"
 
-    def on_model_params_change(self, attr, old, new):
+    def on_model_model_change(self, attr, old, new):
         # This is a "bokeh-style" callback because it will trigger directly from a ColumnDataSource
         # The callback must have three arguments [attr, old, new]
         # attr will be "data"
         # old will be the CDS dict before the trigger
         # new will be the CDS dict after the trigger
         assert attr == "data"
-        new_params = self.get_params(new)
+        new_model = self.get_model(new)
 
         # Doesn't work, likely because not all changes trigger this callback,
         # see https://github.com/holoviz/panel/issues/8275
@@ -450,12 +450,12 @@ class CoordinateCorrectionLayout:
         # if self.coords_adjusted:
         #     # Check if parameters have changed that invalidate the
         #     # calibration, and re-calibrate in that case
-        #     old_params = self.get_params(old)
-        #     new_params = self.get_params(new)
+        #     old_model = self.get_model(old)
+        #     new_model = self.get_model(new)
         #     # These should be parameters that are NOT changed by
         #     # self.perform_coord_update()
         #     relevant = ('scan_pixel_pitch', 'camera_length', 'scan_rotation')
-        #     if any(getattr(old_params, r) != getattr(new_params, r) for r in relevant):
+        #     if any(getattr(old_model, r) != getattr(new_model, r) for r in relevant):
         #         print("changed")
         #         self.perform_coord_update()
         #     else:
@@ -477,25 +477,25 @@ class CoordinateCorrectionLayout:
         self.back_sum_fig.update(previews["backprojected_sum"])
 
         self.update_with_force(
-            self.ring_params,
+            self.ring_model,
             self.ring_update(model_data=new),
         )
         self.update_with_force(
-            self.centered_ring_params,
+            self.centered_ring_model,
             self.ring_update(
-                model_data=new, detector_center=new_params.detector_center
+                model_data=new, detector_center=new_model.detector_center
             ),
         )
         detector_pos = self.get_feature_on_detector(
-            params=new_params,
+            model=new_model,
             scan_pos=new_pos,
-            specimen_px=self.get_scan_pos(self.feature_params.data),
+            specimen_px=self.get_scan_pos(self.feature_model.data),
         )
         self.update_with_force(
-            self.feature_select_params, self.feature_update(detector_pos)
+            self.feature_select_model, self.feature_update(detector_pos)
         )
 
-    def on_scalebar_params_change(self, attr, old, new):
+    def on_scalebar_model_change(self, attr, old, new):
         # This is a "bokeh-style" callback because it will trigger directly from a ColumnDataSource
         # The callback must have three arguments [attr, old, new]
         # attr will be "data"
@@ -503,62 +503,62 @@ class CoordinateCorrectionLayout:
         # new will be the CDS dict after the trigger
         assert attr == "data"
         # For some reason we can't get change events from the scale bar CDS,
-        # but receive model_params CDS changes
-        length = self.get_scalebar_length(self.scalebar_params.data)
+        # but receive model_model CDS changes
+        length = self.get_scalebar_length(self.scalebar_model.data)
         # TODO use microscope_calibration.util.optimize.solve_scan_pixel_pitch
         # instead to not make assumption about linearity
-        self.scalebar_input.value = length * self.params.scan_pixel_pitch * 1e9
+        self.scalebar_input.value = length * self.model.scan_pixel_pitch * 1e9
         self.push()
 
-    def on_feature_params_change(self, attr, old, new):
+    def on_feature_model_change(self, attr, old, new):
         # This is a "bokeh-style" callback because it will trigger directly from a ColumnDataSource
         # The callback must have three arguments [attr, old, new]
         # attr will be "data"
         # old will be the CDS dict before the trigger
         # new will be the CDS dict after the trigger
         assert attr == "data"
-        params = self.params
-        if params.overfocus != 0:
+        model = self.model
+        if model.overfocus != 0:
             feature_pos = self.get_feature_on_detector(
-                params=params,
-                scan_pos=self.get_scan_pos(self.model_params.data),
+                model=model,
+                scan_pos=self.get_scan_pos(self.model_model.data),
                 specimen_px=self.get_scan_pos(new),
             )
             self.update_with_force(
-                self.feature_select_params, self.feature_update(feature_pos)
+                self.feature_select_model, self.feature_update(feature_pos)
             )
 
     def update_cl(self, event):
-        base = self.params
-        params = base.adjust_camera_length(camera_length=event.new)
-        self.update_with_force(self.model_params, self.params_update(params))
+        base = self.model
+        model = base.adjust_camera_length(camera_length=event.new)
+        self.update_with_force(self.model_model, self.model_update(model))
 
     def update_semiconv(self, event):
-        params = self.params.derive(semiconv=event.new / 1000)
-        self.update_with_force(self.model_params, self.params_update(params))
+        model = self.model.derive(semiconv=event.new / 1000)
+        self.update_with_force(self.model_model, self.model_update(model))
 
     def update_scale(self, event):
-        base = self.params
+        base = self.model
         # TODO use microscope_calibration.util.optimize.solve_scan_pixel_pitch
         # instead to not make assumption about linearity
-        length_px = self.get_scalebar_length(self.scalebar_params.data)
+        length_px = self.get_scalebar_length(self.scalebar_model.data)
         scan_pixel_pitch = event.new / 1e9 / length_px
-        params = base.adjust_scan_pixel_pitch(scan_pixel_pitch)
-        self.update_with_force(self.model_params, self.params_update(params))
+        model = base.adjust_scan_pixel_pitch(scan_pixel_pitch)
+        self.update_with_force(self.model_model, self.model_update(model))
 
     def update_scan_rotation(self, event):
-        params = self.params.adjust_scan_rotation(scan_rotation=event.new / 180 * np.pi)
-        self.update_with_force(self.model_params, self.params_update(params))
+        model = self.model.adjust_scan_rotation(scan_rotation=event.new / 180 * np.pi)
+        self.update_with_force(self.model_model, self.model_update(model))
 
     def update_detector_pitch(self, event):
-        params = self.params.adjust_detector_pixel_pitch(
+        model = self.model.adjust_detector_pixel_pitch(
             detector_pixel_pitch=event.new / 1e6
         )
-        self.update_with_force(self.model_params, self.params_update(params))
+        self.update_with_force(self.model_model, self.model_update(model))
 
     def move_scan_to(self, event):
         self.update_with_force(
-            self.model_params,
+            self.model_model,
             self.scan_pos_update(
                 PixelYX(y=float(event.y), x=float(event.x)),
             ),
@@ -566,7 +566,7 @@ class CoordinateCorrectionLayout:
 
     def move_feature_to(self, event):
         self.update_with_force(
-            self.feature_params,
+            self.feature_model,
             self.scan_pos_update(
                 PixelYX(y=float(event.y), x=float(event.x)),
             ),
@@ -574,7 +574,7 @@ class CoordinateCorrectionLayout:
 
     def move_feature_select_to(self, event):
         self.update_with_force(
-            self.feature_select_params,
+            self.feature_select_model,
             self.feature_update(
                 PixelYX(y=float(event.y), x=float(event.x)),
             ),
@@ -582,7 +582,7 @@ class CoordinateCorrectionLayout:
 
     def move_rings_to(self, event):
         self.update_with_force(
-            self.ring_params,
+            self.ring_model,
             self.detector_center_update(
                 PixelYX(y=float(event.y), x=float(event.x)),
             ),
@@ -590,7 +590,7 @@ class CoordinateCorrectionLayout:
 
     def descan_add_row(self):
         scan_pos = self.scan_pos
-        center_pos = self.get_detector_center(self.ring_params.data)
+        center_pos = self.get_detector_center(self.ring_model.data)
         idx = (int(np.round(scan_pos.y)), int(np.round(scan_pos.x)))
         new_df = pd.DataFrame(
             [idx + (center_pos.y, center_pos.x)], columns=self.descan_columns
@@ -614,7 +614,7 @@ class CoordinateCorrectionLayout:
         key = df.index[row]
         assert len(key) == 2
         scan_pos = PixelYX(y=key[0], x=key[1])
-        self.update_with_force(self.model_params, self.scan_pos_update(scan_pos))
+        self.update_with_force(self.model_model, self.scan_pos_update(scan_pos))
 
     def descan_drop(self):
         t = self.descan_fixpoint_table
@@ -622,8 +622,8 @@ class CoordinateCorrectionLayout:
 
     def coord_add_row(self):
         scan_pos = self.scan_pos
-        feature_nav_pos = self.get_scan_pos(self.feature_params.data)
-        feature_pos = self.get_feature(self.feature_select_params.data)
+        feature_nav_pos = self.get_scan_pos(self.feature_model.data)
+        feature_pos = self.get_feature(self.feature_select_model.data)
         idx = (
             int(np.round(scan_pos.y)),
             int(np.round(scan_pos.x)),
@@ -656,11 +656,11 @@ class CoordinateCorrectionLayout:
         assert len(key) == 4
         scan_pos = PixelYX(y=key[0], x=key[1])
         specimen_pos = PixelYX(y=key[2], x=key[3])
-        self.update_with_force(self.model_params, self.scan_pos_update(scan_pos))
-        self.update_with_force(self.feature_params, self.scan_pos_update(specimen_pos))
+        self.update_with_force(self.model_model, self.scan_pos_update(scan_pos))
+        self.update_with_force(self.feature_model, self.scan_pos_update(specimen_pos))
         detector_pos = PixelYX(y=detector[0], x=detector[1])
         self.update_with_force(
-            self.feature_select_params, self.feature_update(detector_pos)
+            self.feature_select_model, self.feature_update(detector_pos)
         )
 
     def coord_drop(self):
@@ -668,7 +668,7 @@ class CoordinateCorrectionLayout:
         t.value = t.value.drop(t.value.index)
         self.coords_adjusted = False
 
-    def default_params(self) -> Model4DSTEM:
+    def default_model(self) -> Model4DSTEM:
         ds = self.dataset
         if ds is None:
             scan_center = PixelYX(0.0, 0.0)
@@ -695,8 +695,8 @@ class CoordinateCorrectionLayout:
             # descan_error=DescanError(sxo_pxi=1, syo_pyi=-3)
         )
 
-    def get_params(self, model_data) -> Model4DSTEM:
-        return self.deserialize(model_data["params"][0])
+    def get_model(self, model_data) -> Model4DSTEM:
+        return self.deserialize(model_data["model"][0])
 
     @staticmethod
     def get_scan_pos(model_data):
@@ -733,14 +733,14 @@ class CoordinateCorrectionLayout:
 
     @staticmethod
     def get_feature_on_detector(
-        params: Model4DSTEM, scan_pos: PixelYX, specimen_px: PixelYX
+        model: Model4DSTEM, scan_pos: PixelYX, specimen_px: PixelYX
     ) -> PixelYX:
         slope, residual = solve_hit_specimen(
-            params=params,
+            model=model,
             scan_pos=scan_pos,
             specimen_px=specimen_px,
         )
-        res = params.trace(
+        res = model.trace(
             scan_pos=scan_pos,
             source_dy=slope.dy,
             source_dx=slope.dx,
@@ -748,19 +748,19 @@ class CoordinateCorrectionLayout:
         return res["detector"].sampling["detector_px"]
 
     @property
-    def params(self) -> Model4DSTEM:
-        return self.get_params(self.model_params.data)
+    def model(self) -> Model4DSTEM:
+        return self.get_model(self.model_model.data)
 
     @property
     def scan_pos(self):
-        return self.get_scan_pos(self.model_params.data)
+        return self.get_scan_pos(self.model_model.data)
 
     def get_preview(self):
         if self.nav_mode == "sumsig":
             nav_udf = SumSigUDF()
         elif self.nav_mode == "point":
-            cy = self.params.detector_center.y
-            cx = self.params.detector_center.x
+            cy = self.model.detector_center.y
+            cx = self.model.detector_center.x
             sig_shape = tuple(self.dataset.shape.sig)
 
             def get_mask():
@@ -777,7 +777,7 @@ class CoordinateCorrectionLayout:
             )
         else:
             raise NotImplementedError()
-        overfocus_udf = OverfocusUDF(overfocus_params={"params": self.params})
+        overfocus_udf = OverfocusUDF(overfocus_model={"model": self.model})
 
         res = self.ctx.run_udf(dataset=self.dataset, udf=(nav_udf, overfocus_udf))
         result = {}
@@ -803,7 +803,7 @@ class CoordinateCorrectionLayout:
         roi = self.dataset.roi[y, x]
         udfs = (
             PickUDF(),
-            CorrectedPickUDF(overfocus_params={"params": self.params}),
+            CorrectedPickUDF(overfocus_model={"model": self.model}),
         )
         res = self.ctx.run_udf(dataset=self.dataset, udf=udfs, roi=roi)
 
@@ -821,17 +821,17 @@ class CoordinateCorrectionLayout:
         }
 
     @staticmethod
-    def serialize(params: Model4DSTEM):
-        return flax.serialization.to_state_dict(params.normalize_types())
+    def serialize(model: Model4DSTEM):
+        return flax.serialization.to_state_dict(model.normalize_types())
 
     def deserialize(self, state_dict):
         res = flax.serialization.from_state_dict(
-            target=self.start_params, state=state_dict
+            target=self.start_model, state=state_dict
         ).normalize_types()
         return res
 
-    def params_update(self, params: Model4DSTEM):
-        return {"params": [self.serialize(params)]}
+    def model_update(self, model: Model4DSTEM):
+        return {"model": [self.serialize(model)]}
 
     @staticmethod
     def scan_pos_update(scan_pos: PixelYX):
@@ -854,13 +854,13 @@ class CoordinateCorrectionLayout:
         }
 
     def ring_update(self, model_data, detector_center=None):
-        params = self.get_params(model_data)
+        model = self.get_model(model_data)
         ri, ro = ring_radii(
-            params=params, twothetas=self.get_model_twothetas(model_data)
+            model=model, twothetas=self.get_model_twothetas(model_data)
         )
         if detector_center is None:
             detector_center = get_center(
-                params=params,
+                model=model,
                 scan_pos=self.get_scan_pos(model_data),
             )
         return (
@@ -891,20 +891,20 @@ class CoordinateCorrectionLayout:
             self.descan_fixpoint_table.value.reset_index().to_numpy().astype(np.float32)
         )
         if len(points):
-            new_params, residual = solve_tilt_descan_error_points(
-                ref_params=self.params, points=jnp.array(points)
+            new_model, residual = solve_tilt_descan_error_points(
+                ref_model=self.model, points=jnp.array(points)
             )
-            self.update_with_force(self.model_params, self.params_update(new_params))
+            self.update_with_force(self.model_model, self.model_update(new_model))
 
     def perform_coord_update(self):
         points = (
             self.coord_fixpoint_table.value.reset_index().to_numpy().astype(np.float32)
         )
         if len(points):
-            new_params, residual = solve_coords_points(
-                ref_params=self.params, points=jnp.array(points)
+            new_model, residual = solve_coords_points(
+                ref_model=self.model, points=jnp.array(points)
             )
-            self.update_with_force(self.model_params, self.params_update(new_params))
+            self.update_with_force(self.model_model, self.model_update(new_model))
             self.coords_adjusted = True
 
     def _push(self):
@@ -934,36 +934,36 @@ class CoordinateCorrectionLayout:
 
     def center_correlation_regression(self):
         # Delicious! 🍝🍝🍝
-        params = self.params
-        ri, ro = ring_radii(params, self.get_model_twothetas(self.model_params.data))
+        model = self.model
+        ri, ro = ring_radii(model, self.get_model_twothetas(self.model_model.data))
         radius_outer = 1.2 * ro[0]
         if len(ri) >= 2:
             radius_outer = max(radius_outer, ri[1] / 2)
         # Make sure we stay away from other peaks
         pattern = BackgroundSubtraction(radius=ro[0], radius_outer=radius_outer)
         # Correction to same parameters, except descan error of 0
-        ref_params = params.derive(descan_error=DescanError())
-        mat = get_detector_correction_matrix(rec_params=params, ref_params=ref_params)
+        ref_model = model.derive(descan_error=DescanError())
+        mat = get_detector_correction_matrix(rec_model=model, ref_model=ref_model)
         # Scan positions in the dataset
         nav_shape = self.dataset.shape.nav
         y, x = np.mgrid[: nav_shape[0], : nav_shape[1]]
         # Calculate where the nominal center actually is on the detector
         expected_x = corrected_det_x(
-            det_corr_x=params.detector_center.x,
-            det_corr_y=params.detector_center.y,
+            det_corr_x=model.detector_center.x,
+            det_corr_y=model.detector_center.y,
             scan_x=x,
             scan_y=y,
             mat=mat,
         )
         expected_y = corrected_det_y(
-            det_corr_x=params.detector_center.x,
-            det_corr_y=params.detector_center.y,
+            det_corr_x=model.detector_center.x,
+            det_corr_y=model.detector_center.y,
             scan_x=x,
             scan_y=y,
             mat=mat,
         )
         # Subtract the expected position so that only the deviation remains
-        dc = params.detector_center
+        dc = model.detector_center
         shifts = np.stack((expected_y - dc.y, expected_x - dc.x), axis=-1)
         aux_shifts = FastCorrelationUDF.aux_data(
             data=shifts,
@@ -974,7 +974,7 @@ class CoordinateCorrectionLayout:
         res = run_fastcorrelation(
             ctx=self.ctx,
             dataset=self.dataset,
-            peaks=np.array([params.detector_center]),
+            peaks=np.array([model.detector_center]),
             match_pattern=pattern,
             zero_shift=aux_shifts,
             upsample=True,
@@ -983,8 +983,8 @@ class CoordinateCorrectionLayout:
         # Following CoMUDF regression
         field = res["refineds"].data[:, :, 0, :]
         # Only keep deviation from expected value in regression
-        field[..., 0] -= params.detector_center.y
-        field[..., 1] -= params.detector_center.x
+        field[..., 0] -= model.detector_center.y
+        field[..., 1] -= model.detector_center.x
 
         inp = np.ones(field.shape[:-1] + (3,))
         y, x = np.ogrid[: field.shape[0], : field.shape[1]]
@@ -993,27 +993,27 @@ class CoordinateCorrectionLayout:
         reg_res = np.linalg.lstsq(
             inp.reshape((-1, 3)), field.reshape((-1, 2)), rcond=None
         )
-        new_params, residual = solve_tilt_descan_error(
-            ref_params=params, regression=reg_res[0]
+        new_model, residual = solve_tilt_descan_error(
+            ref_model=model, regression=reg_res[0]
         )
-        self.model_params.data.update(**self.params_update(new_params))
+        self.model_model.data.update(**self.model_update(new_model))
         self.push()
 
     def sharpen(self):
-        def callback(args, params, res, blur):
+        def callback(args, model, res, blur):
             self.back_sum_fig.update(res[0]["backprojected_sum"].data)
 
-        make_new_params, loss = make_overfocus_loss_function(
-            params=self.params,
+        make_new_model, loss = make_overfocus_loss_function(
+            model=self.model,
             ctx=self.ctx,
             dataset=self.dataset,
-            overfocus_udf=OverfocusUDF(overfocus_params={"params": self.params}),
+            overfocus_udf=OverfocusUDF(overfocus_model={"model": self.model}),
             callback=callback,
         )
 
         res = optimize(loss)
-        params = make_new_params(res.x)
-        self.update_with_force(self.model_params, self.params_update(params))
+        model = make_new_model(res.x)
+        self.update_with_force(self.model_model, self.model_update(model))
 
     @property
     def layout(self):

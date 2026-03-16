@@ -52,7 +52,7 @@ def smiley(size):
 
 
 def get_forward_transformation_matrix(
-        sim_params: Model4DSTEM, specimen_to_image: Optional[CoordMappingT] = None):
+        sim_model: Model4DSTEM, specimen_to_image: Optional[CoordMappingT] = None):
     '''
     Calculate a transformation matrix that maps from scan position in scan pixel
     coordinates and detector pixel coordinates to specimen coordinates in scan
@@ -100,7 +100,7 @@ def get_forward_transformation_matrix(
             scan_pos = PixelYX(x=test_param[0], y=test_param[1])
             source_dy = test_param[2]
             source_dx = test_param[3]
-            res = sim_params.trace(
+            res = sim_model.trace(
                 scan_pos=scan_pos,
                 source_dy=source_dy,
                 source_dx=source_dx
@@ -176,17 +176,17 @@ def project_frame_forward(obj, source_semiconv, mat, scan_y, scan_x, out):
 
 def project(
         image, scan_shape, detector_shape,
-        sim_params: Model4DSTEM,
+        sim_model: Model4DSTEM,
         specimen_to_image: Optional[CoordMappingT] = None):
     result = np.zeros(tuple(scan_shape) + tuple(detector_shape), dtype=image.dtype)
     mat = get_forward_transformation_matrix(
-        sim_params=sim_params, specimen_to_image=specimen_to_image
+        sim_model=sim_model, specimen_to_image=specimen_to_image
     )
     for scan_y in range(result.shape[0]):
         for scan_x in range(result.shape[1]):
             project_frame_forward(
                 obj=image,
-                source_semiconv=sim_params.semiconv,
+                source_semiconv=sim_model.semiconv,
                 mat=mat,
                 scan_y=scan_y,
                 scan_x=scan_x,
