@@ -6,7 +6,7 @@ import numpy as np
 import numba
 
 from microscope_calibration.common.model import (
-    Parameters4DSTEM,
+    Model4DSTEM,
     PixelYX,
     CoordXY,
     DescanError,
@@ -78,7 +78,7 @@ def _do_lstsq(input_samples, output_samples):
 
 
 def get_backward_transformation_matrix(
-    rec_params: Parameters4DSTEM, specimen_to_image: Optional[CoordMappingT] = None
+    rec_params: Model4DSTEM, specimen_to_image: Optional[CoordMappingT] = None
 ):
     """
     Calculate a transformation matrix that maps from scan position in scan pixel
@@ -231,7 +231,7 @@ def project_frame_backwards(frame, source_semiconv, mat, scan_y, scan_x, image_o
 
 
 def get_detector_correction_matrix(
-    rec_params: Parameters4DSTEM, ref_params: Optional[Parameters4DSTEM] = None
+    rec_params: Model4DSTEM, ref_params: Optional[Model4DSTEM] = None
 ):
     """
     Calculate a transformation matrix that maps from scan position in scan pixel
@@ -372,7 +372,7 @@ def correct_frame(frame, mat, scan_y, scan_x, detector_out):
 
 
 @jax.jit
-def get_diffraction_pixel_radius(params: Parameters4DSTEM, twotheta: float):
+def get_diffraction_pixel_radius(params: Model4DSTEM, twotheta: float):
     diffractor = Scanner(
         z=params.overfocus,
         scan_pos_x=0.0,
@@ -397,7 +397,7 @@ def get_diffraction_pixel_radius(params: Parameters4DSTEM, twotheta: float):
 
 
 @jax.jit
-def get_primary_beam_radius(params: Parameters4DSTEM):
+def get_primary_beam_radius(params: Model4DSTEM):
     center_res = params.trace(
         scan_pos=PixelYX(0.0, 0.0),
         source_dx=0.0,
@@ -415,7 +415,7 @@ def get_primary_beam_radius(params: Parameters4DSTEM):
 
 
 @jax.jit
-def ring_radii(params: Parameters4DSTEM, twothetas):
+def ring_radii(params: Model4DSTEM, twothetas):
     pixel_radii = jnp.array(
         [
             get_diffraction_pixel_radius(params=params, twotheta=twotheta)
@@ -429,7 +429,7 @@ def ring_radii(params: Parameters4DSTEM, twothetas):
 
 
 @jax.jit
-def get_center(params: Parameters4DSTEM, scan_pos: PixelYX):
+def get_center(params: Model4DSTEM, scan_pos: PixelYX):
     center_res = params.trace(
         scan_pos=scan_pos,
         source_dx=0.0,

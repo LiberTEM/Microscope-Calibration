@@ -10,13 +10,13 @@ from microscope_calibration.common.stem_overfocus import (
 )
 from microscope_calibration.util.stem_overfocus_sim import project
 from microscope_calibration.common.model import (
-    Parameters4DSTEM, PixelYX, DescanError,
+    Model4DSTEM, PixelYX, DescanError,
 )
 from libertem.corrections.coordinates import scale, rotate
 
 
 def test_model_consistency_backproject():
-    params = Parameters4DSTEM(
+    params = Model4DSTEM(
         overfocus=0.123,
         scan_pixel_pitch=0.234,
         camera_length=0.73,
@@ -62,7 +62,7 @@ def test_model_consistency_backproject():
 
 
 def test_model_consistency_correct():
-    params = Parameters4DSTEM(
+    params = Model4DSTEM(
         overfocus=0.123,
         scan_pixel_pitch=0.234,
         camera_length=0.73,
@@ -88,7 +88,7 @@ def test_model_consistency_correct():
             offsyi=0.37
         )
     )
-    ref_params = Parameters4DSTEM(
+    ref_params = Model4DSTEM(
         overfocus=1.1523,
         scan_pixel_pitch=0.4234,
         camera_length=0.7453,
@@ -138,7 +138,7 @@ def test_model_consistency_correct():
 
 def test_backproject_identity():
     # 1:1 size mapping between detector and specimen
-    params = Parameters4DSTEM(
+    params = Model4DSTEM(
         overfocus=1,
         scan_pixel_pitch=1,
         camera_length=1,
@@ -168,7 +168,7 @@ def test_backproject_counterrotate():
     # 1:1 size mapping between detector and specimen
     # Rotating detector and scan rotates the whole reference frame
     # so that the result is identity
-    params = Parameters4DSTEM(
+    params = Model4DSTEM(
         overfocus=1,
         scan_pixel_pitch=1,
         camera_length=1,
@@ -223,7 +223,7 @@ def test_backproject_rot90_flip(rotate_scan, rotate_detector, fixed_reference, f
     else:
         scan_rotation = 0.
 
-    params = Parameters4DSTEM(
+    params = Model4DSTEM(
         overfocus=1,
         scan_pixel_pitch=1,
         camera_length=1,
@@ -281,7 +281,7 @@ def test_backproject_rot90_flip(rotate_scan, rotate_detector, fixed_reference, f
 def test_backproject_scale_fixed():
     # scan coordinates are 2x detector coordinates relative to object,
     # but we project from and back-project into fixed 1:1 reference coordinates
-    params = Parameters4DSTEM(
+    params = Model4DSTEM(
         overfocus=1,
         scan_pixel_pitch=2,
         camera_length=1,
@@ -331,7 +331,7 @@ def test_backproject_scale_fixed():
 def test_backproject_scale_scanref():
     # scan coordinates are 2x detector coordinates,
     # and we project from and back-project into that coordinate system
-    params = Parameters4DSTEM(
+    params = Model4DSTEM(
         overfocus=1,
         scan_pixel_pitch=2,
         camera_length=1,
@@ -393,7 +393,7 @@ def test_correct(scan_rotation, detector_rotation, flip_factor, manual_reference
     obj_half_size = 16
     angle = np.arctan2(obj_half_size*detector_pixel_pitch/2 + 0.00314157, propagation_distance)
 
-    params = Parameters4DSTEM(
+    params = Model4DSTEM(
         overfocus=overfocus,
         scan_pixel_pitch=scan_pixel_pitch,
         camera_length=camera_length,
@@ -421,7 +421,7 @@ def test_correct(scan_rotation, detector_rotation, flip_factor, manual_reference
     # Should be identical to the default calculated by get_detector_correction_matrix()
     # Note that this rotates the detector to follow the scan in order to cancel out
     # the scan rotation.
-    params_ref_manual = Parameters4DSTEM(
+    params_ref_manual = Model4DSTEM(
         overfocus=overfocus,
         scan_pixel_pitch=scan_pixel_pitch,
         camera_length=camera_length,
@@ -435,7 +435,7 @@ def test_correct(scan_rotation, detector_rotation, flip_factor, manual_reference
         descan_error=DescanError()
     )
     # Parameters for simulated result without aberrations
-    params_ref_sim = Parameters4DSTEM(
+    params_ref_sim = Model4DSTEM(
         overfocus=overfocus,
         scan_pixel_pitch=scan_pixel_pitch,
         camera_length=camera_length,
@@ -503,7 +503,7 @@ def test_correct_flip(scan_rotation, detector_rotation):
     obj_half_size = 16
     angle = np.arctan2(obj_half_size*detector_pixel_pitch/2 + 0.00314157, propagation_distance)
 
-    params = Parameters4DSTEM(
+    params = Model4DSTEM(
         overfocus=overfocus,
         scan_pixel_pitch=scan_pixel_pitch,
         camera_length=camera_length,
@@ -529,7 +529,7 @@ def test_correct_flip(scan_rotation, detector_rotation):
     )
     # Manual reference parametes that introduce flip_y
     # and compensate the rotations
-    params_ref_manual = Parameters4DSTEM(
+    params_ref_manual = Model4DSTEM(
         overfocus=overfocus,
         scan_pixel_pitch=scan_pixel_pitch,
         camera_length=camera_length,
@@ -543,7 +543,7 @@ def test_correct_flip(scan_rotation, detector_rotation):
         descan_error=DescanError()
     )
     # Parameters for simulated result with flip_y
-    params_ref_sim = Parameters4DSTEM(
+    params_ref_sim = Model4DSTEM(
         overfocus=overfocus,
         scan_pixel_pitch=scan_pixel_pitch,
         camera_length=camera_length,
@@ -614,7 +614,7 @@ def test_correct_fixed_manualref(scan_rotation, detector_rotation):
         y, x = rotate(-np.pi/2) @ scale(1/scan_pixel_pitch) @ inp_vec
         return PixelYX(y=y+cy + 2, x=x+cx - 3)
 
-    params = Parameters4DSTEM(
+    params = Model4DSTEM(
         overfocus=overfocus,
         scan_pixel_pitch=scan_pixel_pitch,
         camera_length=camera_length,
@@ -640,7 +640,7 @@ def test_correct_fixed_manualref(scan_rotation, detector_rotation):
     )
     # Manual reference parametes that introduce flip_y
     # and compensate the rotations
-    params_ref_manual = Parameters4DSTEM(
+    params_ref_manual = Model4DSTEM(
         overfocus=overfocus,
         # No impact on correction
         scan_pixel_pitch=scan_pixel_pitch * 42,
@@ -657,7 +657,7 @@ def test_correct_fixed_manualref(scan_rotation, detector_rotation):
         descan_error=DescanError()
     )
     # Parameters for simulated result with flip_y
-    params_ref_sim = Parameters4DSTEM(
+    params_ref_sim = Model4DSTEM(
         overfocus=overfocus,
         scan_pixel_pitch=scan_pixel_pitch,
         camera_length=camera_length,
