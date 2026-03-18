@@ -5,6 +5,7 @@ import jax; jax.config.update("jax_enable_x64", True)  # noqa
 import jax_dataclasses as jdc
 import jax.numpy as jnp
 from jax.errors import TracerBoolConversionError
+import sympy as sym
 
 from temgym_core.ray import Ray
 from temgym_core import PixelYX, CoordXY
@@ -12,6 +13,13 @@ from temgym_core.components import Component, Plane, Descanner, Scanner, DescanE
 from temgym_core.run import run_iter
 from temgym_core.source import Source, PointSource
 from temgym_core.propagator import Propagator, FreeSpaceParaxial
+
+
+def equals(ray1: Ray, ray2: Ray) -> bool:
+    for key in ray1.__dict__.keys():
+        if not sym.sympify(ray1.__dict__[key]).equals(ray2.__dict__[key]):
+            return False
+    return True
 
 
 # Simple transformation function similar to propagation by components
@@ -23,8 +31,8 @@ def scale(c: CoordXY | PixelYX, factor: float) -> CoordXY:
 
 
 def rotate(c: CoordXY | PixelYX, radians: float) -> CoordXY:
-    cosr = jnp.cos(radians)
-    sinr = jnp.sin(radians)
+    cosr = sym.cos(radians)
+    sinr = sym.sin(radians)
     return CoordXY(
         x=c.x * cosr - c.y * sinr,
         y=c.y * cosr + c.x * sinr,
@@ -300,14 +308,14 @@ class Model4DSTEM:
         try:
             assert isinstance(comp, Propagator)
             assert comp.distance == 0.0
-            assert r == ray
+            assert equals(r, ray)
         except TracerBoolConversionError:
             pass
 
         comp, r = run_result.pop(0)
         try:
             assert comp == components['source']
-            assert r == ray
+            assert equals(r, ray)
         except TracerBoolConversionError:
             pass
         result["source"] = ResultSection(component=comp, ray=r)
