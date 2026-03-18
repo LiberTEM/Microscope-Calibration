@@ -6,6 +6,7 @@ import jax_dataclasses as jdc
 from libertem.udf.com import guess_corrections, apply_correction
 import numpy as np
 import jax.numpy as jnp
+import sympy as sym
 
 from temgym_core.ray import Ray
 from temgym_core.components import DescanError, Component
@@ -66,10 +67,11 @@ def test_trace_focused():
     )
     res1 = model.trace(scan_pos=PixelYX(y=13, x=7), source_dx=0.034, source_dy=0.042)
     res2 = model.trace(scan_pos=PixelYX(y=13, x=7), source_dx=0., source_dy=0.)
-    assert_allclose(res1['specimen'].ray.x, res2['specimen'].ray.x)
-    assert_allclose(res1['specimen'].ray.y, res2['specimen'].ray.y)
-    assert_allclose(res1['specimen'].sampling['scan_px'].x, 7)
-    assert_allclose(res1['specimen'].sampling['scan_px'].y, 13)
+    assert sym.sympify(res1['specimen'].ray.x).equals(res2['specimen'].ray.x)
+    # assert_allclose(res1['specimen'].ray.x, res2['specimen'].ray.x)
+    assert sym.sympify(res1['specimen'].ray.y).equals(res2['specimen'].ray.y)
+    assert sym.sympify(res1['specimen'].sampling['scan_px'].x).equals(7)
+    assert sym.sympify(res1['specimen'].sampling['scan_px'].y).equals(13)
 
 
 def test_trace_noproject():
@@ -125,15 +127,19 @@ def test_straight():
         if isinstance(sect.component, Component) or isinstance(sect.component, Source):
             assert sect.component.z == sect.ray.z
             assert sect.component.z == sect.ray.pathlength
-        assert sect.ray.x == 0.
-        assert sect.ray.y == 0.
+        assert sym.sympify(sect.ray.x).equals(0.)
+        assert sym.sympify(sect.ray.y).equals(0.)
     assert res['detector'].ray.z == model.overfocus + model.camera_length
     assert res['source'].ray.z == 0.
-    assert res['specimen'].sampling['scan_px'] == PixelYX(x=0., y=0.)
-    assert res['detector'].sampling['detector_px'] == PixelYX(x=0., y=0.)
+    assert sym.sympify(res['specimen'].sampling['scan_px'].x).equals(0.)
+    assert sym.sympify(res['specimen'].sampling['scan_px'].y).equals(0.)
+    assert sym.sympify(res['detector'].sampling['detector_px'].x).equals(0.)
+    assert sym.sympify(res['detector'].sampling['detector_px'].y).equals(0.)
 
 
 # Scan deflection test: beam is shifted
+# Also test that comparisons with symbols are
+# equal when they should be, and not equal when they shouldn't.
 @pytest.mark.parametrize(
     'dy', (-0.2, 0., 0.34)
 )
@@ -141,10 +147,10 @@ def test_straight():
     'dx', (-0.7, 0., 0.42)
 )
 @pytest.mark.parametrize(
-    'scan_y', (-17, 0., 23.4)
+    'scan_y', (sym.Symbol('scan_y'),)
 )
 @pytest.mark.parametrize(
-    'scan_x', (-23, 0., 29)
+    'scan_x', (sym.Symbol('scan_x'),)
 )
 def test_scan(dy, dx, scan_y, scan_x):
     model = Model4DSTEM(
@@ -172,54 +178,61 @@ def test_scan(dy, dx, scan_y, scan_x):
             assert sect.component.z == sect.ray.pathlength
         # Beam is deflected
         if key in ('scanner', 'specimen'):
-            assert sect.ray.x - sect_straight.ray.x == scan_x
-            assert sect.ray.y - sect_straight.ray.y == scan_y
+            assert sym.sympify(sect.ray.x - sect_straight.ray.x).equals(scan_x)
+            assert sym.sympify(sect.ray.y - sect_straight.ray.y).equals(scan_y)
         # Beam is not deflected
         else:
-            assert_allclose(sect.ray.x, sect_straight.ray.x)
-            assert_allclose(sect.ray.y, sect_straight.ray.y)
+            assert sym.sympify(sect.ray.x).equals(sect_straight.ray.x)
+            assert sym.sympify(sect.ray.y).equals(sect_straight.ray.y)
+            # Some counter checks to make sure deviations actually let
+            # the values to be detected as different
+            with pytest.raises(AssertionError):
+                assert sym.sympify(sect.ray.x).equals(sect_straight.ray.x + 1)
+            # Test that we can clearly distinguish tests that should fail and
+            # tests that should succeed when a mixture of symbols (scan_y, scan_x) and
+            # numerical values (dx, dy) is used. If the ray has propagated in z and there is
+            # a different deflection in x and y,
+            # then the x and y values should not be equal anymore.
+            if sect.ray.z != 0 and dx != dy:
+                with pytest.raises(AssertionError):
+                    assert sym.sympify(sect.ray.x).equals(sect_straight.ray.y)
+            else:
+                assert sym.sympify(sect.ray.x).equals(sect_straight.ray.y)
             # Ray propagates straight
-            assert_allclose(sect.ray.x, sect.ray.z * dx)
-            assert_allclose(sect.ray.y, sect.ray.z * dy)
-    assert_allclose(res['detector'].ray.z, model.overfocus + model.camera_length)
-    assert_allclose(res['source'].ray.z, 0.)
+            assert sym.sympify(sect.ray.x).equals(sect.ray.z * dx)
+            assert sym.sympify(sect.ray.y).equals(sect.ray.z * dy)
+    assert sym.sympify(res['detector'].ray.z).equals(model.overfocus + model.camera_length)
+    assert sym.sympify(res['source'].ray.z).equals(0.)
     # Correct scan deflection
-    assert_allclose(
-        res['specimen'].sampling['scan_px'],
-        PixelYX(
-            x=scan_x + res_straight['specimen'].sampling['scan_px'].x,
-            y=scan_y + res_straight['specimen'].sampling['scan_px'].y
-        )
-    )
+    assert sym.sympify(res['specimen'].sampling['scan_px'].x).equals(scan_x + res_straight['specimen'].sampling['scan_px'].x)
+    assert sym.sympify(res['specimen'].sampling['scan_px'].y).equals(scan_y + res_straight['specimen'].sampling['scan_px'].y)
     # Check that central ray goes through scan position
     if dx == 0. and dy == 0.:
-        assert_allclose(
-            res['specimen'].sampling['scan_px'],
-            PixelYX(
-                x=scan_x,
-                y=scan_y,
-            ),
-            rtol=1e-12, atol=1e-12
+        assert sym.sympify(res['specimen'].sampling['scan_px'].x).equals(
+            scan_x
+        )
+        assert sym.sympify(res['specimen'].sampling['scan_px'].y).equals(
+            scan_y
         )
     # check physical coords equals pixel coords
-    assert_allclose(
-        res['specimen'].sampling['scan_px'],
-        PixelYX(
-            x=res['specimen'].ray.x,
-            y=res['specimen'].ray.y,
-        )
+    assert sym.sympify(res['specimen'].sampling['scan_px'].x).equals(
+        res['specimen'].ray.x
     )
-    assert_allclose(res['detector'].sampling['detector_px'], PixelYX(
-        x=dx*(model.overfocus + model.camera_length),
-        y=dy*(model.overfocus + model.camera_length)
-    ))
+    assert sym.sympify(res['specimen'].sampling['scan_px'].y).equals(
+        res['specimen'].ray.y
+    )
+    assert sym.sympify(res['detector'].sampling['detector_px'].x).equals(
+        dx*(model.overfocus + model.camera_length)
+    )
+    assert sym.sympify(res['detector'].sampling['detector_px'].y).equals(
+        dy*(model.overfocus + model.camera_length)
+    )
     # check physical coords equals pixel coords
-    assert_allclose(
-        res['detector'].sampling['detector_px'],
-        PixelYX(
-            x=res['detector'].ray.x,
-            y=res['detector'].ray.y,
-        )
+    assert sym.sympify(res['detector'].sampling['detector_px'].x).equals(
+        res['detector'].ray.x
+    )
+    assert sym.sympify(res['detector'].sampling['detector_px'].y).equals(
+        res['detector'].ray.y
     )
 
 
@@ -259,33 +272,19 @@ def test_detector_coordinate_shift_scale_flip(
     )
     res = model.trace(scan_pos=PixelYX(y=scan_y, x=scan_x), source_dx=dx, source_dy=dy)
     # check physical coords vs pixel coords scale and shift
-    assert_allclose(
-        res['specimen'].sampling['scan_px'],
-        PixelYX(
-            x=res['specimen'].ray.x/scan_pixel_pitch + scan_cx,
-            y=res['specimen'].ray.y/scan_pixel_pitch + scan_cy,
-        ),
-        rtol=1e-12, atol=1e-12
-    )
+    assert sym.sympify(res['specimen'].sampling['scan_px'].x).equals(
+        res['specimen'].ray.x/scan_pixel_pitch + scan_cx)
+    assert sym.sympify(res['specimen'].sampling['scan_px'].y).equals(
+        res['specimen'].ray.y/scan_pixel_pitch + scan_cy)
     # check physical coords vs pixel coords scale and shift
-    assert_allclose(
-        res['detector'].sampling['detector_px'],
-        PixelYX(
-            x=res['detector'].ray.x/detector_pixel_pitch + detector_cx,
-            y=flip_factor*(res['detector'].ray.y/detector_pixel_pitch + flip_factor*detector_cy),
-        ),
-        rtol=1e-12, atol=1e-12
-    )
+    assert sym.sympify(res['detector'].sampling['detector_px'].x).equals(
+        res['detector'].ray.x/detector_pixel_pitch + detector_cx)
+    assert sym.sympify(res['detector'].sampling['detector_px'].y).equals(
+        flip_factor*(res['detector'].ray.y/detector_pixel_pitch + flip_factor*detector_cy))
     if dy == 0.:
-        assert_allclose(
-            res['detector'].sampling['detector_px'].y,
-            detector_cy
-        )
+        assert sym.sympify(res['detector'].sampling['detector_px'].y).equals(detector_cy)
     if dx == 0.:
-        assert_allclose(
-            res['detector'].sampling['detector_px'].x,
-            detector_cx
-        )
+        assert sym.sympify(res['detector'].sampling['detector_px'].x).equals(detector_cx)
 
 
 # scan coordinate systems
@@ -321,30 +320,22 @@ def test_scan_coordinate_shift_scale(scan_cy, scan_cx, scan_pixel_pitch):
     )
     res = model.trace(scan_pos=PixelYX(y=scan_y, x=scan_x), source_dx=dx, source_dy=dy)
     # check physical coords vs pixel coords scale and shift
-    assert_allclose(
-        res['specimen'].sampling['scan_px'],
-        PixelYX(
-            x=res['specimen'].ray.x/scan_pixel_pitch + scan_cx,
-            y=res['specimen'].ray.y/scan_pixel_pitch + scan_cy,
-        ),
-        rtol=1e-12, atol=1e-12
-    )
+    assert sym.sympify(res['specimen'].sampling['scan_px'].x).equals(
+        res['specimen'].ray.x/scan_pixel_pitch + scan_cx)
+    assert sym.sympify(res['specimen'].sampling['scan_px'].y).equals(
+        res['specimen'].ray.y/scan_pixel_pitch + scan_cy)
     flip_factor = -1. if flip_factor else 1.
     # check physical coords vs pixel coords scale and shift
-    assert_allclose(
-        res['detector'].sampling['detector_px'],
-        PixelYX(
-            x=res['detector'].ray.x/detector_pixel_pitch + detector_cx,
-            y=flip_factor*res['detector'].ray.y/detector_pixel_pitch + detector_cy,
-        ),
-        rtol=1e-12, atol=1e-12
-    )
+    assert sym.sympify(res['detector'].sampling['detector_px'].x).equals(
+        res['detector'].ray.x/detector_pixel_pitch + detector_cx)
+    assert sym.sympify(res['detector'].sampling['detector_px'].y).equals(
+        flip_factor*(res['detector'].ray.y/detector_pixel_pitch + flip_factor*detector_cy))
 
 
 @pytest.mark.parametrize(
     # work in exact degree values since guess_corrections() can only
     # find these exactly. Otherwise we have larger residuals
-    'scan_rotation', (73/180*np.pi, 0, 23/180*np.pi)
+    'scan_rotation', (73/180*sym.pi, 0, 23/180*sym.pi)
 )
 @pytest.mark.parametrize(
     'flip_factor', (1., -1.)
@@ -439,12 +430,7 @@ def test_com_validation(scan_rotation, flip_factor, detector_cy, detector_cx):
                     atol=1e-12, rtol=1e-12
                 )
 
-    assert_allclose(
-        -guess_result.scan_rotation / 180 * np.pi,
-        scan_rotation,
-        atol=1e-12,
-        rtol=1e-4
-    )
+    assert sym.sympify(-guess_result.scan_rotation / 180 * sym.pi).equals(scan_rotation)
     if flip_factor == 1.:
         flip_y = False
     elif flip_factor == -1.:
@@ -452,10 +438,10 @@ def test_com_validation(scan_rotation, flip_factor, detector_cy, detector_cx):
     else:
         raise ValueError(0)
     assert guess_result.flip_y == flip_y
-    assert_allclose(guess_result.cy, detector_cy, atol=1e-2, rtol=1e-2)
-    assert_allclose(guess_result.cx, detector_cx, atol=1e-2, rtol=1e-2)
-    assert_allclose(guess_result.cy, detector_cy, atol=1e-2, rtol=1e-2)
-    assert_allclose(guess_result.cx, detector_cx, atol=1e-2, rtol=1e-2)
+    assert sym.sympify(guess_result.cy).equals(detector_cy)
+    assert sym.sympify(guess_result.cx).equals(detector_cx)
+    assert sym.sympify(guess_result.cy).equals(detector_cy)
+    assert sym.sympify(guess_result.cx).equals(detector_cx)
 
 
 def test_rotation_direction_0():
@@ -476,16 +462,16 @@ def test_rotation_direction_0():
         descan_error=DescanError()
     )
     res = model.trace(scan_pos=PixelYX(y=0., x=1.), source_dx=0., source_dy=0.)
-    assert_allclose(res['specimen'].sampling['scan_px'].x, 1., atol=1e-12, rtol=1e-12)
-    assert_allclose(res['specimen'].sampling['scan_px'].y, 0., atol=1e-12, rtol=1e-12)
-    assert_allclose(res['specimen'].ray.x, 1., atol=1e-12, rtol=1e-12)
-    assert_allclose(res['specimen'].ray.y, 0., atol=1e-12, rtol=1e-12)
+    assert sym.sympify(res['specimen'].sampling['scan_px'].x).equals(1.)
+    assert sym.sympify(res['specimen'].sampling['scan_px'].y).equals(0.)
+    assert sym.sympify(res['specimen'].ray.x).equals(1.)
+    assert sym.sympify(res['specimen'].ray.y).equals(0.)
 
     res = model.trace(scan_pos=PixelYX(y=1., x=0.), source_dx=0., source_dy=0.)
-    assert_allclose(res['specimen'].sampling['scan_px'].x, 0., atol=1e-12, rtol=1e-12)
-    assert_allclose(res['specimen'].sampling['scan_px'].y, 1., atol=1e-12, rtol=1e-12)
-    assert_allclose(res['specimen'].ray.x, 0., atol=1e-12, rtol=1e-12)
-    assert_allclose(res['specimen'].ray.y, 1., atol=1e-12, rtol=1e-12)
+    assert sym.sympify(res['specimen'].sampling['scan_px'].x).equals(0.)
+    assert sym.sympify(res['specimen'].sampling['scan_px'].y).equals(1.)
+    assert sym.sympify(res['specimen'].ray.x).equals(0.)
+    assert sym.sympify(res['specimen'].ray.y).equals(1.)
 
 
 @pytest.mark.parametrize(
@@ -500,7 +486,7 @@ def test_rotation_direction_90(flip_factor):
         overfocus=1,
         scan_pixel_pitch=1,
         scan_center=PixelYX(y=0., x=0.),
-        scan_rotation=np.pi/2,
+        scan_rotation=sym.pi/2,
         camera_length=1,
         detector_pixel_pitch=1,
         detector_center=PixelYX(y=0., x=0.),
@@ -510,16 +496,16 @@ def test_rotation_direction_90(flip_factor):
     )
     res = model.trace(scan_pos=PixelYX(y=0., x=1.), source_dx=0., source_dy=0.)
 
-    assert_allclose(res['specimen'].sampling['scan_px'].x, 1., atol=1e-12, rtol=1e-12)
-    assert_allclose(res['specimen'].sampling['scan_px'].y, 0., atol=1e-12, rtol=1e-12)
-    assert_allclose(res['specimen'].ray.x, 0., atol=1e-12, rtol=1e-12)
-    assert_allclose(res['specimen'].ray.y, 1., atol=1e-12, rtol=1e-12)
+    assert sym.sympify(res['specimen'].sampling['scan_px'].x).equals(1.)
+    assert sym.sympify(res['specimen'].sampling['scan_px'].y).equals(0.)
+    assert sym.sympify(res['specimen'].ray.x).equals(0.)
+    assert sym.sympify(res['specimen'].ray.y).equals(1.)
 
     res = model.trace(scan_pos=PixelYX(y=1., x=0.), source_dx=0., source_dy=0.)
-    assert_allclose(res['specimen'].sampling['scan_px'].x, 0., atol=1e-12, rtol=1e-12)
-    assert_allclose(res['specimen'].sampling['scan_px'].y, 1., atol=1e-12, rtol=1e-12)
-    assert_allclose(res['specimen'].ray.x, -1., atol=1e-12, rtol=1e-12)
-    assert_allclose(res['specimen'].ray.y, 0., atol=1e-12, rtol=1e-12)
+    assert sym.sympify(res['specimen'].sampling['scan_px'].x).equals(0.)
+    assert sym.sympify(res['specimen'].sampling['scan_px'].y).equals(1.)
+    assert sym.sympify(res['specimen'].ray.x).equals(-1.)
+    assert sym.sympify(res['specimen'].ray.y).equals(0.)
 
 
 def test_detector_px():
@@ -539,16 +525,16 @@ def test_detector_px():
         descan_error=DescanError()
     )
     res = model.trace(scan_pos=PixelYX(y=0., x=0.), source_dx=0.5, source_dy=0.)
-    assert_allclose(res['detector'].sampling['detector_px'].x, 1., atol=1e-12, rtol=1e-12)
-    assert_allclose(res['detector'].sampling['detector_px'].y, 0., atol=1e-12, rtol=1e-12)
-    assert_allclose(res['detector'].ray.x, 1., atol=1e-12, rtol=1e-12)
-    assert_allclose(res['detector'].ray.y, 0., atol=1e-12, rtol=1e-12)
+    assert sym.sympify(res['detector'].sampling['detector_px'].x).equals(1.)
+    assert sym.sympify(res['detector'].sampling['detector_px'].y).equals(0.)
+    assert sym.sympify(res['detector'].ray.x).equals(1.)
+    assert sym.sympify(res['detector'].ray.y).equals(0.)
 
     res = model.trace(scan_pos=PixelYX(y=0., x=0.), source_dx=0., source_dy=0.5)
-    assert_allclose(res['detector'].sampling['detector_px'].x, 0., atol=1e-12, rtol=1e-12)
-    assert_allclose(res['detector'].sampling['detector_px'].y, 1., atol=1e-12, rtol=1e-12)
-    assert_allclose(res['detector'].ray.x, 0., atol=1e-12, rtol=1e-12)
-    assert_allclose(res['detector'].ray.y, 1., atol=1e-12, rtol=1e-12)
+    assert sym.sympify(res['detector'].sampling['detector_px'].x).equals(0.)
+    assert sym.sympify(res['detector'].sampling['detector_px'].y).equals(1.)
+    assert sym.sympify(res['detector'].ray.x).equals(0.)
+    assert sym.sympify(res['detector'].ray.y).equals(1.)
 
 
 def test_detector_px_flipy():
@@ -573,20 +559,20 @@ def test_detector_px_flipy():
         source_dy=0.,
         source_dx=0.5
     )
-    assert_allclose(res['detector'].sampling['detector_px'].x, 1., atol=1e-12, rtol=1e-12)
-    assert_allclose(res['detector'].sampling['detector_px'].y, 0., atol=1e-12, rtol=1e-12)
-    assert_allclose(res['detector'].ray.x, 1., atol=1e-12, rtol=1e-12)
-    assert_allclose(res['detector'].ray.y, 0., atol=1e-12, rtol=1e-12)
+    assert sym.sympify(res['detector'].sampling['detector_px'].x).equals(1.)
+    assert sym.sympify(res['detector'].sampling['detector_px'].y).equals(0.)
+    assert sym.sympify(res['detector'].ray.x).equals(1.)
+    assert sym.sympify(res['detector'].ray.y).equals(0.)
 
     res = model.trace(
         scan_pos=PixelYX(y=0., x=0.),
         source_dy=0.5,
         source_dx=0.
     )
-    assert_allclose(res['detector'].sampling['detector_px'].x, 0., atol=1e-12, rtol=1e-12)
-    assert_allclose(res['detector'].sampling['detector_px'].y, -1., atol=1e-12, rtol=1e-12)
-    assert_allclose(res['detector'].ray.x, 0., atol=1e-12, rtol=1e-12)
-    assert_allclose(res['detector'].ray.y, 1., atol=1e-12, rtol=1e-12)
+    assert sym.sympify(res['detector'].sampling['detector_px'].x).equals(0.)
+    assert sym.sympify(res['detector'].sampling['detector_px'].y).equals(-1.)
+    assert sym.sympify(res['detector'].ray.x).equals(0.)
+    assert sym.sympify(res['detector'].ray.y).equals(1.)
 
 
 def test_detector_px_rotate():
@@ -601,22 +587,22 @@ def test_detector_px_rotate():
         camera_length=1,
         detector_pixel_pitch=1,
         detector_center=PixelYX(y=0., x=0.),
-        detector_rotation=np.pi/2,
+        detector_rotation=sym.pi/2,
         semiconv=0.023,
         flip_factor=1.,
         descan_error=DescanError()
     )
     res = model.trace(scan_pos=PixelYX(y=0., x=0.), source_dx=0.5, source_dy=0.)
-    assert_allclose(res['detector'].sampling['detector_px'].x, 0., atol=1e-12, rtol=1e-12)
-    assert_allclose(res['detector'].sampling['detector_px'].y, -1., atol=1e-12, rtol=1e-12)
-    assert_allclose(res['detector'].ray.x, 1., atol=1e-12, rtol=1e-12)
-    assert_allclose(res['detector'].ray.y, 0., atol=1e-12, rtol=1e-12)
+    assert sym.sympify(res['detector'].sampling['detector_px'].x).equals(0.)
+    assert sym.sympify(res['detector'].sampling['detector_px'].y).equals(-1.)
+    assert sym.sympify(res['detector'].ray.x).equals(1.)
+    assert sym.sympify(res['detector'].ray.y).equals(0.)
 
     res = model.trace(scan_pos=PixelYX(y=0., x=0.), source_dx=0., source_dy=0.5)
-    assert_allclose(res['detector'].sampling['detector_px'].x, 1., atol=1e-12, rtol=1e-12)
-    assert_allclose(res['detector'].sampling['detector_px'].y, 0., atol=1e-12, rtol=1e-12)
-    assert_allclose(res['detector'].ray.x, 0., atol=1e-12, rtol=1e-12)
-    assert_allclose(res['detector'].ray.y, 1., atol=1e-12, rtol=1e-12)
+    assert sym.sympify(res['detector'].sampling['detector_px'].x).equals(1.)
+    assert sym.sympify(res['detector'].sampling['detector_px'].y).equals(0.)
+    assert sym.sympify(res['detector'].ray.x).equals(0.)
+    assert sym.sympify(res['detector'].ray.y).equals(1.)
 
 
 def test_detector_px_rotate_flipy():
@@ -631,22 +617,22 @@ def test_detector_px_rotate_flipy():
         camera_length=1,
         detector_pixel_pitch=1,
         detector_center=PixelYX(y=0., x=0.),
-        detector_rotation=np.pi/2,
+        detector_rotation=sym.pi/2,
         semiconv=0.023,
         flip_factor=-1.,
         descan_error=DescanError()
     )
     res = model.trace(scan_pos=PixelYX(y=0., x=0.), source_dx=0.5, source_dy=0.)
-    assert_allclose(res['detector'].sampling['detector_px'].x, 0., atol=1e-12, rtol=1e-12)
-    assert_allclose(res['detector'].sampling['detector_px'].y, 1., atol=1e-12, rtol=1e-12)
-    assert_allclose(res['detector'].ray.x, 1., atol=1e-12, rtol=1e-12)
-    assert_allclose(res['detector'].ray.y, 0., atol=1e-12, rtol=1e-12)
+    assert sym.sympify(res['detector'].sampling['detector_px'].x).equals(0.)
+    assert sym.sympify(res['detector'].sampling['detector_px'].y).equals(1.)
+    assert sym.sympify(res['detector'].ray.x).equals(1.)
+    assert sym.sympify(res['detector'].ray.y).equals(0.)
 
     res = model.trace(scan_pos=PixelYX(y=0., x=0.), source_dx=0., source_dy=0.5)
-    assert_allclose(res['detector'].sampling['detector_px'].x, 1., atol=1e-12, rtol=1e-12)
-    assert_allclose(res['detector'].sampling['detector_px'].y, 0., atol=1e-12, rtol=1e-12)
-    assert_allclose(res['detector'].ray.x, 0., atol=1e-12, rtol=1e-12)
-    assert_allclose(res['detector'].ray.y, 1., atol=1e-12, rtol=1e-12)
+    assert sym.sympify(res['detector'].sampling['detector_px'].x).equals(1.)
+    assert sym.sympify(res['detector'].sampling['detector_px'].y).equals(0.)
+    assert sym.sympify(res['detector'].ray.x).equals(0.)
+    assert sym.sympify(res['detector'].ray.y).equals(1.)
 
 
 @pytest.mark.parametrize(
@@ -659,7 +645,7 @@ def test_detector_px_rotate_flipy():
     'camera_length', (-4., 0., 1.2)
 )
 @pytest.mark.parametrize(
-    'dydx', ((-4., 13.), (0., 0.))
+    'dydx', ((sym.Symbol('dy'), sym.Symbol('dx')),)
 )
 def test_geometry(scan, overfocus, camera_length, dydx):
     dy, dx = dydx
@@ -678,17 +664,17 @@ def test_geometry(scan, overfocus, camera_length, dydx):
     res = model.trace(scan_pos=scan, source_dx=dx, source_dy=dy)
     # No descan error means rays not bent
     for key, sect in res.items():
-        assert sect.ray.dy == dy
-        assert sect.ray.dx == dx
+        assert sym.sympify(sect.ray.dy).equals(dy)
+        assert sym.sympify(sect.ray.dx).equals(dx)
         if scan.x == 0. or key not in ('scanner', 'specimen'):
-            assert_allclose(sect.ray.x, dx*sect.ray.z)
+            assert sym.sympify(sect.ray.x).equals(dx*sect.ray.z)
         if scan.y == 0. or key not in ('scanner', 'specimen'):
-            assert_allclose(sect.ray.y, dy*sect.ray.z)
+            assert sym.sympify(sect.ray.y).equals(dy*sect.ray.z)
     assert res['source'].ray.z == 0
     for key in ('overfocus', 'scanner', 'specimen', 'descanner'):
-        assert_allclose(res[key].ray.z, overfocus)
+        assert sym.sympify(res[key].ray.z).equals(overfocus)
     for key in ('camera_length', 'detector'):
-        assert_allclose(res[key].ray.z, overfocus+camera_length)
+        assert sym.sympify(res[key].ray.z).equals(overfocus+camera_length)
 
 
 def test_descan_offset():
@@ -706,10 +692,10 @@ def test_descan_offset():
     )
     res_ref = model_ref.trace(scan_pos=PixelYX(y=23., x=-13.), source_dx=0.5, source_dy=-0.1)
 
-    offpxi = 0.11
-    offpyi = 0.13
-    offsxi = 0.17
-    offsyi = 0.19
+    offpxi = sym.Symbol('offpxi')
+    offpyi = sym.Symbol('offpyi')
+    offsxi = sym.Symbol('offsxi')
+    offsyi = sym.Symbol('offsyi')
     model = Model4DSTEM(
         overfocus=1,
         scan_pixel_pitch=1,
@@ -733,50 +719,40 @@ def test_descan_offset():
         sect_ref = res_ref[key]
         sect = res[key]
         for attr in ('y', 'x', 'dy', 'dx', 'z'):
-            assert_allclose(
-                getattr(sect.ray, attr),
-                getattr(sect_ref.ray, attr),
+            assert sym.sympify(getattr(sect.ray, attr)).equals(
+                getattr(sect_ref.ray, attr)
             )
     sect_ref = res_ref['descanner']
     sect = res['descanner']
-    assert_allclose(
-        sect.ray.x,
+    assert sym.sympify(sect.ray.x).equals(
         sect_ref.ray.x + offpxi
     )
-    assert_allclose(
-        sect.ray.y,
+    assert sym.sympify(sect.ray.y).equals(
         sect_ref.ray.y + offpyi
     )
-    assert_allclose(
-        sect.ray.dx,
+    assert sym.sympify(sect.ray.dx).equals(
         sect_ref.ray.dx + offsxi
     )
-    assert_allclose(
-        sect.ray.dy,
+    assert sym.sympify(sect.ray.dy).equals(
         sect_ref.ray.dy + offsyi
     )
-    assert_allclose(
-        sect.ray.z,
+    assert sym.sympify(sect.ray.z).equals(
         sect_ref.ray.z
     )
     # Straight propagation
     for key in ('camera_length', 'detector'):
         start = res['descanner']
         stop = res[key]
-        assert_allclose(
-            stop.ray.x,
+        assert sym.sympify(stop.ray.x).equals(
             start.ray.x + start.ray.dx*(stop.ray.z - start.ray.z)
         )
-        assert_allclose(
-            stop.ray.y,
+        assert sym.sympify(stop.ray.y).equals(
             start.ray.y + start.ray.dy*(stop.ray.z - start.ray.z)
         )
-        assert_allclose(
-            stop.ray.dx,
+        assert sym.sympify(stop.ray.dx).equals(
             start.ray.dx
         )
-        assert_allclose(
-            stop.ray.dy,
+        assert sym.sympify(stop.ray.dy).equals(
             start.ray.dy
         )
 
@@ -799,10 +775,10 @@ def test_descan_position(scan):
     )
     res_ref = model_ref.trace(scan_pos=scan, source_dx=0.5, source_dy=-0.1)
 
-    pxo_pxi = 0.11
-    pxo_pyi = 0.13
-    pyo_pxi = 0.17
-    pyo_pyi = 0.19
+    pxo_pxi = sym.Symbol('pxo_pxi')
+    pxo_pyi = sym.Symbol('pxo_pyi')
+    pyo_pxi = sym.Symbol('pyo_pxi')
+    pyo_pyi = sym.Symbol('pyo_pyi')
     model = Model4DSTEM(
         overfocus=1.,
         scan_pixel_pitch=1.,
@@ -835,50 +811,40 @@ def test_descan_position(scan):
         sect_ref = res_ref[key]
         sect = res[key]
         for attr in ('y', 'x', 'dy', 'dx', 'z'):
-            assert_allclose(
-                getattr(sect.ray, attr),
-                getattr(sect_ref.ray, attr),
+            assert sym.sympify(getattr(sect.ray, attr)).equals(
+                getattr(sect_ref.ray, attr)
             )
     sect_ref = res_ref['descanner']
     sect = res['descanner']
-    assert_allclose(
-        sect.ray.x,
+    assert sym.sympify(sect.ray.x).equals(
         sect_ref.ray.x + pxo_pxi * scan.x + pxo_pyi * scan.y
     )
-    assert_allclose(
-        sect.ray.y,
+    assert sym.sympify(sect.ray.y).equals(
         sect_ref.ray.y + pyo_pxi * scan.x + pyo_pyi * scan.y
     )
-    assert_allclose(
-        sect.ray.dx,
+    assert sym.sympify(sect.ray.dx).equals(
         sect_ref.ray.dx
     )
-    assert_allclose(
-        sect.ray.dy,
+    assert sym.sympify(sect.ray.dy).equals(
         sect_ref.ray.dy
     )
-    assert_allclose(
-        sect.ray.z,
+    assert sym.sympify(sect.ray.z).equals(
         sect_ref.ray.z
     )
     # Straight propagation
     for key in ('camera_length', 'detector'):
         start = res['descanner']
         stop = res[key]
-        assert_allclose(
-            stop.ray.x,
+        assert sym.sympify(stop.ray.x).equals(
             start.ray.x + start.ray.dx*(stop.ray.z - start.ray.z)
         )
-        assert_allclose(
-            stop.ray.y,
+        assert sym.sympify(stop.ray.y).equals(
             start.ray.y + start.ray.dy*(stop.ray.z - start.ray.z)
         )
-        assert_allclose(
-            stop.ray.dx,
+        assert sym.sympify(stop.ray.dx).equals(
             start.ray.dx
         )
-        assert_allclose(
-            stop.ray.dy,
+        assert sym.sympify(stop.ray.dy).equals(
             start.ray.dy
         )
 
@@ -901,10 +867,10 @@ def test_descan_slope(scan):
     )
     res_ref = model_ref.trace(scan_pos=scan, source_dx=0.5, source_dy=-0.1)
 
-    sxo_pxi = 0.11
-    sxo_pyi = 0.13
-    syo_pxi = 0.17
-    syo_pyi = 0.19
+    sxo_pxi = sym.Symbol('sxo_pxi')
+    sxo_pyi = sym.Symbol('sxo_pyi')
+    syo_pxi = sym.Symbol('syo_pxi')
+    syo_pyi = sym.Symbol('syo_pyi')
     model = Model4DSTEM(
         overfocus=1.,
         scan_pixel_pitch=1.,
@@ -937,50 +903,40 @@ def test_descan_slope(scan):
         sect_ref = res_ref[key]
         sect = res[key]
         for attr in ('y', 'x', 'dy', 'dx', 'z'):
-            assert_allclose(
-                getattr(sect.ray, attr),
-                getattr(sect_ref.ray, attr),
+            assert sym.sympify(getattr(sect.ray, attr)).equals(
+                getattr(sect_ref.ray, attr)
             )
     sect_ref = res_ref['descanner']
     sect = res['descanner']
-    assert_allclose(
-        sect.ray.dx,
+    assert sym.sympify(sect.ray.dx).equals(
         sect_ref.ray.dx + sxo_pxi * scan.x + sxo_pyi * scan.y
     )
-    assert_allclose(
-        sect.ray.dy,
+    assert sym.sympify(sect.ray.dy).equals(
         sect_ref.ray.dy + syo_pxi * scan.x + syo_pyi * scan.y
     )
-    assert_allclose(
-        sect.ray.x,
+    assert sym.sympify(sect.ray.x).equals(
         sect_ref.ray.x
     )
-    assert_allclose(
-        sect.ray.y,
+    assert sym.sympify(sect.ray.y).equals(
         sect_ref.ray.y
     )
-    assert_allclose(
-        sect.ray.z,
+    assert sym.sympify(sect.ray.z).equals(
         sect_ref.ray.z
     )
     # Straight propagation
     for key in ('camera_length', 'detector'):
         start = res['descanner']
         stop = res[key]
-        assert_allclose(
-            stop.ray.x,
+        assert sym.sympify(stop.ray.x).equals(
             start.ray.x + start.ray.dx*(stop.ray.z - start.ray.z)
         )
-        assert_allclose(
-            stop.ray.y,
+        assert sym.sympify(stop.ray.y).equals(
             start.ray.y + start.ray.dy*(stop.ray.z - start.ray.z)
         )
-        assert_allclose(
-            stop.ray.dx,
+        assert sym.sympify(stop.ray.dx).equals(
             start.ray.dx
         )
-        assert_allclose(
-            stop.ray.dy,
+        assert sym.sympify(stop.ray.dy).equals(
             start.ray.dy
         )
 
@@ -1041,17 +997,16 @@ def measure_descan_deviation(model, target_model):
 
 
 def test_adjust_scan_rotation(random_model: Model4DSTEM):
-    scan_rotation = np.random.uniform(-np.pi, np.pi)
+    scan_rotation = np.random.uniform(-sym.pi, sym.pi)
     modified = random_model.adjust_scan_rotation(
         scan_rotation=scan_rotation,
     )
     print(random_model, scan_rotation, modified)
-    assert_allclose(0,
+    assert sym.sympify(0).equals(
         measure_descan_deviation(
             random_model,
             modified,
-        ),
-        atol=1e-12,
+        )
     )
     assert modified.scan_rotation == scan_rotation
 
@@ -1062,12 +1017,11 @@ def test_adjust_scan_pixel_pitch(random_model):
         scan_pixel_pitch=scan_pixel_pitch,
     )
     print(random_model, scan_pixel_pitch, modified)
-    assert_allclose(0,
+    assert sym.sympify(0).equals(
         measure_descan_deviation(
             random_model,
             modified,
-        ),
-        atol=1e-12,
+        )
     )
     assert modified.scan_pixel_pitch == scan_pixel_pitch
 
@@ -1081,28 +1035,26 @@ def test_adjust_scan_center(random_model):
         scan_center=scan_center,
     )
     print(random_model, scan_center, modified)
-    assert_allclose(0,
+    assert sym.sympify(0).equals(
         measure_descan_deviation(
             random_model,
             modified,
-        ),
-        atol=1e-12,
+        )
     )
     assert modified.scan_center == scan_center
 
 
 def test_adjust_detector_rotation(random_model):
-    detector_rotation = np.random.uniform(-np.pi, np.pi)
+    detector_rotation = np.random.uniform(-sym.pi, sym.pi)
     modified = random_model.adjust_detector_rotation(
         detector_rotation=detector_rotation,
     )
     print(random_model, detector_rotation, modified)
-    assert_allclose(0,
+    assert sym.sympify(0).equals(
         measure_descan_deviation(
             random_model,
             modified,
-        ),
-        atol=1e-12,
+        )
     )
     assert modified.detector_rotation == detector_rotation
 
@@ -1113,12 +1065,11 @@ def test_adjust_flip_y(random_model):
             flip_factor=flip_factor,
         )
         print(random_model, flip_factor, modified)
-        assert_allclose(0,
+        assert sym.sympify(0).equals(
             measure_descan_deviation(
                 random_model,
                 modified,
-            ),
-            atol=1e-12,
+            )
         )
         assert modified.flip_factor == flip_factor
 
@@ -1132,12 +1083,11 @@ def test_adjust_detector_center(random_model):
         detector_center=detector_center,
     )
     print(random_model, detector_center, modified)
-    assert_allclose(0,
+    assert sym.sympify(0).equals(
         measure_descan_deviation(
             random_model,
             modified,
-        ),
-        atol=1e-12,
+        )
     )
     assert modified.detector_center == detector_center
 
@@ -1148,12 +1098,11 @@ def test_adjust_detector_pixel_pitch(random_model):
         detector_pixel_pitch=detector_pixel_pitch,
     )
     print(random_model, detector_pixel_pitch, modified)
-    assert_allclose(0,
+    assert sym.sympify(0).equals(
         measure_descan_deviation(
             random_model,
             modified,
-        ),
-        atol=1e-12,
+        )
     )
     assert modified.detector_pixel_pitch == detector_pixel_pitch
 
@@ -1187,5 +1136,5 @@ def test_adjust_camera_length(random_model):
                     opt['detector'].sampling['detector_px'].x
                     - ref['detector'].sampling['detector_px'].x,
                 ))
-    assert_allclose(0, np.linalg.norm(distances), atol=1e-12)
+    assert sym.sympify(0).equals(np.linalg.norm(distances))
     assert modified.camera_length == camera_length
