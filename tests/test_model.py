@@ -9,12 +9,13 @@ import jax.numpy as jnp
 import sympy as sym
 
 from temgym_core.ray import Ray
-from temgym_core.components import DescanError, Component
+from temgym_core.components import DescanError, Component, NamedTuple
 from temgym_core.propagator import Propagator
 from temgym_core.source import Source
 from temgym_core import PixelYX
 
 from microscope_calibration.common.model import Model4DSTEM
+from microscope_calibration.util.sympy import lambdify
 
 
 def test_trace_smoke():
@@ -352,7 +353,7 @@ def test_com_validation(scan_rotation, flip_factor, detector_cy, detector_cx):
         z: float
 
         def __call__(self, ray: Ray) -> Ray:
-            distance = np.linalg.norm(np.array((ray.y, ray.x)))
+            distance = sym.sqrt(sym.Abs(ray.x)**2 + sym.Abs(ray.y)**2)
             if distance > 1e-6:
                 # field strength is 1/distance**2,
                 # additionally normalize displacement to unit vector
@@ -375,36 +376,61 @@ def test_com_validation(scan_rotation, flip_factor, detector_cy, detector_cx):
         descan_error=DescanError()
     )
 
+    class ReturnT(NamedTuple):
+        phys_y: float
+        phys_x: float
+        pass_y: float
+        pass_x: float
+        detector_scan_px_y: float
+        detector_scan_px_x: float
+
+    def calculate(scan_y, scan_x):
+        res = model.trace(
+            scan_pos=PixelYX(x=scan_x, y=scan_y),
+            source_dy=0.,
+            source_dx=0.,
+            specimen=PointChargeComponent(z=model.overfocus),
+        )
+        return ReturnT(
+            phys_y=res['detector'].ray.y,
+            phys_x=res['detector'].ray.x,
+            pass_y=res['specimen'].ray.y,
+            pass_x=res['specimen'].ray.x,
+            detector_scan_px_y=res['detector'].sampling['detector_px'],
+            detector_scan_px_x=res['specimen'].sampling['scan_px']
+        )
+    scan_y, scan_x = sym.symbols('scan_y scan_x')
+
+    lambdifyed_res = lambdify(
+        [scan_y, scan_x],
+        [*calculate(scan_y, scan_x)]
+    )
+
     y_deflections = np.linspace(start=-1, stop=1, num=3)
     x_deflections = np.linspace(start=-1, stop=1, num=3)
     com_y = np.empty((len(y_deflections), len(x_deflections)))
     com_x = np.empty((len(y_deflections), len(x_deflections)))
     for y, scan_y in enumerate(y_deflections):
         for x, scan_x in enumerate(x_deflections):
-            res = model.trace(
-                scan_pos=PixelYX(x=float(scan_x), y=float(scan_y)),
-                source_dy=0.,
-                source_dx=0.,
-                specimen=PointChargeComponent(z=model.overfocus),
-            )
+            res = lambdifyed_res([scan_y, scan_x])
             # Validate that the ray is deflected towards the center
             # by the point charge component
-            phys_y = res['detector'].ray.y
-            phys_x = res['detector'].ray.x
-            pass_y = res['specimen'].ray.y
-            pass_x = res['specimen'].ray.x
-            if phys_y != 0 or phys_x != 0:
-                assert_allclose(
-                    # The displacement in the detector plane in corrected pixel
-                    # coordinates is pointing in the opposite direction of the
-                    # displacement from the center when passing through the
-                    # specimen plane, i.e. the beam is deflected towards the
-                    # center
-                    np.array((phys_y, phys_x))/np.linalg.norm((phys_y, phys_x)),
-                    -np.array((pass_y, pass_x))/np.linalg.norm((pass_y, pass_x))
-                )
-            com_y[y, x] = res['detector'].sampling['detector_px'].y
-            com_x[y, x] = res['detector'].sampling['detector_px'].x
+            phys_y = res.phys_y
+            phys_x = res.phys_x
+            pass_y = res.pass_y
+            pass_x = res.pass_x
+            if sym.sympify(phys_y).equals(0) is False or sym.sympify(phys_x).equals(0) is False:
+                assert sym.sympify(phys_y/sym.sqrt(sym.Abs(phys_x)**2 + sym.Abs(phys_y)**2)).equals(
+                    pass_y/sym.sqrt(sym.Abs(pass_x)**2 + sym.Abs(pass_y)**2))
+                assert sym.sympify(phys_x/sym.sqrt(sym.Abs(phys_x)**2 + sym.Abs(phys_y)**2)).equals(
+                    pass_x/sym.sqrt(sym.Abs(pass_x)**2 + sym.Abs(pass_y)**2))
+                # The displacement in the detector plane in corrected pixel
+                # coordinates is pointing in the opposite direction of the
+                # displacement from the center when passing through the
+                # specimen plane, i.e. the beam is deflected towards the
+                # center
+            com_y[y, x] = res.detector_scan_px_y
+            com_x[y, x] = res.detector_scan_px_x
 
     guess_result = guess_corrections(y_centers=com_y, x_centers=com_x)
     corrected_y, corrected_x = apply_correction(
@@ -415,20 +441,12 @@ def test_com_validation(scan_rotation, flip_factor, detector_cy, detector_cx):
     # Make sure the correction actually corrected
     for y, scan_y in enumerate(y_deflections):
         for x, scan_x in enumerate(x_deflections):
-            if corrected_y[y, x] != 0 or corrected_x[y, x] != 0:
-                assert_allclose(
-                    # The corrected displacement in corrected pixel coordinates
-                    # in the detector plane is pointing in the opposite
-                    # direction of the displacement from the center in scan
-                    # coordinates
-                    np.array((scan_y, scan_x))/np.linalg.norm((scan_y, scan_x)),
-                    -np.array((
-                        corrected_y[y, x], corrected_x[y, x]
-                    ))/np.linalg.norm((
-                        corrected_y[y, x], corrected_x[y, x]
-                    )),
-                    atol=1e-12, rtol=1e-12
-                )
+            if (sym.sympify(corrected_y[y, x]).equals(0) is False
+            or sym.sympify(corrected_x[y, x]).equals(0) is False):
+                assert sym.sympify(scan_y/sym.sqrt(sym.Abs(scan_x)**2 + sym.Abs(scan_y)**2)).equals(
+                    -corrected_y[y, x]/sym.sqrt(sym.Abs(corrected_x[y, x])**2 + sym.Abs(corrected_y[y, x])**2))
+                assert sym.sympify(scan_x/sym.sqrt(sym.Abs(scan_x)**2 + sym.Abs(scan_y)**2)).equals(
+                    -corrected_x[y, x]/sym.sqrt(sym.Abs(corrected_x[y, x])**2 + sym.Abs(corrected_y[y, x])**2))
 
     assert sym.sympify(-guess_result.scan_rotation / 180 * sym.pi).equals(scan_rotation)
     if flip_factor == 1.:
