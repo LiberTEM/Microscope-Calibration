@@ -307,7 +307,7 @@ class Model4DSTEM:
         comp, r = run_result.pop(0)
         try:
             assert isinstance(comp, Propagator)
-            assert comp.distance == 0.0
+            assert sym.simplify(comp.distance).equals(0.0)
             assert equals(r, ray)
         except TracerBoolConversionError:
             pass
@@ -338,7 +338,7 @@ class Model4DSTEM:
         comp, r = run_result.pop(0)
         try:
             assert isinstance(comp, Propagator)
-            assert comp.distance == 0.0
+            assert sym.simplify(comp.distance).equals(0.0)
             assert isinstance(r, Ray)
             assert r == result["scanner"].ray
         except TracerBoolConversionError:
@@ -361,7 +361,7 @@ class Model4DSTEM:
         comp, r = run_result.pop(0)
         try:
             assert isinstance(comp, Propagator)
-            assert comp.distance == 0.0
+            assert sym.simplify(comp.distance).equals(0.0)
             assert r == result["specimen"].ray
         except TracerBoolConversionError:
             pass
