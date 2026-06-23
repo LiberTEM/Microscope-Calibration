@@ -13,7 +13,7 @@ dependencies = [
     "numpy",
     "libertem",
     "typing-extensions",
-    "temgymbasic@git+https://github.com/TemGym/TemGym@c7a851ce2d6719acc47d36d31d91df27b1e9590b",
+    "temgym_core @ https://github.com/TemGym/TemGymCore/archive/refs/heads/main.zip",
     # Minimum constraints of numba for all Python versions we support
     # See https://numba.readthedocs.io/en/stable/release-notes-overview.html
     "numba>=0.55;python_version < '3.11'",
@@ -29,6 +29,9 @@ dependencies = [
     # to make tests pass for the time being
     # TODO release pin ASAP
     "scipy<1.16",
+    "jax",
+    "optax",
+    "optimistix",
 ]
 classifiers = [
     "Programming Language :: Python :: 3",
@@ -47,6 +50,7 @@ repository = "https://github.com/LiberTEM/Microscope-Calibration"
 [project.optional-dependencies]
 test = ["pytest", "pytest-cov"]
 examples = ["ipywidgets", "libertem[bqplot]", "jupyter-ui-poll"]
+diffraction = ["pycifrw", "diffpy.structure", "orix", "diffsims"]
 
 [tool.setuptools.dynamic]
 version = {attr = "microscope_calibration.__version__"}
