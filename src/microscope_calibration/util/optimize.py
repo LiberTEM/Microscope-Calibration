@@ -3,25 +3,31 @@ from typing import NamedTuple
 import numpy as np
 from scipy.optimize import shgo
 from skimage.measure import blur_effect
-from typing import TYPE_CHECKING, Callable, Optional
+from typing import TYPE_CHECKING
+from collections.abc import Callable
 from collections.abc import Iterable
 
-import jax; jax.config.update("jax_enable_x64", True)  # noqa
+import jax; jax.config.update("jax_enable_x64", True)  # noqa fmt: skip
+
 import jax.numpy as jnp
 import optimistix
 
 from microscope_calibration.common.model import (
+    DescanError,
     Model4DSTEM,
     PixelYX,
-    DescanError,
+    lambdify_trace_for,
 )
 
 if TYPE_CHECKING:
-    from libertem.udf.base import UDF
     from libertem.api import Context
     from libertem.io.dataset.base import DataSet
+    from libertem.udf.base import UDF
 
     from microscope_calibration.udf.stem_overfocus import OverfocusUDF
+
+
+trace = lambdify_trace_for(jnp)
 
 
 def make_overfocus_loss_function(
@@ -29,9 +35,9 @@ def make_overfocus_loss_function(
     ctx: "Context",
     dataset: "DataSet",
     overfocus_udf: "OverfocusUDF",
-    blur_function: Optional[Callable] = None,
+    blur_function: Callable | None = None,
     extra_udfs: Iterable["UDF"] = (),
-    callback: Optional[Callable] = None,
+    callback: Callable | None = None,
     **kwargs,
 ):
     """
@@ -167,12 +173,14 @@ class _CLArgs(NamedTuple):
 @jax.jit
 def _cl_loss(y, args: _CLArgs):
     opt_model = args.ref_model.derive(camera_length=y[0], overfocus=0.0)
-    opt_res_1 = opt_model.trace(
+    opt_res_1 = trace(
+        opt_model,
         scan_pos=PixelYX(y=0.0, x=0.0),
         source_dx=args.test_dx,
         source_dy=0.0,
     )
-    opt_res_2 = opt_model.trace(
+    opt_res_2 = trace(
+        opt_model,
         scan_pos=PixelYX(y=0.0, x=0.0),
         source_dx=-args.test_dx,
         source_dy=0.0,
@@ -212,8 +220,8 @@ class _SPPArgs(NamedTuple):
 @jax.jit
 def _spp_loss(y, args: _SPPArgs):
     opt_model = args.ref_model.derive(scan_pixel_pitch=y[0], overfocus=0.0)
-    opt_res_1 = opt_model.trace(scan_pos=args.point_1, source_dx=0.0, source_dy=0.0)
-    opt_res_2 = opt_model.trace(scan_pos=args.point_2, source_dx=0.0, source_dy=0.0)
+    opt_res_1 = trace(opt_model, scan_pos=args.point_1, source_dx=0.0, source_dy=0.0)
+    opt_res_2 = trace(opt_model, scan_pos=args.point_2, source_dx=0.0, source_dy=0.0)
     dx = opt_res_2["specimen"].ray.x - opt_res_1["specimen"].ray.x
     dy = opt_res_2["specimen"].ray.y - opt_res_1["specimen"].ray.y
     opt_distance = jnp.linalg.norm(jnp.array((dy, dx)))
@@ -291,7 +299,8 @@ def _de_full_loss(y, args: _DEFullArgs):
                 det_x = opt_model.detector_center.x + (
                     dx + dxdy * scan_y + dxdx * scan_x
                 )
-                res = opt_model.trace(
+                res = trace(
+                    opt_model,
                     scan_pos=PixelYX(y=scan_y, x=scan_x),
                     source_dx=0.0,
                     source_dy=0.0,
@@ -385,12 +394,14 @@ def _norm_loss(y, args: _NormArgs):
             1.0,
         ):
             for scan_x in (0.0, 1.0):
-                res = opt_model.trace(
+                res = trace(
+                    opt_model,
                     scan_pos=PixelYX(y=scan_y, x=scan_x),
                     source_dy=0.0,
                     source_dx=0.0,
                 )
-                ref = ref_model.trace(
+                ref = trace(
+                    ref_model,
                     scan_pos=PixelYX(y=scan_y, x=scan_x),
                     source_dy=0.0,
                     source_dx=0.0,
@@ -476,7 +487,8 @@ def _de_tilt_loss(y, args: _DETiltArgs):
             dxdx = reg[2, 1]
             det_y = opt_model.detector_center.y + (dy + dydy * scan_y + dydx * scan_x)
             det_x = opt_model.detector_center.x + (dx + dxdy * scan_y + dxdx * scan_x)
-            res = opt_model.trace(
+            res = trace(
+                opt_model,
                 scan_pos=PixelYX(y=scan_y, x=scan_x),
                 source_dx=0.0,
                 source_dy=0.0,
@@ -516,6 +528,9 @@ def solve_tilt_descan_error(ref_model: Model4DSTEM, regression: CoMRegression):
     # Start with a small epsilon to prevent NaN results of yet unknown origin
     # for some parameter combinations
     start = jnp.full(shape=(6,), fill_value=1e-6)
+    args = _DETiltArgs(
+        aligned_model=args.aligned_model.normalize_types(), regression=args.regression
+    )
     opt_res = optimistix.least_squares(
         fn=_de_tilt_loss,
         args=args,
@@ -553,7 +568,8 @@ def _de_tilt_point_loss(y, args: _DETiltPointArgs):
 
     distances = []
     for scan_y, scan_x, det_y, det_x in args.points:
-        res = opt_model.trace(
+        res = trace(
+            opt_model,
             scan_pos=PixelYX(y=scan_y, x=scan_x),
             source_dx=0.0,
             source_dy=0.0,
@@ -617,8 +633,10 @@ def _coords_point_loss(y, args: _CoordPointArgs):
     detector_distances = []
     specimen_distances = []
     for i, (scan_y, scan_x, spec_y, spec_x, det_y, det_x) in enumerate(args.points):
-        dy, dx = tilts[2 * i:2 * i + 2]
-        res = opt_model.trace(scan_pos=PixelYX(y=scan_y, x=scan_x), source_dx=dx, source_dy=dy)
+        dy, dx = tilts[2 * i: 2 * i + 2]
+        res = trace(
+            opt_model, scan_pos=PixelYX(y=scan_y, x=scan_x), source_dx=dx, source_dy=dy
+        )
         detector_distances.extend(
             (
                 res["detector"].sampling["detector_px"].y - det_y,
@@ -679,7 +697,7 @@ def _hit_specimen_loss(y, args: _HitSpecimenArgs):
     dy, dx = y
     opt_model = args.model
 
-    res = opt_model.trace(scan_pos=args.scan_pos, source_dx=dx, source_dy=dy)
+    res = trace(opt_model, scan_pos=args.scan_pos, source_dx=dx, source_dy=dy)
     specimen_px = res["specimen"].sampling["scan_px"]
     return jnp.array(
         (specimen_px.x - args.specimen_px.x, specimen_px.y - args.specimen_px.y)
@@ -691,9 +709,7 @@ class SlopeYX(NamedTuple):
     dx: float
 
 
-def solve_hit_specimen(
-    model: Model4DSTEM, scan_pos: PixelYX, specimen_px: PixelYX
-):
+def solve_hit_specimen(model: Model4DSTEM, scan_pos: PixelYX, specimen_px: PixelYX):
     args = _HitSpecimenArgs(
         model=model,
         scan_pos=scan_pos,

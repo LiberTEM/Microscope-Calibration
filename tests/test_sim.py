@@ -1,21 +1,27 @@
 import pytest
 from numpy.testing import assert_allclose
 
-import jax; jax.config.update("jax_enable_x64", True)  # noqa
-import numpy as np
+import jax; jax.config.update("jax_enable_x64", True)  # noqa fmt: skip
 import jax.numpy as jnp
+import numpy as np
+import sympy as sym
+from libertem.corrections.coordinates import flip_y, identity, rotate, scale
 
-
-from libertem.corrections.coordinates import identity
-from microscope_calibration.util.stem_overfocus_sim import (
-    get_forward_transformation_matrix, project_frame_forward,
-    project
-)
 from microscope_calibration.common.model import (
-    Model4DSTEM, PixelYX, DescanError, Result4DSTEM, ResultSection,
+    DescanError,
+    Model4DSTEM,
+    PixelYX,
+    Result4DSTEM,
+    ResultSection,
+    lambdify_trace_for,
+)
+from microscope_calibration.util.stem_overfocus_sim import (
+    get_forward_transformation_matrix,
+    project,
+    project_frame_forward,
 )
 
-from libertem.corrections.coordinates import scale, rotate, flip_y
+trace = lambdify_trace_for(np)
 
 
 def test_project_frame_forward():
@@ -27,17 +33,20 @@ def test_project_frame_forward():
         def ref_project(obj, source_semiconv, mat, scan_y, scan_x, out):
             for det_y in range(out.shape[0]):
                 for det_x in range(out.shape[1]):
-                    inp = np.array((scan_y, scan_x, det_y, det_x, 1.))
+                    inp = np.array((scan_y, scan_x, det_y, det_x, 1.0))
                     spec_y, spec_x, tilt_y, tilt_x, _one = inp @ mat
                     if np.linalg.norm((tilt_y, tilt_x)) < np.tan(source_semiconv):
                         spec_y = int(np.round(spec_y))
                         spec_x = int(np.round(spec_x))
                         if (
-                                spec_y >= 0 and spec_y < obj.shape[0]
-                                and spec_x >= 0 and spec_x < obj.shape[1]):
+                            spec_y >= 0
+                            and spec_y < obj.shape[0]
+                            and spec_x >= 0
+                            and spec_x < obj.shape[1]
+                        ):
                             out[det_y, det_x] = obj[spec_y, spec_x]
                     else:
-                        out[det_y, det_x] = 0.
+                        out[det_y, det_x] = 0.0
 
         mat = np.random.random((5, 5))
         obj = np.random.random((13, 17))
@@ -50,7 +59,7 @@ def test_project_frame_forward():
             mat=mat,
             scan_y=scan_y,
             scan_x=scan_x,
-            out=out
+            out=out,
         )
         ref_project(
             obj=obj,
@@ -58,7 +67,7 @@ def test_project_frame_forward():
             mat=mat,
             scan_y=scan_y,
             scan_x=scan_x,
-            out=out_ref
+            out=out_ref,
         )
         assert_allclose(out, out_ref)
 
@@ -72,7 +81,7 @@ def test_model_consistency():
         semiconv=0.023,
         scan_center=PixelYX(x=0.13, y=0.23),
         scan_rotation=0.752,
-        flip_factor=-1.,
+        flip_factor=-1.0,
         detector_center=PixelYX(x=23, y=42),
         descan_error=DescanError(
             pxo_pxi=0.2,
@@ -86,8 +95,8 @@ def test_model_consistency():
             offpxi=0.23,
             offpyi=0.29,
             offsxi=0.31,
-            offsyi=0.37
-        )
+            offsyi=0.37,
+        ),
     )
     mat = get_forward_transformation_matrix(sim_model=model)
 
@@ -101,15 +110,23 @@ def test_model_consistency():
     source_dx = out[3]
 
     assert_allclose(out[4], 1)
-    res = model.trace(scan_pos=scan_pos, source_dx=source_dx, source_dy=source_dy)
-    assert_allclose(inp[2], res['detector'].sampling['detector_px'].y, rtol=1e-12, atol=1e-12)
-    assert_allclose(inp[3], res['detector'].sampling['detector_px'].x, rtol=1e-12, atol=1e-12)
-    assert_allclose(out[0], res['specimen'].sampling['scan_px'].y, rtol=1e-12, atol=1e-12)
-    assert_allclose(out[1], res['specimen'].sampling['scan_px'].x, rtol=1e-12, atol=1e-12)
+    res = trace(model, scan_pos=scan_pos, source_dx=source_dx, source_dy=source_dy)
+    assert_allclose(
+        inp[2], res["detector"].sampling["detector_px"].y, rtol=1e-12, atol=1e-12
+    )
+    assert_allclose(
+        inp[3], res["detector"].sampling["detector_px"].x, rtol=1e-12, atol=1e-12
+    )
+    assert_allclose(
+        out[0], res["specimen"].sampling["scan_px"].y, rtol=1e-12, atol=1e-12
+    )
+    assert_allclose(
+        out[1], res["specimen"].sampling["scan_px"].x, rtol=1e-12, atol=1e-12
+    )
 
 
 def distort(x):
-    return np.sign(x) * np.abs(x)**1.0001
+    return sym.sign(x) * sym.functions.elementary.complexes.Abs(x) ** 1.0001
 
 
 class Badmodel4DSTEM(Model4DSTEM):
@@ -124,35 +141,32 @@ class Badmodel4DSTEM(Model4DSTEM):
                 dx=distort(r.dx),
                 dy=distort(r.dy),
             )
-            if key == 'specimen':
-                s = val.sampling['scan_px']
+            if key == "specimen":
+                s = val.sampling["scan_px"]
                 distorted_res[key] = ResultSection(
                     component=val.component,
                     ray=bad_ray,
                     sampling={
-                        'scan_px': PixelYX(
+                        "scan_px": PixelYX(
                             x=distort(s.x),
                             y=distort(s.y),
                         )
-                    }
+                    },
                 )
-            elif key == 'detector':
-                s = val.sampling['detector_px']
+            elif key == "detector":
+                s = val.sampling["detector_px"]
                 distorted_res[key] = ResultSection(
                     component=val.component,
                     ray=bad_ray,
                     sampling={
-                        'detector_px': PixelYX(
+                        "detector_px": PixelYX(
                             x=distort(r.x),
                             y=distort(r.y),
                         )
-                    }
+                    },
                 )
             else:
-                distorted_res[key] = ResultSection(
-                    component=val.component,
-                    ray=bad_ray
-                )
+                distorted_res[key] = ResultSection(component=val.component, ray=bad_ray)
         return distorted_res
 
 
@@ -165,7 +179,7 @@ def test_nonlinear_model():
         semiconv=0.023,
         scan_center=PixelYX(x=0.13, y=0.23),
         scan_rotation=0.752,
-        flip_factor=-1.,
+        flip_factor=-1.0,
         detector_center=PixelYX(x=23, y=42),
         descan_error=DescanError(
             pxo_pxi=0.2,
@@ -179,8 +193,8 @@ def test_nonlinear_model():
             offpxi=0.23,
             offpyi=0.29,
             offsxi=0.31,
-            offsyi=0.37
-        )
+            offsyi=0.37,
+        ),
     )
 
     with pytest.raises(RuntimeError, match="not linear"):
@@ -196,7 +210,7 @@ def test_no_precision(monkeypatch):
         semiconv=0.023,
         scan_center=PixelYX(x=0.13, y=0.23),
         scan_rotation=0.752,
-        flip_factor=-1.,
+        flip_factor=-1.0,
         detector_center=PixelYX(x=23, y=42),
         descan_error=DescanError(
             pxo_pxi=0.2,
@@ -210,18 +224,19 @@ def test_no_precision(monkeypatch):
             offpxi=0.23,
             offpyi=0.29,
             offsxi=0.31,
-            offsyi=0.37
-        )
+            offsyi=0.37,
+        ),
     )
     # We cause discrepancies and "blame" it on lack of precision
     # to test this code path
     import microscope_calibration.common.stem_overfocus
+
     monkeypatch.setattr(
         target=microscope_calibration.common.stem_overfocus,
-        name='target_dtype',
-        value=jnp.float32
+        name="target_dtype",
+        value=jnp.float32,
     )
-    with pytest.raises(RuntimeError, match='No float64 support'):
+    with pytest.raises(RuntimeError, match="No float64 support"):
         get_forward_transformation_matrix(sim_model=model)
 
 
@@ -232,12 +247,12 @@ def test_project_identity():
         scan_pixel_pitch=1,
         camera_length=1,
         detector_pixel_pitch=2,
-        semiconv=np.pi/2,
-        scan_center=PixelYX(x=6.9, y=16.),
-        scan_rotation=0.,
-        flip_factor=1.,
-        detector_center=PixelYX(x=7.1, y=16.),
-        descan_error=DescanError()
+        semiconv=np.pi / 2,
+        scan_center=PixelYX(x=6.9, y=16.0),
+        scan_rotation=0.0,
+        flip_factor=1.0,
+        detector_center=PixelYX(x=7.1, y=16.0),
+        descan_error=DescanError(),
     )
     obj = np.random.random((32, 13))
     res = project(
@@ -257,12 +272,12 @@ def test_project_scale():
         scan_pixel_pitch=1,
         camera_length=1,
         detector_pixel_pitch=1,
-        semiconv=np.pi/2,
-        scan_center=PixelYX(x=16, y=16.),
-        scan_rotation=0.,
-        flip_factor=1.,
-        detector_center=PixelYX(x=32, y=32.),
-        descan_error=DescanError()
+        semiconv=np.pi / 2,
+        scan_center=PixelYX(x=16, y=16.0),
+        scan_rotation=0.0,
+        flip_factor=1.0,
+        detector_center=PixelYX(x=32, y=32.0),
+        descan_error=DescanError(),
     )
     obj = np.random.random((32, 32))
     res = project(
@@ -281,12 +296,12 @@ def test_project_shift():
         scan_pixel_pitch=1,
         camera_length=1,
         detector_pixel_pitch=2,
-        semiconv=np.pi/2,
-        scan_center=PixelYX(x=6.9, y=16.),
-        scan_rotation=0.,
-        flip_factor=1.,
-        detector_center=PixelYX(x=8.1, y=15.),
-        descan_error=DescanError()
+        semiconv=np.pi / 2,
+        scan_center=PixelYX(x=6.9, y=16.0),
+        scan_rotation=0.0,
+        flip_factor=1.0,
+        detector_center=PixelYX(x=8.1, y=15.0),
+        descan_error=DescanError(),
     )
     obj = np.random.random((32, 13))
     res = project(
@@ -305,12 +320,12 @@ def test_project_rotate():
         scan_pixel_pitch=1,
         camera_length=1,
         detector_pixel_pitch=2,
-        semiconv=np.pi/2,
-        scan_center=PixelYX(x=16, y=16.),
-        scan_rotation=np.pi/2,
-        flip_factor=1.,
-        detector_center=PixelYX(x=16, y=16.),
-        descan_error=DescanError()
+        semiconv=np.pi / 2,
+        scan_center=PixelYX(x=16, y=16.0),
+        scan_rotation=np.pi / 2,
+        flip_factor=1.0,
+        detector_center=PixelYX(x=16, y=16.0),
+        descan_error=DescanError(),
     )
     obj = np.random.random((32, 32))
     res = project(
@@ -329,12 +344,12 @@ def test_project_flip():
         scan_pixel_pitch=1,
         camera_length=1,
         detector_pixel_pitch=2,
-        semiconv=np.pi/2,
-        scan_center=PixelYX(x=16, y=16.),
-        scan_rotation=0.,
-        flip_factor=-1.,
-        detector_center=PixelYX(x=16, y=16.),
-        descan_error=DescanError()
+        semiconv=np.pi / 2,
+        scan_center=PixelYX(x=16, y=16.0),
+        scan_rotation=0.0,
+        flip_factor=-1.0,
+        detector_center=PixelYX(x=16, y=16.0),
+        descan_error=DescanError(),
     )
     obj = np.random.random((32, 32))
     res = project(
@@ -353,13 +368,13 @@ def test_project_detector_rotate():
         scan_pixel_pitch=1,
         camera_length=1,
         detector_pixel_pitch=2,
-        semiconv=np.pi/2,
-        scan_center=PixelYX(x=16, y=16.),
-        scan_rotation=0.,
-        flip_factor=1.,
-        detector_center=PixelYX(x=16, y=16.),
-        detector_rotation=np.pi/2,
-        descan_error=DescanError()
+        semiconv=np.pi / 2,
+        scan_center=PixelYX(x=16, y=16.0),
+        scan_rotation=0.0,
+        flip_factor=1.0,
+        detector_center=PixelYX(x=16, y=16.0),
+        detector_rotation=np.pi / 2,
+        descan_error=DescanError(),
     )
     obj = np.random.random((32, 32))
     res = project(
@@ -378,28 +393,28 @@ def test_project_map_identity():
         scan_pixel_pitch=1,
         camera_length=1,
         detector_pixel_pitch=2,
-        semiconv=np.pi/2,
-        scan_center=PixelYX(x=16, y=16.),
-        scan_rotation=0.,
-        flip_factor=1.,
-        detector_center=PixelYX(x=16., y=16.),
-        descan_error=DescanError()
+        semiconv=np.pi / 2,
+        scan_center=PixelYX(x=16, y=16.0),
+        scan_rotation=0.0,
+        flip_factor=1.0,
+        detector_center=PixelYX(x=16.0, y=16.0),
+        descan_error=DescanError(),
     )
     obj = np.random.random((32, 32))
 
     def map_coord(inp):
         cy = obj.shape[0] / 2
         cx = obj.shape[1] / 2
-        inp_vec = jnp.array((inp.y, inp.x))
+        inp_vec = np.array((inp.y, inp.x))
         y, x = identity() @ inp_vec
-        return PixelYX(y=y+cy, x=x+cx)
+        return PixelYX(y=y + cy, x=x + cx)
 
     res = project(
         image=obj,
         detector_shape=(32, 32),
         scan_shape=(32, 32),
         sim_model=model,
-        specimen_to_image=map_coord
+        specimen_to_image=map_coord,
     )
     assert_allclose(obj, res[16, 16])
     assert_allclose(obj, res[:, :, 16, 16])
@@ -412,12 +427,12 @@ def test_project_map_scale():
         scan_pixel_pitch=1,
         camera_length=1,
         detector_pixel_pitch=2,
-        semiconv=np.pi/2,
-        scan_center=PixelYX(x=16, y=16.),
-        scan_rotation=0.,
-        flip_factor=1.,
-        detector_center=PixelYX(x=16., y=16.),
-        descan_error=DescanError()
+        semiconv=np.pi / 2,
+        scan_center=PixelYX(x=16, y=16.0),
+        scan_rotation=0.0,
+        flip_factor=1.0,
+        detector_center=PixelYX(x=16.0, y=16.0),
+        descan_error=DescanError(),
     )
     obj = np.random.random((64, 64))
     obj_ref = obj[::2, ::2]
@@ -425,16 +440,16 @@ def test_project_map_scale():
     def map_coord(inp):
         cy = obj.shape[0] / 2
         cx = obj.shape[1] / 2
-        inp_vec = jnp.array((inp.y, inp.x))
+        inp_vec = np.array((inp.y, inp.x))
         y, x = scale(2) @ inp_vec
-        return PixelYX(y=y+cy, x=x+cx)
+        return PixelYX(y=y + cy, x=x + cx)
 
     res = project(
         image=obj,
         detector_shape=(32, 32),
         scan_shape=(32, 32),
         sim_model=model,
-        specimen_to_image=map_coord
+        specimen_to_image=map_coord,
     )
     assert_allclose(obj_ref, res[16, 16])
     assert_allclose(obj_ref, res[:, :, 16, 16])
@@ -447,28 +462,28 @@ def test_project_map_rotate():
         scan_pixel_pitch=1,
         camera_length=1,
         detector_pixel_pitch=2,
-        semiconv=np.pi/2,
-        scan_center=PixelYX(x=16, y=16.),
-        scan_rotation=0.,
-        flip_factor=1.,
-        detector_center=PixelYX(x=16., y=16.),
-        descan_error=DescanError()
+        semiconv=np.pi / 2,
+        scan_center=PixelYX(x=16, y=16.0),
+        scan_rotation=0.0,
+        flip_factor=1.0,
+        detector_center=PixelYX(x=16.0, y=16.0),
+        descan_error=DescanError(),
     )
     obj = np.random.random((32, 32))
 
     def map_coord(inp):
         cy = obj.shape[0] / 2
         cx = obj.shape[1] / 2
-        inp_vec = jnp.array((inp.y, inp.x))
-        y, x = rotate(np.pi/2) @ inp_vec
-        return PixelYX(y=y+cy, x=x+cx)
+        inp_vec = np.array((inp.y, inp.x))
+        y, x = rotate(np.pi / 2) @ inp_vec
+        return PixelYX(y=y + cy, x=x + cx)
 
     res = project(
         image=obj,
         detector_shape=(32, 32),
         scan_shape=(32, 32),
         sim_model=model,
-        specimen_to_image=map_coord
+        specimen_to_image=map_coord,
     )
     assert_allclose(obj, np.rot90(res[17, 16], k=-1))
     assert_allclose(obj, np.rot90(res[:, :, 17, 16], k=-1))
@@ -481,28 +496,28 @@ def test_project_map_flip():
         scan_pixel_pitch=1,
         camera_length=1,
         detector_pixel_pitch=2,
-        semiconv=np.pi/2,
-        scan_center=PixelYX(x=16, y=16.),
-        scan_rotation=0.,
-        flip_factor=1.,
-        detector_center=PixelYX(x=16., y=16.),
-        descan_error=DescanError()
+        semiconv=np.pi / 2,
+        scan_center=PixelYX(x=16, y=16.0),
+        scan_rotation=0.0,
+        flip_factor=1.0,
+        detector_center=PixelYX(x=16.0, y=16.0),
+        descan_error=DescanError(),
     )
     obj = np.random.random((32, 32))
 
     def map_coord(inp):
         cy = obj.shape[0] / 2
         cx = obj.shape[1] / 2
-        inp_vec = jnp.array((inp.y, inp.x))
+        inp_vec = np.array((inp.y, inp.x))
         y, x = flip_y() @ inp_vec
-        return PixelYX(y=y+cy, x=x+cx)
+        return PixelYX(y=y + cy, x=x + cx)
 
     res = project(
         image=obj,
         detector_shape=(32, 32),
         scan_shape=(32, 32),
         sim_model=model,
-        specimen_to_image=map_coord
+        specimen_to_image=map_coord,
     )
     assert_allclose(np.flip(obj, axis=0), res[17, 16])
     assert_allclose(np.flip(obj, axis=0), res[:, :, 17, 16])
@@ -514,12 +529,12 @@ def test_project_fixref_scanscale():
         scan_pixel_pitch=2,  # <--
         camera_length=1,
         detector_pixel_pitch=2,
-        semiconv=np.pi/2,
-        scan_center=PixelYX(x=16, y=16.),
-        scan_rotation=0.,
-        flip_factor=1.,
-        detector_center=PixelYX(x=16., y=16.),
-        descan_error=DescanError()
+        semiconv=np.pi / 2,
+        scan_center=PixelYX(x=16, y=16.0),
+        scan_rotation=0.0,
+        flip_factor=1.0,
+        detector_center=PixelYX(x=16.0, y=16.0),
+        descan_error=DescanError(),
     )
     obj = np.random.random((64, 64))
     scan_ref = obj[::2, ::2]
@@ -528,16 +543,16 @@ def test_project_fixref_scanscale():
     def map_coord(inp):
         cy = obj.shape[0] / 2
         cx = obj.shape[1] / 2
-        inp_vec = jnp.array((inp.y, inp.x))
+        inp_vec = np.array((inp.y, inp.x))
         y, x = identity() @ inp_vec
-        return PixelYX(y=y+cy, x=x+cx)
+        return PixelYX(y=y + cy, x=x + cx)
 
     res = project(
         image=obj,
         detector_shape=(32, 32),
         scan_shape=(32, 32),
         sim_model=model,
-        specimen_to_image=map_coord
+        specimen_to_image=map_coord,
     )
     assert_allclose(det_ref, res[16, 16])
     assert_allclose(scan_ref, res[:, :, 16, 16])
@@ -549,28 +564,28 @@ def test_project_fixref_scanshift():
         scan_pixel_pitch=1,
         camera_length=1,
         detector_pixel_pitch=2,
-        semiconv=np.pi/2,
-        scan_center=PixelYX(x=17, y=15.),
-        scan_rotation=0.,
-        flip_factor=1.,
-        detector_center=PixelYX(x=16., y=16.),
-        descan_error=DescanError()
+        semiconv=np.pi / 2,
+        scan_center=PixelYX(x=17, y=15.0),
+        scan_rotation=0.0,
+        flip_factor=1.0,
+        detector_center=PixelYX(x=16.0, y=16.0),
+        descan_error=DescanError(),
     )
     obj = np.random.random((32, 32))
 
     def map_coord(inp):
         cy = obj.shape[0] / 2
         cx = obj.shape[1] / 2
-        inp_vec = jnp.array((inp.y, inp.x))
+        inp_vec = np.array((inp.y, inp.x))
         y, x = identity() @ inp_vec
-        return PixelYX(y=y+cy, x=x+cx)
+        return PixelYX(y=y + cy, x=x + cx)
 
     res = project(
         image=obj,
         detector_shape=(32, 32),
         scan_shape=(32, 32),
         sim_model=model,
-        specimen_to_image=map_coord
+        specimen_to_image=map_coord,
     )
     assert_allclose(obj, res[15, 17])
     assert_allclose(obj, res[:, :, 15, 17])
@@ -582,28 +597,28 @@ def test_project_fixref_scanrotate():
         scan_pixel_pitch=1,
         camera_length=1,
         detector_pixel_pitch=2,
-        semiconv=np.pi/2,
-        scan_center=PixelYX(x=16, y=16.),
-        scan_rotation=np.pi/2,
-        flip_factor=1.,
-        detector_center=PixelYX(x=16., y=16.),
-        descan_error=DescanError()
+        semiconv=np.pi / 2,
+        scan_center=PixelYX(x=16, y=16.0),
+        scan_rotation=np.pi / 2,
+        flip_factor=1.0,
+        detector_center=PixelYX(x=16.0, y=16.0),
+        descan_error=DescanError(),
     )
     obj = np.random.random((32, 32))
 
     def map_coord(inp):
         cy = obj.shape[0] / 2
         cx = obj.shape[1] / 2
-        inp_vec = jnp.array((inp.y, inp.x))
+        inp_vec = np.array((inp.y, inp.x))
         y, x = identity() @ inp_vec
-        return PixelYX(y=y+cy, x=x+cx)
+        return PixelYX(y=y + cy, x=x + cx)
 
     res = project(
         image=obj,
         detector_shape=(32, 32),
         scan_shape=(32, 32),
         sim_model=model,
-        specimen_to_image=map_coord
+        specimen_to_image=map_coord,
     )
     assert_allclose(obj, res[16, 16])
     assert_allclose(np.rot90(obj), res[:, :, 16, 15])
@@ -612,12 +627,14 @@ def test_project_fixref_scanrotate():
 def test_project_aperture():
     scan_pixel_pitch = 0.1
     detector_pixel_pitch = 2 * scan_pixel_pitch
-    overfocus = 1.
-    camera_length = 1.
+    overfocus = 1.0
+    camera_length = 1.0
     propagation_distance = overfocus + camera_length
     obj_half_size = 16
     # Small epsilon to avoid hitting numerical errors at exactly the pixel boundary
-    angle = np.arctan2(obj_half_size*detector_pixel_pitch/2 + 0.001, propagation_distance)
+    angle = np.arctan2(
+        obj_half_size * detector_pixel_pitch / 2 + 0.001, propagation_distance
+    )
 
     model = Model4DSTEM(
         overfocus=overfocus,
@@ -626,24 +643,24 @@ def test_project_aperture():
         detector_pixel_pitch=detector_pixel_pitch,
         semiconv=angle,
         scan_center=PixelYX(x=obj_half_size, y=obj_half_size),
-        scan_rotation=0.,
-        flip_factor=1.,
+        scan_rotation=0.0,
+        flip_factor=1.0,
         detector_center=PixelYX(x=obj_half_size, y=obj_half_size),
     )
     obj = np.random.random((32, 32))
     det_ref = obj.copy()
 
-    ys, xs = np.ogrid[:obj.shape[0], :obj.shape[1]]
+    ys, xs = np.ogrid[: obj.shape[0], : obj.shape[1]]
     ys -= obj_half_size
     xs -= obj_half_size
     dist = np.sqrt(ys**2 + xs**2)
 
-    det_ref[dist > obj_half_size/2 + 0.001] = 0
+    det_ref[dist > obj_half_size / 2 + 0.001] = 0
 
     res = project(
         image=obj,
-        detector_shape=(2*obj_half_size, 2*obj_half_size),
-        scan_shape=(2*obj_half_size, 2*obj_half_size),
+        detector_shape=(2 * obj_half_size, 2 * obj_half_size),
+        scan_shape=(2 * obj_half_size, 2 * obj_half_size),
         sim_model=model,
     )
     assert_allclose(det_ref, res[obj_half_size, obj_half_size])
@@ -653,12 +670,14 @@ def test_project_aperture():
 def test_project_descan():
     scan_pixel_pitch = 0.1
     detector_pixel_pitch = 2 * scan_pixel_pitch
-    overfocus = 1.
-    camera_length = 1.
+    overfocus = 1.0
+    camera_length = 1.0
     propagation_distance = overfocus + camera_length
     obj_half_size = 16
     # Small epsilon to avoid hitting numerical errors at exactly the pixel boundary
-    angle = np.arctan2(obj_half_size*detector_pixel_pitch/2 + 0.001, propagation_distance)
+    angle = np.arctan2(
+        obj_half_size * detector_pixel_pitch / 2 + 0.001, propagation_distance
+    )
 
     model = Model4DSTEM(
         overfocus=overfocus,
@@ -667,43 +686,43 @@ def test_project_descan():
         detector_pixel_pitch=detector_pixel_pitch,
         semiconv=angle,
         scan_center=PixelYX(x=obj_half_size, y=obj_half_size),
-        scan_rotation=0.,
-        flip_factor=1.,
+        scan_rotation=0.0,
+        flip_factor=1.0,
         detector_center=PixelYX(x=obj_half_size, y=obj_half_size),
         descan_error=DescanError(
             offpxi=detector_pixel_pitch,
             offpyi=2 * detector_pixel_pitch,
-            offsxi=-3 * detector_pixel_pitch/camera_length,
-            offsyi=-5 * detector_pixel_pitch/camera_length,
-            pxo_pxi=7 * detector_pixel_pitch/scan_pixel_pitch,
-            pyo_pyi=11 * detector_pixel_pitch/scan_pixel_pitch,
-            sxo_pxi=-13 * detector_pixel_pitch/scan_pixel_pitch/camera_length,
-            syo_pyi=-17 * detector_pixel_pitch/scan_pixel_pitch/camera_length,
-        )
+            offsxi=-3 * detector_pixel_pitch / camera_length,
+            offsyi=-5 * detector_pixel_pitch / camera_length,
+            pxo_pxi=7 * detector_pixel_pitch / scan_pixel_pitch,
+            pyo_pyi=11 * detector_pixel_pitch / scan_pixel_pitch,
+            sxo_pxi=-13 * detector_pixel_pitch / scan_pixel_pitch / camera_length,
+            syo_pyi=-17 * detector_pixel_pitch / scan_pixel_pitch / camera_length,
+        ),
     )
     obj = np.ones((32, 32))
     det_ref = obj.copy()
 
-    ys, xs = np.ogrid[:obj.shape[0], :obj.shape[1]]
+    ys, xs = np.ogrid[: obj.shape[0], : obj.shape[1]]
     ys -= obj_half_size + 2 - 5
     xs -= obj_half_size + 1 - 3
     dist = np.sqrt(ys**2 + xs**2)
 
-    det_ref[dist > obj_half_size/2 + 0.001] = 0
+    det_ref[dist > obj_half_size / 2 + 0.001] = 0
 
     det_ref2 = obj.copy()
-    ys, xs = np.ogrid[:obj.shape[0], :obj.shape[1]]
+    ys, xs = np.ogrid[: obj.shape[0], : obj.shape[1]]
     ys -= obj_half_size + 2 - 5 + 11 - 17
     xs -= obj_half_size + 1 - 3 + 7 - 13
     dist = np.sqrt(ys**2 + xs**2)
 
-    det_ref2[dist > obj_half_size/2 + 0.001] = 0
+    det_ref2[dist > obj_half_size / 2 + 0.001] = 0
 
     res = project(
         image=obj,
-        detector_shape=(2*obj_half_size, 2*obj_half_size),
-        scan_shape=(2*obj_half_size, 2*obj_half_size),
+        detector_shape=(2 * obj_half_size, 2 * obj_half_size),
+        scan_shape=(2 * obj_half_size, 2 * obj_half_size),
         sim_model=model,
     )
     assert_allclose(det_ref, res[obj_half_size, obj_half_size])
-    assert_allclose(det_ref2, res[obj_half_size+1, obj_half_size+1])
+    assert_allclose(det_ref2, res[obj_half_size + 1, obj_half_size + 1])

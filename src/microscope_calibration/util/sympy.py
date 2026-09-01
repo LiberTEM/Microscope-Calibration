@@ -1,14 +1,14 @@
-from copy import deepcopy
-from typing import TypeVar, Any
-from collections.abc import Container
-from numbers import Number
 import inspect
-from frozendict import frozendict
+from collections.abc import Container
+from copy import deepcopy
 from functools import cache
+from numbers import Number
+from typing import Any, TypeVar
 
-import wrapt
-import sympy as sym
 import jax
+import sympy as sym
+import wrapt
+from frozendict import frozendict
 from jax.errors import TracerBoolConversionError
 
 T = TypeVar("T")
@@ -23,7 +23,7 @@ def isnumerictype(T):
         except TypeError:
             pass
     # This can also handle unions like int | float via isinstance()
-    for number in (0, 0., 0.+0.j):
+    for number in (0, 0.0, 0.0 + 0.0j):
         # try ... except because weird types can cause a TypeError here,
         # but we can safely continue since we didn't positively recognize it as numeric
         try:
@@ -63,8 +63,8 @@ def is_sympy(expr: Any) -> bool:
 
 
 def symbol_maker(
-        params_cls: type[T], postfix: str | None = None,
-        recurse_for: Container = tuple()) -> T:
+    params_cls: type[T], postfix: str | None = None, recurse_for: Container = ()
+) -> T:
     """
     Declare sympy symbols for each attribute of a given parameter class.
 
@@ -88,11 +88,13 @@ def symbol_maker(
     class instance
         instance of the class with symbols as parameters
     """
-    def symbol_maker_inner(params_cls: type[T], postfix: str | None,
-            recurse_for: Container, index: int) -> tuple[int, T]:
-        if hasattr(params_cls, '__annotations__'):
+
+    def symbol_maker_inner(
+        params_cls: type[T], postfix: str | None, recurse_for: Container, index: int
+    ) -> tuple[int, T]:
+        if hasattr(params_cls, "__annotations__"):
             symbols_dict = {}
-            for attr in params_cls.__annotations__.keys():
+            for attr in params_cls.__annotations__:
                 cls = params_cls.__annotations__[attr]
                 if cls in recurse_for:
                     (index, symbols_dict[attr]) = symbol_maker_inner(
@@ -116,10 +118,7 @@ def symbol_maker(
             raise TypeError(f"Can't generate symbol for type {params_cls}.")
 
     (_, res) = symbol_maker_inner(
-        params_cls=params_cls,
-        postfix=postfix,
-        recurse_for=recurse_for,
-        index=0
+        params_cls=params_cls, postfix=postfix, recurse_for=recurse_for, index=0
     )
     return res
 
@@ -163,8 +162,8 @@ def lambdify_tree(inp: SymbolJaxTree, outp: SymbolJaxTree, **kwargs):
         ii_leaves, ii_treedef = jax.tree.flatten_with_path(ii)
         if ii_treedef != inp_treedef:
             raise ValueError(
-                f'Tree definition of input {ii_treedef} does not match expected '
-                f'tree definition {inp_treedef}.'
+                f"Tree definition of input {ii_treedef} does not match expected "
+                f"tree definition {inp_treedef}."
             )
         try:
             for i, (path, leave) in enumerate(ii_leaves):
@@ -181,7 +180,8 @@ def lambdify_tree(inp: SymbolJaxTree, outp: SymbolJaxTree, **kwargs):
                     elif leave != inp_leaves[i]:
                         raise ValueError(
                             f"Constant value {leave} doesn't match reference input "
-                            f"{inp_leaves[i]} for {path}.")
+                            f"{inp_leaves[i]} for {path}."
+                        )
         # Error checking is incompatible with jax.jit
         # but can be skipped without affecting the result
         except TracerBoolConversionError:
@@ -207,7 +207,9 @@ def normalized_args(wrapped, args, kwargs):
 
 
 @cache
-def _outer_lambdify(wrapped, modules, sample_args, sample_kwargs, sym_kwargs, recurse_for):
+def _outer_lambdify(
+    wrapped, modules, sample_args, sample_kwargs, sym_kwargs, recurse_for
+):
     sig = inspect.signature(wrapped)
     spec = inspect.getfullargspec(wrapped)
     partial_bound = sig.bind_partial(*sample_args, **sample_kwargs)
@@ -216,16 +218,18 @@ def _outer_lambdify(wrapped, modules, sample_args, sample_kwargs, sym_kwargs, re
     for arg in spec.args:
         if arg not in partial_bound.arguments:
             cls = spec.annotations.get(arg, float)
-            generated_args[arg] = symbol_maker(cls, postfix=arg, recurse_for=recurse_for)
+            generated_args[arg] = symbol_maker(
+                cls, postfix=arg, recurse_for=recurse_for
+            )
     partial_bound.arguments.update(generated_args)
-    normalized = normalized_args(wrapped, args=tuple(), kwargs=partial_bound.arguments)
+    normalized = normalized_args(wrapped, args=(), kwargs=partial_bound.arguments)
     f = lambdify_tree(normalized, wrapped(**normalized), modules=modules, **sym_kwargs)
     return f
 
 
-def lambdify(recurse_for=tuple(), modules=sym, args=None, kwargs=None, **sym_kwargs):
+def lambdify(recurse_for=(), modules=sym, args=None, kwargs=None, **sym_kwargs):
     # Rename to keep outer API succinct
-    sample_args = tuple() if args is None else args
+    sample_args = () if args is None else args
     sample_kwargs = {} if kwargs is None else kwargs
 
     @wrapt.decorator

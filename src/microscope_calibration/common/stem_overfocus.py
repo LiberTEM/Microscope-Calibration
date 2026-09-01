@@ -1,18 +1,19 @@
-from typing import Callable, Optional
+from collections.abc import Callable
 
-import jax; jax.config.update("jax_enable_x64", True)  # noqa
+import jax; jax.config.update("jax_enable_x64", True)  # noqa fmt: skip
+
 import jax.numpy as jnp
-import numpy as np
 import numba
+import numpy as np
 
 from microscope_calibration.common.model import (
-    Model4DSTEM,
-    PixelYX,
     CoordXY,
     DescanError,
+    Model4DSTEM,
+    PixelYX,
     Scanner,
 )
-
+from microscope_calibration.util.sympy import lambdify
 
 # Define here to facilitate mocking in order to test
 # the code that checks for float64 support in JAX as a probable cause
@@ -78,7 +79,7 @@ def _do_lstsq(input_samples, output_samples):
 
 
 def get_backward_transformation_matrix(
-    rec_model: Model4DSTEM, specimen_to_image: Optional[CoordMappingT] = None
+    rec_model: Model4DSTEM, specimen_to_image: CoordMappingT | None = None
 ):
     """
     Calculate a transformation matrix that maps from scan position in scan pixel
@@ -121,33 +122,36 @@ def get_backward_transformation_matrix(
     input_samples = []
     output_samples = []
 
+    @lambdify(modules=np)
+    def get_sample(scan_pos_x, scan_pos_y, source_dy, source_dx):
+        scan_pos = PixelYX(x=scan_pos_x, y=scan_pos_y)
+        res = rec_model.trace(
+            scan_pos=scan_pos,
+            source_dy=source_dy,
+            source_dx=source_dx,
+        )
+
+        if specimen_to_image is None:
+            spec_px = res["specimen"].sampling["scan_px"]
+        else:
+            spec_px = specimen_to_image(
+                CoordXY(x=res["specimen"].ray.x, y=res["specimen"].ray.y)
+            )
+        input_sample = (scan_pos.y, scan_pos.x, spec_px.y, spec_px.x, 1.0)
+        output_sample = (
+            res["detector"].sampling["detector_px"].y,
+            res["detector"].sampling["detector_px"].x,
+            source_dy,
+            source_dx,
+            1.0,
+        )
+        return (input_sample, output_sample)
+
     for test_param_raw in test_parameters:
         # We are paranoid and confirm that the model is linear
         for factor in (1.0, 2.0):
             test_param = test_param_raw * factor
-            scan_pos = PixelYX(x=test_param[0], y=test_param[1])
-            source_dy = test_param[2]
-            source_dx = test_param[3]
-            res = rec_model.trace(
-                scan_pos=scan_pos,
-                source_dy=source_dy,
-                source_dx=source_dx,
-            )
-
-            if specimen_to_image is None:
-                spec_px = res["specimen"].sampling["scan_px"]
-            else:
-                spec_px = specimen_to_image(
-                    CoordXY(x=res["specimen"].ray.x, y=res["specimen"].ray.y)
-                )
-            input_sample = (scan_pos.y, scan_pos.x, spec_px.y, spec_px.x, 1.0)
-            output_sample = (
-                res["detector"].sampling["detector_px"].y,
-                res["detector"].sampling["detector_px"].x,
-                source_dy,
-                source_dx,
-                1.0,
-            )
+            input_sample, output_sample = get_sample(*test_param)
             output_samples.append(output_sample)
             input_samples.append(input_sample)
 
@@ -231,7 +235,7 @@ def project_frame_backwards(frame, source_semiconv, mat, scan_y, scan_x, image_o
 
 
 def get_detector_correction_matrix(
-    rec_model: Model4DSTEM, ref_model: Optional[Model4DSTEM] = None
+    rec_model: Model4DSTEM, ref_model: Model4DSTEM | None = None
 ):
     """
     Calculate a transformation matrix that maps from scan position in scan pixel
@@ -280,10 +284,41 @@ def get_detector_correction_matrix(
     input_samples = []
     output_samples = []
 
+    @lambdify(modules=np)
+    def get_sample(scan_pos_x, scan_pos_y, source_dy, source_dx):
+        scan_pos = PixelYX(x=scan_pos_x, y=scan_pos_y)
+        res = rec_model.trace(
+            scan_pos=scan_pos,
+            source_dy=source_dy,
+            source_dx=source_dx,
+        )
+
+        ref_res = ref_model.trace(
+            scan_pos=scan_pos,
+            source_dy=source_dy,
+            source_dx=source_dx,
+        )
+
+        input_sample = (
+            scan_pos.y,
+            scan_pos.x,
+            ref_res["detector"].sampling["detector_px"].y,
+            ref_res["detector"].sampling["detector_px"].x,
+            1.0,
+        )
+        output_sample = (
+            res["detector"].sampling["detector_px"].y,
+            res["detector"].sampling["detector_px"].x,
+            source_dy,
+            source_dx,
+            1.0,
+        )
+        return (input_sample, output_sample)
+
     if ref_model is None:
         ref_model = rec_model.derive(
             scan_rotation=0.0,
-            flip_factor=1.,
+            flip_factor=1.0,
             descan_error=DescanError(),
             detector_rotation=rec_model.scan_rotation,
         )
@@ -292,35 +327,7 @@ def get_detector_correction_matrix(
         # We are paranoid and confirm that the model is linear
         for factor in (1.0, 2.0):
             test_param = test_param_raw * factor
-            scan_pos = PixelYX(x=test_param[0], y=test_param[1])
-            source_dy = test_param[2]
-            source_dx = test_param[3]
-            res = rec_model.trace(
-                scan_pos=scan_pos,
-                source_dy=source_dy,
-                source_dx=source_dx,
-            )
-
-            ref_res = ref_model.trace(
-                scan_pos=scan_pos,
-                source_dy=source_dy,
-                source_dx=source_dx,
-            )
-
-            input_sample = (
-                scan_pos.y,
-                scan_pos.x,
-                ref_res["detector"].sampling["detector_px"].y,
-                ref_res["detector"].sampling["detector_px"].x,
-                1.0,
-            )
-            output_sample = (
-                res["detector"].sampling["detector_px"].y,
-                res["detector"].sampling["detector_px"].x,
-                source_dy,
-                source_dx,
-                1.0,
-            )
+            input_sample, output_sample = get_sample(*test_param)
             output_samples.append(output_sample)
             input_samples.append(input_sample)
 

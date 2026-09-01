@@ -1,8 +1,7 @@
+import numpy as np
 import pytest
 
-import numpy as np
-
-from microscope_calibration.common.model import Model4DSTEM, PixelYX, DescanError
+from microscope_calibration.common.model import DescanError, Model4DSTEM, PixelYX
 
 
 @pytest.fixture
@@ -21,10 +20,8 @@ def random_model() -> Model4DSTEM:
             y=np.random.uniform(-10, 10),
             x=np.random.uniform(-10, 10),
         ),
-        semiconv=np.random.uniform(0.0001, np.pi/2),
-        flip_factor=np.random.choice([-1., 1.]),
-        descan_error=DescanError(
-            *np.random.uniform(-1, 1, size=len(DescanError()))
-        ),
+        semiconv=np.random.uniform(0.0001, np.pi / 2),
+        flip_factor=np.random.choice([-1.0, 1.0]),
+        descan_error=DescanError(*np.random.uniform(-1, 1, size=len(DescanError()))),
         detector_rotation=np.random.uniform(-np.pi, np.pi),
     )

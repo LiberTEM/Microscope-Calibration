@@ -1,51 +1,52 @@
-from typing import Literal
 import concurrent.futures
+from typing import Literal
 
-import numpy as np
-import sparse
-import panel as pn
 import flax
 import jax.numpy as jnp
+import numpy as np
 import pandas as pd
-
-from libertem.io.dataset.base import DataSet
+import panel as pn
+import sparse
+from bokeh.events import DoubleTap, Tap
+from bokeh.plotting import ColumnDataSource
 from libertem.api import Context
-from libertem.udf.sumsigudf import SumSigUDF
+from libertem.io.dataset.base import DataSet
 from libertem.udf.masks import ApplyMasksUDF
 from libertem.udf.raw import PickUDF
-
-from libertem_blobfinder.udf.correlation import FastCorrelationUDF, run_fastcorrelation
+from libertem.udf.sumsigudf import SumSigUDF
 from libertem_blobfinder.common.patterns import BackgroundSubtraction
-
-from libertem_ui.display.points import RingSet
-from libertem_ui.figure import ApertureFigure
+from libertem_blobfinder.udf.correlation import FastCorrelationUDF, run_fastcorrelation
 from libertem_ui.display.cursor import Cursor
-from libertem_ui.display.points import PointSet
 from libertem_ui.display.lines import Curve
+from libertem_ui.display.points import PointSet, RingSet
+from libertem_ui.figure import ApertureFigure
 
-from bokeh.plotting import ColumnDataSource
-from bokeh.events import DoubleTap, Tap
-
-from .common.model import Model4DSTEM, DescanError, PixelYX
-from .util.optimize import (
-    solve_tilt_descan_error_points,
-    solve_tilt_descan_error,
-    solve_coords_points,
-    solve_hit_specimen,
-    make_overfocus_loss_function, optimize
-)
+from .common.model import DescanError, Model4DSTEM, PixelYX
 from .common.stem_overfocus import (
-    get_detector_correction_matrix,
-    corrected_det_y,
     corrected_det_x,
-    ring_radii,
+    corrected_det_y,
     get_center,
+    get_detector_correction_matrix,
+    ring_radii,
 )
 from .udf.stem_overfocus import CorrectedPickUDF, OverfocusUDF
+from .util.optimize import (
+    make_overfocus_loss_function,
+    optimize,
+    solve_coords_points,
+    solve_hit_specimen,
+    solve_tilt_descan_error,
+    solve_tilt_descan_error_points,
+)
 
-
-NavModeT = Literal["point", "sumsig", ]
-SigModeT = Literal["lin", "log", ]
+NavModeT = Literal[
+    "point",
+    "sumsig",
+]
+SigModeT = Literal[
+    "lin",
+    "log",
+]
 
 
 class CoordinateCorrectionLayout:
@@ -109,9 +110,7 @@ class CoordinateCorrectionLayout:
             ),
         )
 
-        self.ring_model = ColumnDataSource(
-            data=self.ring_update(self.model_model.data)
-        )
+        self.ring_model = ColumnDataSource(data=self.ring_update(self.model_model.data))
         self.centered_ring_model = ColumnDataSource(
             data=self.ring_update(
                 self.model_model.data,
@@ -126,9 +125,7 @@ class CoordinateCorrectionLayout:
             y=self.start_model.scan_center.y + 5,
             x=self.start_model.scan_center.x + 5,
         )
-        self.feature_model = ColumnDataSource(
-            data=self.scan_pos_update(feature_start)
-        )
+        self.feature_model = ColumnDataSource(data=self.scan_pos_update(feature_start))
         if self.start_model.overfocus != 0:
             feature_select_start = self.get_feature_on_detector(
                 model=self.start_model,
@@ -482,9 +479,7 @@ class CoordinateCorrectionLayout:
         )
         self.update_with_force(
             self.centered_ring_model,
-            self.ring_update(
-                model_data=new, detector_center=new_model.detector_center
-            ),
+            self.ring_update(model_data=new, detector_center=new_model.detector_center),
         )
         detector_pos = self.get_feature_on_detector(
             model=new_model,
@@ -789,9 +784,9 @@ class CoordinateCorrectionLayout:
             result["corrected_point"] = res[1]["corrected_point"].data
         result["backprojected_sum"] = res[1]["backprojected_sum"].data
         # result["corrected_point"] = res[1]["corrected_point"].data
-        if self.sig_mode == 'lin':
+        if self.sig_mode == "lin":
             result["corrected_sum"] = res[1]["corrected_sum"].data
-        elif self.sig_mode == 'log':
+        elif self.sig_mode == "log":
             result["corrected_sum"] = np.log1p(res[1]["corrected_sum"].data)
         else:
             raise ValueError()
@@ -807,10 +802,12 @@ class CoordinateCorrectionLayout:
         )
         res = self.ctx.run_udf(dataset=self.dataset, udf=udfs, roi=roi)
 
-        if self.sig_mode == 'log':
+        if self.sig_mode == "log":
+
             def fn(data):
                 return np.log1p(data)
         else:
+
             def fn(data):
                 return data
 
@@ -855,9 +852,7 @@ class CoordinateCorrectionLayout:
 
     def ring_update(self, model_data, detector_center=None):
         model = self.get_model(model_data)
-        ri, ro = ring_radii(
-            model=model, twothetas=self.get_model_twothetas(model_data)
-        )
+        ri, ro = ring_radii(model=model, twothetas=self.get_model_twothetas(model_data))
         if detector_center is None:
             detector_center = get_center(
                 model=model,
