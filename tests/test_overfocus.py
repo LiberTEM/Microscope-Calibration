@@ -1,18 +1,23 @@
+import numpy as np
 import pytest
+from libertem.corrections.coordinates import rotate, scale
 from numpy.testing import assert_allclose
 
-import jax.numpy as jnp
-import numpy as np
-
+from microscope_calibration.common.model import (
+    DescanError,
+    Model4DSTEM,
+    PixelYX,
+    lambdify_trace_for,
+)
 from microscope_calibration.common.stem_overfocus import (
-    get_backward_transformation_matrix, get_detector_correction_matrix,
-    project_frame_backwards, correct_frame
+    correct_frame,
+    get_backward_transformation_matrix,
+    get_detector_correction_matrix,
+    project_frame_backwards,
 )
 from microscope_calibration.util.stem_overfocus_sim import project
-from microscope_calibration.common.model import (
-    Model4DSTEM, PixelYX, DescanError,
-)
-from libertem.corrections.coordinates import scale, rotate
+
+trace = lambdify_trace_for(np)
 
 
 def test_model_consistency_backproject():
@@ -24,7 +29,7 @@ def test_model_consistency_backproject():
         semiconv=0.023,
         scan_center=PixelYX(x=0.13, y=0.23),
         scan_rotation=0.752,
-        flip_factor=-1.,
+        flip_factor=-1.0,
         detector_center=PixelYX(x=23, y=42),
         detector_rotation=2.134,
         descan_error=DescanError(
@@ -39,8 +44,8 @@ def test_model_consistency_backproject():
             offpxi=0.23,
             offpyi=0.29,
             offsxi=0.31,
-            offsyi=0.37
-        )
+            offsyi=0.37,
+        ),
     )
     mat = get_backward_transformation_matrix(rec_model=model)
 
@@ -54,11 +59,19 @@ def test_model_consistency_backproject():
     source_dx = out[3]
 
     assert_allclose(out[4], 1)
-    res = model.trace(scan_pos=scan_pos, source_dx=source_dx, source_dy=source_dy)
-    assert_allclose(out[0], res['detector'].sampling['detector_px'].y, rtol=1e-12, atol=1e-12)
-    assert_allclose(out[1], res['detector'].sampling['detector_px'].x, rtol=1e-12, atol=1e-12)
-    assert_allclose(inp[2], res['specimen'].sampling['scan_px'].y, rtol=1e-12, atol=1e-12)
-    assert_allclose(inp[3], res['specimen'].sampling['scan_px'].x, rtol=1e-12, atol=1e-12)
+    res = trace(model, scan_pos=scan_pos, source_dx=source_dx, source_dy=source_dy)
+    assert_allclose(
+        out[0], res["detector"].sampling["detector_px"].y, rtol=1e-12, atol=1e-12
+    )
+    assert_allclose(
+        out[1], res["detector"].sampling["detector_px"].x, rtol=1e-12, atol=1e-12
+    )
+    assert_allclose(
+        inp[2], res["specimen"].sampling["scan_px"].y, rtol=1e-12, atol=1e-12
+    )
+    assert_allclose(
+        inp[3], res["specimen"].sampling["scan_px"].x, rtol=1e-12, atol=1e-12
+    )
 
 
 def test_model_consistency_correct():
@@ -70,7 +83,7 @@ def test_model_consistency_correct():
         semiconv=0.023,
         scan_center=PixelYX(x=0.13, y=0.23),
         scan_rotation=0.752,
-        flip_factor=-1.,
+        flip_factor=-1.0,
         detector_center=PixelYX(x=23, y=42),
         detector_rotation=2.134,
         descan_error=DescanError(
@@ -85,8 +98,8 @@ def test_model_consistency_correct():
             offpxi=0.23,
             offpyi=0.29,
             offsxi=0.31,
-            offsyi=0.37
-        )
+            offsyi=0.37,
+        ),
     )
     ref_model = Model4DSTEM(
         overfocus=1.1523,
@@ -96,7 +109,7 @@ def test_model_consistency_correct():
         semiconv=0.042,
         scan_center=PixelYX(x=0.4, y=0.345),
         scan_rotation=0.75,
-        flip_factor=1.,
+        flip_factor=1.0,
         detector_center=PixelYX(x=2, y=4),
         detector_rotation=2.4134,
         descan_error=DescanError(
@@ -111,8 +124,8 @@ def test_model_consistency_correct():
             offpxi=0.234,
             offpyi=0.293,
             offsxi=0.313,
-            offsyi=0.373
-        )
+            offsyi=0.373,
+        ),
     )
     mat = get_detector_correction_matrix(rec_model=model, ref_model=ref_model)
 
@@ -126,14 +139,24 @@ def test_model_consistency_correct():
     source_dx = out[3]
 
     assert_allclose(out[4], 1)
-    res = model.trace(scan_pos=scan_pos, source_dx=source_dx, source_dy=source_dy)
+    res = trace(model, scan_pos=scan_pos, source_dx=source_dx, source_dy=source_dy)
 
-    ref_res = ref_model.trace(scan_pos=scan_pos, source_dx=source_dx, source_dy=source_dy)
+    ref_res = trace(
+        ref_model, scan_pos=scan_pos, source_dx=source_dx, source_dy=source_dy
+    )
 
-    assert_allclose(inp[2], ref_res['detector'].sampling['detector_px'].y, rtol=1e-12, atol=1e-12)
-    assert_allclose(inp[3], ref_res['detector'].sampling['detector_px'].x, rtol=1e-12, atol=1e-12)
-    assert_allclose(out[0], res['detector'].sampling['detector_px'].y, rtol=1e-12, atol=1e-12)
-    assert_allclose(out[1], res['detector'].sampling['detector_px'].x, rtol=1e-12, atol=1e-12)
+    assert_allclose(
+        inp[2], ref_res["detector"].sampling["detector_px"].y, rtol=1e-12, atol=1e-12
+    )
+    assert_allclose(
+        inp[3], ref_res["detector"].sampling["detector_px"].x, rtol=1e-12, atol=1e-12
+    )
+    assert_allclose(
+        out[0], res["detector"].sampling["detector_px"].y, rtol=1e-12, atol=1e-12
+    )
+    assert_allclose(
+        out[1], res["detector"].sampling["detector_px"].x, rtol=1e-12, atol=1e-12
+    )
 
 
 def test_backproject_identity():
@@ -143,19 +166,19 @@ def test_backproject_identity():
         scan_pixel_pitch=1,
         camera_length=1,
         detector_pixel_pitch=2,
-        semiconv=np.pi/2,
-        scan_center=PixelYX(x=7.1, y=16.),
-        scan_rotation=0.,
-        flip_factor=1.,
-        detector_center=PixelYX(x=7.1, y=16.),
-        descan_error=DescanError()
+        semiconv=np.pi / 2,
+        scan_center=PixelYX(x=7.1, y=16.0),
+        scan_rotation=0.0,
+        flip_factor=1.0,
+        detector_center=PixelYX(x=7.1, y=16.0),
+        descan_error=DescanError(),
     )
     obj = np.random.random((32, 13))
     res = np.zeros_like(obj)
     mat = get_backward_transformation_matrix(rec_model=model)
     project_frame_backwards(
         frame=obj,
-        source_semiconv=np.pi/2,
+        source_semiconv=np.pi / 2,
         mat=mat,
         scan_y=16,
         scan_x=7,
@@ -173,20 +196,20 @@ def test_backproject_counterrotate():
         scan_pixel_pitch=1,
         camera_length=1,
         detector_pixel_pitch=2,
-        semiconv=np.pi/2,
-        scan_center=PixelYX(x=16, y=16.),
-        scan_rotation=np.pi/2,
-        flip_factor=1.,
-        detector_center=PixelYX(x=16, y=16.),
-        detector_rotation=np.pi/2,
-        descan_error=DescanError()
+        semiconv=np.pi / 2,
+        scan_center=PixelYX(x=16, y=16.0),
+        scan_rotation=np.pi / 2,
+        flip_factor=1.0,
+        detector_center=PixelYX(x=16, y=16.0),
+        detector_rotation=np.pi / 2,
+        descan_error=DescanError(),
     )
     obj = np.random.random((32, 32))
     res = np.zeros_like(obj)
     mat = get_backward_transformation_matrix(rec_model=model)
     project_frame_backwards(
         frame=obj,
-        source_semiconv=np.pi/2,
+        source_semiconv=np.pi / 2,
         mat=mat,
         scan_y=16,
         scan_x=16,
@@ -195,19 +218,13 @@ def test_backproject_counterrotate():
     assert_allclose(obj, res)
 
 
-@pytest.mark.parametrize(
-    'rotate_scan', (False, True)
-)
-@pytest.mark.parametrize(
-    'rotate_detector', (False, True)
-)
-@pytest.mark.parametrize(
-    'fixed_reference', (False, True)
-)
-@pytest.mark.parametrize(
-    'flip_factor', (1., -1.)
-)
-def test_backproject_rot90_flip(rotate_scan, rotate_detector, fixed_reference, flip_factor):
+@pytest.mark.parametrize("rotate_scan", (False, True))
+@pytest.mark.parametrize("rotate_detector", (False, True))
+@pytest.mark.parametrize("fixed_reference", (False, True))
+@pytest.mark.parametrize("flip_factor", (1.0, -1.0))
+def test_backproject_rot90_flip(
+    rotate_scan, rotate_detector, fixed_reference, flip_factor
+):
     # 1:1 size mapping between detector and specimen
     # rotating scan and detector in fixed reference frame and
     # scan reference frame.
@@ -215,35 +232,36 @@ def test_backproject_rot90_flip(rotate_scan, rotate_detector, fixed_reference, f
     # detector frame into the reference coordinate system restores the object,
     # i.e. rotation and flip are canceled out.
     if rotate_detector:
-        detector_rotation = np.pi/2
+        detector_rotation = np.pi / 2
     else:
-        detector_rotation = 0.
+        detector_rotation = 0.0
     if rotate_scan:
-        scan_rotation = np.pi/2
+        scan_rotation = np.pi / 2
     else:
-        scan_rotation = 0.
+        scan_rotation = 0.0
 
     model = Model4DSTEM(
         overfocus=1,
         scan_pixel_pitch=1,
         camera_length=1,
         detector_pixel_pitch=2,
-        semiconv=np.pi/2,
-        scan_center=PixelYX(x=16, y=16.),
+        semiconv=np.pi / 2,
+        scan_center=PixelYX(x=16, y=16.0),
         scan_rotation=scan_rotation,
         flip_factor=flip_factor,
-        detector_center=PixelYX(x=16, y=16.),
+        detector_center=PixelYX(x=16, y=16.0),
         detector_rotation=detector_rotation,
-        descan_error=DescanError()
+        descan_error=DescanError(),
     )
 
     if fixed_reference:
+
         def map_coord(inp):
             cy = obj.shape[0] / 2
             cx = obj.shape[1] / 2
-            inp_vec = jnp.array((inp.y, inp.x))
+            inp_vec = np.array((inp.y, inp.x))
             y, x = scale(1) @ inp_vec
-            return PixelYX(y=y+cy, x=x+cx)
+            return PixelYX(y=y + cy, x=x + cx)
     else:
         map_coord = None
 
@@ -268,7 +286,7 @@ def test_backproject_rot90_flip(rotate_scan, rotate_detector, fixed_reference, f
             res = np.zeros_like(obj)
             project_frame_backwards(
                 frame=projected[pick_y, pick_x],
-                source_semiconv=np.pi/2,
+                source_semiconv=np.pi / 2,
                 mat=mat,
                 scan_y=pick_y,
                 scan_x=pick_x,
@@ -286,13 +304,13 @@ def test_backproject_scale_fixed():
         scan_pixel_pitch=2,
         camera_length=1,
         detector_pixel_pitch=2,
-        semiconv=np.pi/2,
-        scan_center=PixelYX(x=16., y=16.),
-        scan_rotation=0.,
-        flip_factor=1.,
-        detector_center=PixelYX(x=32, y=32.),
-        detector_rotation=0.,
-        descan_error=DescanError()
+        semiconv=np.pi / 2,
+        scan_center=PixelYX(x=16.0, y=16.0),
+        scan_rotation=0.0,
+        flip_factor=1.0,
+        detector_center=PixelYX(x=32, y=32.0),
+        detector_rotation=0.0,
+        descan_error=DescanError(),
     )
     obj = np.random.random((64, 64))
     res = np.zeros((64, 64))
@@ -300,9 +318,9 @@ def test_backproject_scale_fixed():
     def map_coord(inp):
         cy = obj.shape[0] / 2
         cx = obj.shape[1] / 2
-        inp_vec = jnp.array((inp.y, inp.x))
+        inp_vec = np.array((inp.y, inp.x))
         y, x = scale(1) @ inp_vec
-        return PixelYX(y=y+cy, x=x+cx)
+        return PixelYX(y=y + cy, x=x + cx)
 
     projected = project(
         image=obj,
@@ -313,12 +331,11 @@ def test_backproject_scale_fixed():
     )
 
     mat = get_backward_transformation_matrix(
-        rec_model=model,
-        specimen_to_image=map_coord
+        rec_model=model, specimen_to_image=map_coord
     )
     project_frame_backwards(
         frame=projected[16, 16],
-        source_semiconv=np.pi/2,
+        source_semiconv=np.pi / 2,
         mat=mat,
         scan_y=16,
         scan_x=16,
@@ -336,13 +353,13 @@ def test_backproject_scale_scanref():
         scan_pixel_pitch=2,
         camera_length=1,
         detector_pixel_pitch=2,
-        semiconv=np.pi/2,
-        scan_center=PixelYX(x=16., y=16.),
-        scan_rotation=0.,
-        flip_factor=1.,
-        detector_center=PixelYX(x=32, y=32.),
-        detector_rotation=0.,
-        descan_error=DescanError()
+        semiconv=np.pi / 2,
+        scan_center=PixelYX(x=16.0, y=16.0),
+        scan_rotation=0.0,
+        flip_factor=1.0,
+        detector_center=PixelYX(x=32, y=32.0),
+        detector_rotation=0.0,
+        descan_error=DescanError(),
     )
     obj = np.random.random((64, 64))
     res = np.zeros((32, 32))
@@ -355,13 +372,10 @@ def test_backproject_scale_scanref():
         specimen_to_image=None,
     )
 
-    mat = get_backward_transformation_matrix(
-        rec_model=model,
-        specimen_to_image=None
-    )
+    mat = get_backward_transformation_matrix(rec_model=model, specimen_to_image=None)
     project_frame_backwards(
         frame=projected[16, 16],
-        source_semiconv=np.pi/2,
+        source_semiconv=np.pi / 2,
         mat=mat,
         scan_y=16,
         scan_x=16,
@@ -372,26 +386,20 @@ def test_backproject_scale_scanref():
     assert_allclose(projected[:, :, 32, 32], res)
 
 
-@pytest.mark.parametrize(
-    'scan_rotation', (0., np.pi/2)
-)
-@pytest.mark.parametrize(
-    'detector_rotation', (0., np.pi/2)
-)
-@pytest.mark.parametrize(
-    'flip_factor', (1., -1.)
-)
-@pytest.mark.parametrize(
-    'manual_reference', (False, True)
-)
+@pytest.mark.parametrize("scan_rotation", (0.0, np.pi / 2))
+@pytest.mark.parametrize("detector_rotation", (0.0, np.pi / 2))
+@pytest.mark.parametrize("flip_factor", (1.0, -1.0))
+@pytest.mark.parametrize("manual_reference", (False, True))
 def test_correct(scan_rotation, detector_rotation, flip_factor, manual_reference):
     scan_pixel_pitch = 0.1
     detector_pixel_pitch = 0.2
-    overfocus = 1.
-    camera_length = 1.
+    overfocus = 1.0
+    camera_length = 1.0
     propagation_distance = overfocus + camera_length
     obj_half_size = 16
-    angle = np.arctan2(obj_half_size*detector_pixel_pitch/2 + 0.00314157, propagation_distance)
+    angle = np.arctan2(
+        obj_half_size * detector_pixel_pitch / 2 + 0.00314157, propagation_distance
+    )
 
     model = Model4DSTEM(
         overfocus=overfocus,
@@ -409,13 +417,13 @@ def test_correct(scan_rotation, detector_rotation, flip_factor, manual_reference
         descan_error=DescanError(
             offpxi=detector_pixel_pitch,
             offpyi=detector_pixel_pitch * 2,
-            offsxi=-1 * detector_pixel_pitch/camera_length,
-            offsyi=-2 * detector_pixel_pitch/camera_length,
-            pxo_pxi=2 * detector_pixel_pitch/scan_pixel_pitch,
-            pyo_pyi=3 * detector_pixel_pitch/scan_pixel_pitch,
-            sxo_pxi=-3 * detector_pixel_pitch/scan_pixel_pitch/camera_length,
-            syo_pyi=-4 * detector_pixel_pitch/scan_pixel_pitch/camera_length,
-        )
+            offsxi=-1 * detector_pixel_pitch / camera_length,
+            offsyi=-2 * detector_pixel_pitch / camera_length,
+            pxo_pxi=2 * detector_pixel_pitch / scan_pixel_pitch,
+            pyo_pyi=3 * detector_pixel_pitch / scan_pixel_pitch,
+            sxo_pxi=-3 * detector_pixel_pitch / scan_pixel_pitch / camera_length,
+            syo_pyi=-4 * detector_pixel_pitch / scan_pixel_pitch / camera_length,
+        ),
     )
     # Manual reference parametes to check that code path
     # Should be identical to the default calculated by get_detector_correction_matrix()
@@ -428,11 +436,11 @@ def test_correct(scan_rotation, detector_rotation, flip_factor, manual_reference
         detector_pixel_pitch=detector_pixel_pitch,
         semiconv=angle,
         scan_center=PixelYX(x=obj_half_size, y=obj_half_size),
-        scan_rotation=0.,
-        flip_factor=1.,
+        scan_rotation=0.0,
+        flip_factor=1.0,
         detector_center=PixelYX(x=obj_half_size * 2, y=obj_half_size * 2),
         detector_rotation=scan_rotation,
-        descan_error=DescanError()
+        descan_error=DescanError(),
     )
     # Parameters for simulated result without aberrations
     model_ref_sim = Model4DSTEM(
@@ -442,11 +450,11 @@ def test_correct(scan_rotation, detector_rotation, flip_factor, manual_reference
         detector_pixel_pitch=detector_pixel_pitch,
         semiconv=angle,
         scan_center=PixelYX(x=obj_half_size, y=obj_half_size),
-        scan_rotation=0.,
-        flip_factor=1.,
+        scan_rotation=0.0,
+        flip_factor=1.0,
         detector_center=PixelYX(x=obj_half_size * 2, y=obj_half_size * 2),
-        detector_rotation=0.,
-        descan_error=DescanError()
+        detector_rotation=0.0,
+        descan_error=DescanError(),
     )
     # Obtain correction matrix for 4D STEM dataset, i.e. transform the data as
     # if the rotations were 0, no flip, and the descan error was 0.
@@ -488,20 +496,18 @@ def test_correct(scan_rotation, detector_rotation, flip_factor, manual_reference
     assert not np.allclose(obj, projected[:, :, obj_half_size * 2, obj_half_size * 2])
 
 
-@pytest.mark.parametrize(
-    'scan_rotation', (0., np.pi/2)
-)
-@pytest.mark.parametrize(
-    'detector_rotation', (0., np.pi/2)
-)
+@pytest.mark.parametrize("scan_rotation", (0.0, np.pi / 2))
+@pytest.mark.parametrize("detector_rotation", (0.0, np.pi / 2))
 def test_correct_flip(scan_rotation, detector_rotation):
     scan_pixel_pitch = 0.1
     detector_pixel_pitch = 0.2
-    overfocus = 1.
-    camera_length = 1.
+    overfocus = 1.0
+    camera_length = 1.0
     propagation_distance = overfocus + camera_length
     obj_half_size = 16
-    angle = np.arctan2(obj_half_size*detector_pixel_pitch/2 + 0.00314157, propagation_distance)
+    angle = np.arctan2(
+        obj_half_size * detector_pixel_pitch / 2 + 0.00314157, propagation_distance
+    )
 
     model = Model4DSTEM(
         overfocus=overfocus,
@@ -511,7 +517,7 @@ def test_correct_flip(scan_rotation, detector_rotation):
         semiconv=angle,
         scan_center=PixelYX(x=obj_half_size, y=obj_half_size),
         scan_rotation=scan_rotation,
-        flip_factor=1.,
+        flip_factor=1.0,
         # Simulate detector larger than object to avoid clipping at the borders
         detector_center=PixelYX(x=obj_half_size * 2, y=obj_half_size * 2),
         detector_rotation=detector_rotation,
@@ -519,13 +525,13 @@ def test_correct_flip(scan_rotation, detector_rotation):
         descan_error=DescanError(
             offpxi=detector_pixel_pitch,
             offpyi=detector_pixel_pitch * 2,
-            offsxi=-1 * detector_pixel_pitch/camera_length,
-            offsyi=-2 * detector_pixel_pitch/camera_length,
-            pxo_pxi=2 * detector_pixel_pitch/scan_pixel_pitch,
-            pyo_pyi=3 * detector_pixel_pitch/scan_pixel_pitch,
-            sxo_pxi=-3 * detector_pixel_pitch/scan_pixel_pitch/camera_length,
-            syo_pyi=-4 * detector_pixel_pitch/scan_pixel_pitch/camera_length,
-        )
+            offsxi=-1 * detector_pixel_pitch / camera_length,
+            offsyi=-2 * detector_pixel_pitch / camera_length,
+            pxo_pxi=2 * detector_pixel_pitch / scan_pixel_pitch,
+            pyo_pyi=3 * detector_pixel_pitch / scan_pixel_pitch,
+            sxo_pxi=-3 * detector_pixel_pitch / scan_pixel_pitch / camera_length,
+            syo_pyi=-4 * detector_pixel_pitch / scan_pixel_pitch / camera_length,
+        ),
     )
     # Manual reference parametes that introduce flip_y
     # and compensate the rotations
@@ -536,11 +542,11 @@ def test_correct_flip(scan_rotation, detector_rotation):
         detector_pixel_pitch=detector_pixel_pitch,
         semiconv=angle,
         scan_center=PixelYX(x=obj_half_size, y=obj_half_size),
-        scan_rotation=0.,
-        flip_factor=-1.,
+        scan_rotation=0.0,
+        flip_factor=-1.0,
         detector_center=PixelYX(x=obj_half_size * 2, y=obj_half_size * 2),
         detector_rotation=scan_rotation,
-        descan_error=DescanError()
+        descan_error=DescanError(),
     )
     # Parameters for simulated result with flip_y
     model_ref_sim = Model4DSTEM(
@@ -550,11 +556,11 @@ def test_correct_flip(scan_rotation, detector_rotation):
         detector_pixel_pitch=detector_pixel_pitch,
         semiconv=angle,
         scan_center=PixelYX(x=obj_half_size, y=obj_half_size),
-        scan_rotation=0.,
-        flip_factor=-1.,
+        scan_rotation=0.0,
+        flip_factor=-1.0,
         detector_center=PixelYX(x=obj_half_size * 2, y=obj_half_size * 2),
-        detector_rotation=0.,
-        descan_error=DescanError()
+        detector_rotation=0.0,
+        descan_error=DescanError(),
     )
     # Obtain correction matrix for 4D STEM dataset that transforms the data as
     # if the rotations were 0, flip_y, and the descan error was 0.
@@ -591,28 +597,26 @@ def test_correct_flip(scan_rotation, detector_rotation):
     assert_allclose(projected_ref, out)
 
 
-@pytest.mark.parametrize(
-    'scan_rotation', (0., np.pi/2)
-)
-@pytest.mark.parametrize(
-    'detector_rotation', (0., np.pi/2)
-)
+@pytest.mark.parametrize("scan_rotation", (0.0, np.pi / 2))
+@pytest.mark.parametrize("detector_rotation", (0.0, np.pi / 2))
 def test_correct_fixed_manualref(scan_rotation, detector_rotation):
     scan_pixel_pitch = 0.1
     detector_pixel_pitch = 0.2
-    overfocus = 1.
-    camera_length = 1.
+    overfocus = 1.0
+    camera_length = 1.0
     propagation_distance = overfocus + camera_length
     obj_half_size = 16
-    angle = np.arctan2(obj_half_size*detector_pixel_pitch/2 + 0.00314157, propagation_distance)
+    angle = np.arctan2(
+        obj_half_size * detector_pixel_pitch / 2 + 0.00314157, propagation_distance
+    )
 
     # Fixed mapping from physical to image for forward simulations
     def map_coord(inp):
         cy = obj.shape[0] / 2
         cx = obj.shape[1] / 2
-        inp_vec = jnp.array((inp.y, inp.x))
-        y, x = rotate(-np.pi/2) @ scale(1/scan_pixel_pitch) @ inp_vec
-        return PixelYX(y=y+cy + 2, x=x+cx - 3)
+        inp_vec = np.array((inp.y, inp.x))
+        y, x = rotate(-np.pi / 2) @ scale(1 / scan_pixel_pitch) @ inp_vec
+        return PixelYX(y=y + cy + 2, x=x + cx - 3)
 
     model = Model4DSTEM(
         overfocus=overfocus,
@@ -622,7 +626,7 @@ def test_correct_fixed_manualref(scan_rotation, detector_rotation):
         semiconv=angle,
         scan_center=PixelYX(x=obj_half_size, y=obj_half_size),
         scan_rotation=scan_rotation,
-        flip_factor=1.,
+        flip_factor=1.0,
         # Simulate detector larger than object to avoid clipping at the borders
         detector_center=PixelYX(x=obj_half_size * 2, y=obj_half_size * 2),
         detector_rotation=detector_rotation,
@@ -630,13 +634,13 @@ def test_correct_fixed_manualref(scan_rotation, detector_rotation):
         descan_error=DescanError(
             offpxi=detector_pixel_pitch,
             offpyi=detector_pixel_pitch * 2,
-            offsxi=-1 * detector_pixel_pitch/camera_length,
-            offsyi=-2 * detector_pixel_pitch/camera_length,
-            pxo_pxi=2 * detector_pixel_pitch/scan_pixel_pitch,
-            pyo_pyi=3 * detector_pixel_pitch/scan_pixel_pitch,
-            sxo_pxi=-3 * detector_pixel_pitch/scan_pixel_pitch/camera_length,
-            syo_pyi=-4 * detector_pixel_pitch/scan_pixel_pitch/camera_length,
-        )
+            offsxi=-1 * detector_pixel_pitch / camera_length,
+            offsyi=-2 * detector_pixel_pitch / camera_length,
+            pxo_pxi=2 * detector_pixel_pitch / scan_pixel_pitch,
+            pyo_pyi=3 * detector_pixel_pitch / scan_pixel_pitch,
+            sxo_pxi=-3 * detector_pixel_pitch / scan_pixel_pitch / camera_length,
+            syo_pyi=-4 * detector_pixel_pitch / scan_pixel_pitch / camera_length,
+        ),
     )
     # Manual reference parametes that introduce flip_y
     # and compensate the rotations
@@ -650,11 +654,11 @@ def test_correct_fixed_manualref(scan_rotation, detector_rotation):
         scan_center=PixelYX(x=obj_half_size, y=obj_half_size),
         # Has no impact since we don't remap the scan dimension,
         # only the projection after the specimen
-        scan_rotation=np.pi/23,
-        flip_factor=-1.,
+        scan_rotation=np.pi / 23,
+        flip_factor=-1.0,
         detector_center=PixelYX(x=obj_half_size * 2 - 1, y=obj_half_size * 2 + 2),
-        detector_rotation=0.,
-        descan_error=DescanError()
+        detector_rotation=0.0,
+        descan_error=DescanError(),
     )
     # Parameters for simulated result with flip_y
     model_ref_sim = Model4DSTEM(
@@ -667,10 +671,10 @@ def test_correct_fixed_manualref(scan_rotation, detector_rotation):
         # Has to match the input scan rotation since we don't
         # remap the scan dimension
         scan_rotation=scan_rotation,
-        flip_factor=-1.,
+        flip_factor=-1.0,
         detector_center=PixelYX(x=obj_half_size * 2 - 1, y=obj_half_size * 2 + 2),
-        detector_rotation=0.,
-        descan_error=DescanError()
+        detector_rotation=0.0,
+        descan_error=DescanError(),
     )
     # Obtain correction matrix for 4D STEM dataset that transforms the data as
     # if the rotations were 0, flip_y, and the descan error was 0.

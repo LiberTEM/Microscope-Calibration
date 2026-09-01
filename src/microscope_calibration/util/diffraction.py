@@ -1,10 +1,9 @@
 import numpy as np
-
 from CifFile import ReadCif
 from diffpy.structure import loadStructure
+from diffsims.generators.simulation_generator import SimulationGenerator
 from orix.crystal_map import Phase
 from orix.quaternion import Rotation
-from diffsims.generators.simulation_generator import SimulationGenerator
 
 
 # See also
@@ -15,7 +14,7 @@ def get_twothetas(cif_filename, acceleration_voltage_V, reciprocal_radius=1):
     )
     structure_raw = ReadCif(cif_filename)
     key = list(structure_raw.keys())[0]
-    space_group = int(structure_raw[key]['_space_group_IT_number'])
+    space_group = int(structure_raw[key]["_space_group_IT_number"])
     structure = loadStructure(cif_filename)
     p = Phase(structure=structure, space_group=space_group)
     twothetas = set()
@@ -24,7 +23,8 @@ def get_twothetas(cif_filename, acceleration_voltage_V, reciprocal_radius=1):
     for euler in eulers:
         rot = Rotation.from_euler(euler)
         sim = gen.calculate_diffraction2d(
-            phase=p, rotation=rot,
+            phase=p,
+            rotation=rot,
             reciprocal_radius=reciprocal_radius,
             # Large excitation error to capture many peaks
             max_excitation_error=1,

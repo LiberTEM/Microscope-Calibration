@@ -1,59 +1,66 @@
-from typing import Optional
+import jax; jax.config.update("jax_enable_x64", True)  # noqa fmt: skip
 
-import jax; jax.config.update("jax_enable_x64", True)  # noqa: E702
-import numpy as np
 import numba
+import numpy as np
 
+from microscope_calibration.common.model import CoordXY, Model4DSTEM, PixelYX
 from microscope_calibration.common.stem_overfocus import CoordMappingT, _do_lstsq
-from microscope_calibration.common.model import (
-    Model4DSTEM, PixelYX, CoordXY
-)
+from microscope_calibration.util.sympy import lambdify
 
 
 def smiley(size):
-    '''
+    """
     Smiley face test object from https://doi.org/10.1093/micmic/ozad021
-    '''
+    """
     obj = np.ones((size, size), dtype=np.complex64)
-    y, x = np.ogrid[-size//2:size//2, -size//2:size//2]
+    y, x = np.ogrid[-size // 2: size // 2, -size // 2: size // 2]
 
-    outline = (((y*1.2)**2 + x**2) > (110/256*size)**2) & \
-              (((y*1.2)**2 + x**2) < (120/256*size)**2)
+    outline = (((y * 1.2) ** 2 + x**2) > (110 / 256 * size) ** 2) & (
+        ((y * 1.2) ** 2 + x**2) < (120 / 256 * size) ** 2
+    )
     obj[outline] = 0.0
 
-    left_eye = ((y + 40/256*size)**2 + (x + 40/256*size)**2) < (20/256*size)**2
+    left_eye = ((y + 40 / 256 * size) ** 2 + (x + 40 / 256 * size) ** 2) < (
+        20 / 256 * size
+    ) ** 2
     obj[left_eye] = 0
-    right_eye = (np.abs(y + 40/256*size) < 15/256*size) & \
-                (np.abs(x - 40/256*size) < 30/256*size)
+    right_eye = (np.abs(y + 40 / 256 * size) < 15 / 256 * size) & (
+        np.abs(x - 40 / 256 * size) < 30 / 256 * size
+    )
     obj[right_eye] = 0
 
-    nose = (y + 20/256*size + x > 0) & (x < 0) & (y < 10/256*size)
+    nose = (y + 20 / 256 * size + x > 0) & (x < 0) & (y < 10 / 256 * size)
 
     obj[nose] = (0.05j * x + 0.05j * y)[nose]
 
-    mouth = (((y*1)**2 + x**2) > (50/256*size)**2) & \
-            (((y*1)**2 + x**2) < (70/256*size)**2) & \
-            (y > 20/256*size)
+    mouth = (
+        (((y * 1) ** 2 + x**2) > (50 / 256 * size) ** 2)
+        & (((y * 1) ** 2 + x**2) < (70 / 256 * size) ** 2)
+        & (y > 20 / 256 * size)
+    )
 
     obj[mouth] = 0
 
-    tongue = (((y - 50/256*size)**2 + (x - 50/256*size)**2) < (20/256*size)**2) & \
-             ((y**2 + x**2) > (70/256*size)**2)
+    tongue = (
+        ((y - 50 / 256 * size) ** 2 + (x - 50 / 256 * size) ** 2)
+        < (20 / 256 * size) ** 2
+    ) & ((y**2 + x**2) > (70 / 256 * size) ** 2)
     obj[tongue] = 0
 
     # This wave modulation introduces a strong signature in the diffraction pattern
     # that allows to confirm the correct scale and orientation.
-    signature_wave = np.exp(1j*(3 * y + 7 * x) * 2*np.pi/size)
+    signature_wave = np.exp(1j * (3 * y + 7 * x) * 2 * np.pi / size)
 
-    obj += 0.3*signature_wave - 0.3
+    obj += 0.3 * signature_wave - 0.3
 
     obj = np.abs(obj)
     return obj
 
 
 def get_forward_transformation_matrix(
-        sim_model: Model4DSTEM, specimen_to_image: Optional[CoordMappingT] = None):
-    '''
+    sim_model: Model4DSTEM, specimen_to_image: CoordMappingT | None = None
+):
+    """
     Calculate a transformation matrix that maps from scan position in scan pixel
     coordinates and detector pixel coordinates to specimen coordinates in scan
     pixel coordinates and tilt of the ray at the source.
@@ -75,57 +82,59 @@ def get_forward_transformation_matrix(
 
     For the time being this method traces a number of sample rays and deduces the
     mapping matrix from these samples.
-    '''
+    """
 
     # scan position y/x, source tilt y/x
-    test_parameters = np.array((
-        [0., 0., 0., 0.],
-        [100., 100., 0., 0.],
-        [-100., 100., 0., 0.],
-        [10., 0., 0., 0.],
-        [0., 10., 0., 0.],
-        [0., 0., 0.1, 0.],
-        [0., 0., 0., 0.1],
-        [1., 1., 1., 1.],
-        [1., 2., 3., 4.],
-    ))
+    test_parameters = np.array(
+        (
+            [0.0, 0.0, 0.0, 0.0],
+            [100.0, 100.0, 0.0, 0.0],
+            [-100.0, 100.0, 0.0, 0.0],
+            [10.0, 0.0, 0.0, 0.0],
+            [0.0, 10.0, 0.0, 0.0],
+            [0.0, 0.0, 0.1, 0.0],
+            [0.0, 0.0, 0.0, 0.1],
+            [1.0, 1.0, 1.0, 1.0],
+            [1.0, 2.0, 3.0, 4.0],
+        )
+    )
 
     input_samples = []
     output_samples = []
 
+    @lambdify(modules=np)
+    def get_sample(scan_pos_x, scan_pos_y, source_dy, source_dx):
+        scan_pos = PixelYX(x=scan_pos_x, y=scan_pos_y)
+        res = sim_model.trace(
+            scan_pos=scan_pos, source_dy=source_dy, source_dx=source_dx
+        )
+        if specimen_to_image is None:
+            spec_px = res["specimen"].sampling["scan_px"]
+        else:
+            spec_px = specimen_to_image(
+                CoordXY(x=res["specimen"].ray.x, y=res["specimen"].ray.y)
+            )
+        input_sample = (
+            scan_pos.y,
+            scan_pos.x,
+            res["detector"].sampling["detector_px"].y,
+            res["detector"].sampling["detector_px"].x,
+            1.0,
+        )
+        output_sample = (
+            spec_px.y,
+            spec_px.x,
+            source_dy,
+            source_dx,
+            1.0,
+        )
+        return (input_sample, output_sample)
+
     for test_param_raw in test_parameters:
         # We are paranoid and confirm that the model is linear
-        for factor in (1., 2.):
+        for factor in (1.0, 2.0):
             test_param = test_param_raw * factor
-            scan_pos = PixelYX(x=test_param[0], y=test_param[1])
-            source_dy = test_param[2]
-            source_dx = test_param[3]
-            res = sim_model.trace(
-                scan_pos=scan_pos,
-                source_dy=source_dy,
-                source_dx=source_dx
-            )
-            if specimen_to_image is None:
-                spec_px = res['specimen'].sampling['scan_px']
-            else:
-                spec_px = specimen_to_image(CoordXY(
-                    x=res['specimen'].ray.x,
-                    y=res['specimen'].ray.y
-                ))
-            input_sample = (
-                scan_pos.y,
-                scan_pos.x,
-                res['detector'].sampling['detector_px'].y,
-                res['detector'].sampling['detector_px'].x,
-                1.
-            )
-            output_sample = (
-                spec_px.y,
-                spec_px.x,
-                source_dy,
-                source_dx,
-                1.,
-            )
+            input_sample, output_sample = get_sample(*test_param)
             output_samples.append(output_sample)
             input_samples.append(input_sample)
 
@@ -137,7 +146,7 @@ def get_forward_transformation_matrix(
 
 @numba.njit(cache=True)
 def project_frame_forward(obj, source_semiconv, mat, scan_y, scan_x, out):
-    limit = np.abs(np.tan(source_semiconv))**2
+    limit = np.abs(np.tan(source_semiconv)) ** 2
     for det_y in range(out.shape[0]):
         for det_x in range(out.shape[1]):
             # Manually unrolled matrix-vector product to allow skipping before
@@ -150,34 +159,54 @@ def project_frame_forward(obj, source_semiconv, mat, scan_y, scan_x, out):
             # )
             # assert np.allclose(_one, 1)
             tilt_y = (
-                scan_y * mat[0, 2] + scan_x * mat[1, 2]
-                + det_y * mat[2, 2] + det_x * mat[3, 2] + mat[4, 2]
+                scan_y * mat[0, 2]
+                + scan_x * mat[1, 2]
+                + det_y * mat[2, 2]
+                + det_x * mat[3, 2]
+                + mat[4, 2]
             )
             tilt_x = (
-                scan_y * mat[0, 3] + scan_x * mat[1, 3]
-                + det_y * mat[2, 3] + det_x * mat[3, 3] + mat[4, 3]
+                scan_y * mat[0, 3]
+                + scan_x * mat[1, 3]
+                + det_y * mat[2, 3]
+                + det_x * mat[3, 3]
+                + mat[4, 3]
             )
-            if np.abs(tilt_y)**2 + np.abs(tilt_x)**2 < limit:
+            if np.abs(tilt_y) ** 2 + np.abs(tilt_x) ** 2 < limit:
                 spec_y = (
-                    scan_y * mat[0, 0] + scan_x * mat[1, 0]
-                    + det_y * mat[2, 0] + det_x * mat[3, 0] + mat[4, 0]
+                    scan_y * mat[0, 0]
+                    + scan_x * mat[1, 0]
+                    + det_y * mat[2, 0]
+                    + det_x * mat[3, 0]
+                    + mat[4, 0]
                 )
                 spec_x = (
-                    scan_y * mat[0, 1] + scan_x * mat[1, 1]
-                    + det_y * mat[2, 1] + det_x * mat[3, 1] + mat[4, 1]
+                    scan_y * mat[0, 1]
+                    + scan_x * mat[1, 1]
+                    + det_y * mat[2, 1]
+                    + det_x * mat[3, 1]
+                    + mat[4, 1]
                 )
                 spec_y = int(np.round(spec_y))
                 spec_x = int(np.round(spec_x))
-                if spec_y >= 0 and spec_y < obj.shape[0] and spec_x >= 0 and spec_x < obj.shape[1]:
+                if (
+                    spec_y >= 0
+                    and spec_y < obj.shape[0]
+                    and spec_x >= 0
+                    and spec_x < obj.shape[1]
+                ):
                     out[det_y, det_x] = obj[spec_y, spec_x]
             else:
-                out[det_y, det_x] = 0.
+                out[det_y, det_x] = 0.0
 
 
 def project(
-        image, scan_shape, detector_shape,
-        sim_model: Model4DSTEM,
-        specimen_to_image: Optional[CoordMappingT] = None):
+    image,
+    scan_shape,
+    detector_shape,
+    sim_model: Model4DSTEM,
+    specimen_to_image: CoordMappingT | None = None,
+):
     result = np.zeros(tuple(scan_shape) + tuple(detector_shape), dtype=image.dtype)
     mat = get_forward_transformation_matrix(
         sim_model=sim_model, specimen_to_image=specimen_to_image
@@ -190,6 +219,6 @@ def project(
                 mat=mat,
                 scan_y=scan_y,
                 scan_x=scan_x,
-                out=result[scan_y, scan_x]
+                out=result[scan_y, scan_x],
             )
     return result

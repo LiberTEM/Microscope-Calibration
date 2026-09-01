@@ -2,21 +2,19 @@ import logging
 from functools import lru_cache
 
 import numpy as np
-
-from libertem.common.math import prod, count_nonzero
+from libertem.common.math import count_nonzero, prod
 from libertem.udf.base import UDF
 
 from microscope_calibration.common.model import Model4DSTEM
 from microscope_calibration.common.stem_overfocus import (
+    FittingError,
+    correct_frame,
+    corrected_det_x,
+    corrected_det_y,
     get_backward_transformation_matrix,
     get_detector_correction_matrix,
     project_frame_backwards,
-    correct_frame,
-    corrected_det_y,
-    corrected_det_x,
-    FittingError,
 )
-
 
 log = logging.getLogger(__name__)
 

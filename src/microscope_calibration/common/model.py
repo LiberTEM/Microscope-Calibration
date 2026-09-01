@@ -1,18 +1,19 @@
-from typing import Optional, NamedTuple, Union
+from typing import NamedTuple
 from collections import OrderedDict
 
-import jax; jax.config.update("jax_enable_x64", True)  # noqa
-import jax_dataclasses as jdc
+import jax; jax.config.update("jax_enable_x64", True) # noqa fmt: skip
 import jax.numpy as jnp
-from jax.errors import TracerBoolConversionError
+import jax_dataclasses as jdc
 import sympy as sym
-
+from jax.errors import TracerBoolConversionError
+from temgym_core import CoordXY, PixelYX
+from temgym_core.components import Component, DescanError, Descanner, Plane, Scanner
+from temgym_core.propagator import FreeSpaceParaxial, Propagator
 from temgym_core.ray import Ray
-from temgym_core import PixelYX, CoordXY
-from temgym_core.components import Component, Plane, Descanner, Scanner, DescanError
 from temgym_core.run import run_iter
-from temgym_core.source import Source, PointSource
-from temgym_core.propagator import Propagator, FreeSpaceParaxial
+from temgym_core.source import PointSource, Source
+
+from microscope_calibration.util.sympy import lambdify
 
 
 def equals(ray1: Ray, ray2: Ray) -> bool:
@@ -56,9 +57,9 @@ def shift(c: CoordXY | PixelYX, s: CoordXY | PixelYX, _one: float = 1.0) -> Coor
 
 # "Layer" of a beam passing through a model
 class ResultSection(NamedTuple):
-    component: Union[Component, Source, Propagator]
+    component: Component | Source | Propagator
     ray: Ray
-    sampling: Optional[dict] = None
+    sampling: dict | None = None
 
 
 # Layer stack, result of tracing a ray through a model
@@ -98,7 +99,7 @@ class Model4DSTEM:
         if flip_factor is not None:
             assert flip_y is None
         if flip_y is not None:
-            flip_factor = -1. if flip_y else 1.
+            flip_factor = -1.0 if flip_y else 1.0
 
         return Model4DSTEM(
             overfocus=overfocus if overfocus is not None else self.overfocus,
@@ -134,7 +135,7 @@ class Model4DSTEM:
             else self.descan_error,
         )
 
-    def normalize_types(self) -> 'Model4DSTEM':
+    def normalize_types(self) -> "Model4DSTEM":
         return self.derive(
             overfocus=float(self.overfocus),
             scan_pixel_pitch=float(self.scan_pixel_pitch),
@@ -191,7 +192,7 @@ class Model4DSTEM:
                     c=coords,
                     radians=-self.scan_rotation,
                 ),
-                factor=1/self.scan_pixel_pitch,
+                factor=1 / self.scan_pixel_pitch,
             ),
             s=self.scan_center,
             _one=_one,
@@ -228,7 +229,7 @@ class Model4DSTEM:
                         c=coords,
                         radians=-self.detector_rotation,
                     ),
-                    factor=1/self.detector_pixel_pitch,
+                    factor=1 / self.detector_pixel_pitch,
                 ),
                 flip_factor=self.flip_factor,
             ),
@@ -241,10 +242,7 @@ class Model4DSTEM:
         )
 
     def _components(
-        self,
-        scan_pos: PixelYX,
-        specimen: Component | None = None,
-        _one: float = 1.
+        self, scan_pos: PixelYX, specimen: Component | None = None, _one: float = 1.0
     ) -> OrderedDict[str, Component]:
         if specimen is None:
             specimen = Plane(z=self.overfocus)
@@ -256,19 +254,18 @@ class Model4DSTEM:
                 pass
         scan_pos_phys = self.scan_to_real(scan_pos, _one=_one)
         res = OrderedDict()
-        res['source'] = PointSource(z=0, semi_conv=self.semiconv)
-        res['scanner'] = Scanner(
-            z=self.overfocus,
-            scan_pos_x=scan_pos_phys.x, scan_pos_y=scan_pos_phys.y
+        res["source"] = PointSource(z=0, semi_conv=self.semiconv)
+        res["scanner"] = Scanner(
+            z=self.overfocus, scan_pos_x=scan_pos_phys.x, scan_pos_y=scan_pos_phys.y
         )
-        res['specimen'] = specimen
-        res['descanner'] = Descanner(
-                z=self.overfocus,
-                scan_pos_x=scan_pos_phys.x,
-                scan_pos_y=scan_pos_phys.y,
-                descan_error=self.descan_error,
-            )
-        res['detector'] = Plane(z=self.overfocus + self.camera_length)
+        res["specimen"] = specimen
+        res["descanner"] = Descanner(
+            z=self.overfocus,
+            scan_pos_x=scan_pos_phys.x,
+            scan_pos_y=scan_pos_phys.y,
+            descan_error=self.descan_error,
+        )
+        res["detector"] = Plane(z=self.overfocus + self.camera_length)
         return res
 
     def trace(
@@ -283,7 +280,7 @@ class Model4DSTEM:
             scan_pos=scan_pos,
             specimen=specimen,
         )
-        source = components['source']
+        source = components["source"]
         ray = Ray(
             x=source.offset_xy.x,
             y=source.offset_xy.y,
@@ -314,7 +311,7 @@ class Model4DSTEM:
 
         comp, r = run_result.pop(0)
         try:
-            assert comp == components['source']
+            assert comp == components["source"]
             assert equals(r, ray)
         except TracerBoolConversionError:
             pass
@@ -328,7 +325,7 @@ class Model4DSTEM:
 
         comp, r = run_result.pop(0)
         try:
-            assert comp == components['scanner']
+            assert comp == components["scanner"]
             assert isinstance(r, Ray)
         except TracerBoolConversionError:
             pass
@@ -340,13 +337,13 @@ class Model4DSTEM:
             assert isinstance(comp, Propagator)
             assert sym.simplify(comp.distance).equals(0.0)
             assert isinstance(r, Ray)
-            assert r == result["scanner"].ray
+            assert equals(r, result["scanner"].ray)
         except TracerBoolConversionError:
             pass
 
         comp, r = run_result.pop(0)
         try:
-            assert comp == components['specimen']
+            assert comp == components["specimen"]
             assert isinstance(r, Ray)
         except TracerBoolConversionError:
             pass
@@ -362,12 +359,12 @@ class Model4DSTEM:
         try:
             assert isinstance(comp, Propagator)
             assert sym.simplify(comp.distance).equals(0.0)
-            assert r == result["specimen"].ray
+            assert equals(r, result["specimen"].ray)
         except TracerBoolConversionError:
             pass
         comp, r = run_result.pop(0)
         try:
-            assert comp == components['descanner']
+            assert comp == components["descanner"]
             assert isinstance(r, Ray)
         except TracerBoolConversionError:
             pass
@@ -381,7 +378,7 @@ class Model4DSTEM:
 
         comp, r = run_result.pop(0)
         try:
-            assert comp == components['detector']
+            assert comp == components["detector"]
             assert isinstance(r, Ray)
         except TracerBoolConversionError:
             pass
@@ -539,14 +536,12 @@ class Model4DSTEM:
             def trans(c: CoordXY):
                 return rotate(
                     flip_y(
-                        c=rotate(
-                            c=c,
-                            radians=-angle
-                        ),
-                        flip_factor=flip_factor/self.flip_factor
+                        c=rotate(c=c, radians=-angle),
+                        flip_factor=flip_factor / self.flip_factor,
                     ),
-                    radians=angle
+                    radians=angle,
                 )
+
             # transform the output direction
             pxy_pyi = trans(CoordXY(y=de.pyo_pyi, x=de.pxo_pyi))
             pxy_pxi = trans(CoordXY(y=de.pyo_pxi, x=de.pxo_pxi))
@@ -605,9 +600,7 @@ class Model4DSTEM:
             descan_error=new_de,
         )
 
-    def adjust_detector_pixel_pitch(
-        self, detector_pixel_pitch: float
-    ) -> "Model4DSTEM":
+    def adjust_detector_pixel_pitch(self, detector_pixel_pitch: float) -> "Model4DSTEM":
         de = self.descan_error
         ratio = detector_pixel_pitch / self.detector_pixel_pitch
 
@@ -652,3 +645,11 @@ class Model4DSTEM:
             camera_length=camera_length,
             descan_error=new_de,
         )
+
+
+def lambdify_trace_for(modules):
+    @lambdify(modules=modules, recurse_for=(PixelYX, Model4DSTEM, DescanError))
+    def trace(model: Model4DSTEM, scan_pos: PixelYX, source_dy, source_dx):
+        return model.trace(scan_pos=scan_pos, source_dy=source_dy, source_dx=source_dx)
+
+    return trace

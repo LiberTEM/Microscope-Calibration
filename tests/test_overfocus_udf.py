@@ -1,27 +1,31 @@
+import jax
+import numpy as np
+from libertem.api import Context
 from numpy.testing import assert_allclose
 
-import numpy as np
-import jax
-from libertem.api import Context
-
+from microscope_calibration.common.model import (
+    DescanError,
+    Model4DSTEM,
+    PixelYX,
+    lambdify_trace_for,
+)
 from microscope_calibration.common.stem_overfocus import (
-    get_backward_transformation_matrix, get_detector_correction_matrix,
-    project_frame_backwards, correct_frame
+    correct_frame,
+    get_backward_transformation_matrix,
+    get_detector_correction_matrix,
+    project_frame_backwards,
 )
 from microscope_calibration.udf.stem_overfocus import OverfocusUDF
-from microscope_calibration.common.model import (
-    Model4DSTEM, PixelYX, DescanError
-)
+
+trace = lambdify_trace_for(jax.numpy)
 
 
 @jax.jit
 def get_beam_center(model: Model4DSTEM, scan_y, scan_x):
-    res = model.trace(
-        scan_pos=PixelYX(y=scan_y, x=scan_x),
-        source_dx=0.,
-        source_dy=0.
+    res = trace(
+        model, scan_pos=PixelYX(y=scan_y, x=scan_x), source_dx=0.0, source_dy=0.0
     )
-    center = res['detector'].sampling['detector_px']
+    center = res["detector"].sampling["detector_px"]
     return (center.y, center.x)
 
 
@@ -34,7 +38,7 @@ def test_udf():
         semiconv=0.023,
         scan_center=PixelYX(x=0.13, y=0.23),
         scan_rotation=0.752,
-        flip_factor=-1.,
+        flip_factor=-1.0,
         detector_center=PixelYX(x=5, y=7),
         detector_rotation=2.134,
         descan_error=DescanError(
@@ -49,16 +53,16 @@ def test_udf():
             offpxi=0.23,
             offpyi=0.29,
             offsxi=0.31,
-            offsyi=0.37
-        )
+            offsyi=0.37,
+        ),
     )
     back_mat = get_backward_transformation_matrix(rec_model=model)
     corr_mat = get_detector_correction_matrix(rec_model=model)
 
     data = np.random.random((9, 11, 13, 17))
 
-    ctx = Context.make_with('inline')
-    ds = ctx.load('memory', data=data)
+    ctx = Context.make_with("inline")
+    ds = ctx.load("memory", data=data)
 
     ref_back = np.zeros_like(data[:, :, 0, 0])
     ref_corr = np.zeros_like(data[0, 0])
@@ -70,13 +74,11 @@ def test_udf():
             y = int(np.round(y))
             x = int(np.round(x))
             if y >= 0 and y < data.shape[2] and x >= 0 and x < data.shape[3]:
-                ref_point[scan_y, scan_x] = data[
-                    scan_y, scan_x, y, x
-                ]
+                ref_point[scan_y, scan_x] = data[scan_y, scan_x, y, x]
     ref_select = np.zeros_like(ref_back)
 
-    select_y = data.shape[0]//2
-    select_x = data.shape[1]//2
+    select_y = data.shape[0] // 2
+    select_x = data.shape[1] // 2
 
     for scan_y in range(data.shape[0]):
         for scan_x in range(data.shape[1]):
@@ -105,8 +107,8 @@ def test_udf():
                 detector_out=ref_corr,
             )
 
-    res = ctx.run_udf(dataset=ds, udf=OverfocusUDF(overfocus_model={'model': model}))
+    res = ctx.run_udf(dataset=ds, udf=OverfocusUDF(overfocus_model={"model": model}))
 
-    assert_allclose(ref_back, res['backprojected_sum'])
-    assert_allclose(ref_corr, res['corrected_sum'])
-    assert_allclose(ref_point, res['corrected_point'])
+    assert_allclose(ref_back, res["backprojected_sum"])
+    assert_allclose(ref_corr, res["corrected_sum"])
+    assert_allclose(ref_point, res["corrected_point"])
