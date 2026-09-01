@@ -2,9 +2,14 @@ from copy import deepcopy
 from typing import TypeVar, Any
 from collections.abc import Container
 from numbers import Number
+import inspect
+from frozendict import frozendict
+from functools import cache
 
+import wrapt
 import sympy as sym
 import jax
+from jax.errors import TracerBoolConversionError
 
 T = TypeVar("T")
 
@@ -122,7 +127,7 @@ def symbol_maker(
 SymbolJaxTree = TypeVar("SymbolJaxTree")
 
 
-def lambdify(inp: SymbolJaxTree, outp: SymbolJaxTree, **kwargs):
+def lambdify_tree(inp: SymbolJaxTree, outp: SymbolJaxTree, **kwargs):
     inp_leaves, inp_treedef = jax.tree.flatten(inp)
     outp_leaves, outp_treedef = jax.tree.flatten(outp)
 
@@ -161,21 +166,26 @@ def lambdify(inp: SymbolJaxTree, outp: SymbolJaxTree, **kwargs):
                 f'Tree definition of input {ii_treedef} does not match expected '
                 f'tree definition {inp_treedef}.'
             )
-        for i, (path, leave) in enumerate(ii_leaves):
-            if i not in inp_indices_set:
-                if i in inp_dups:
-                    orig_i = inp_dups[i]
-                    orig_path, orig_leave = ii_leaves[orig_i]
-                    if orig_leave != leave:
+        try:
+            for i, (path, leave) in enumerate(ii_leaves):
+                if i not in inp_indices_set:
+                    if i in inp_dups:
+                        orig_i = inp_dups[i]
+                        orig_path, orig_leave = ii_leaves[orig_i]
+                        if orig_leave != leave:
+                            raise ValueError(
+                                f"Input value {leave} with path {path} was a duplicate symbol in "
+                                "original input but is now not matching the input value "
+                                f"{orig_leave} at {orig_path}"
+                            )
+                    elif leave != inp_leaves[i]:
                         raise ValueError(
-                            f"Input value {leave} with path {path} was a duplicate symbol in "
-                            "original input "
-                            f"but is now not matching the input value {orig_leave} at {orig_path}"
-                        )
-                elif leave != inp_leaves[i]:
-                    raise ValueError(
-                        f"Constant value {leave} doesn't match reference input "
-                        f"{inp_leaves[i]} for {path}.")
+                            f"Constant value {leave} doesn't match reference input "
+                            f"{inp_leaves[i]} for {path}.")
+        # Error checking is incompatible with jax.jit
+        # but can be skipped without affecting the result
+        except TracerBoolConversionError:
+            pass
 
         ii_vals = [ii_leaves[i][1] for i in inp_indices]
         oo_inner = inner_f(*ii_vals)
@@ -186,3 +196,49 @@ def lambdify(inp: SymbolJaxTree, outp: SymbolJaxTree, **kwargs):
         return jax.tree.unflatten(outp_treedef, outp)
 
     return outer
+
+
+def normalized_args(wrapped, args, kwargs):
+    sig = inspect.signature(wrapped)
+    bound = sig.bind(*args, **kwargs)
+    bound.apply_defaults()
+    all_args = bound.arguments
+    return all_args
+
+
+@cache
+def _outer_lambdify(wrapped, modules, sample_args, sample_kwargs, sym_kwargs, recurse_for):
+    sig = inspect.signature(wrapped)
+    spec = inspect.getfullargspec(wrapped)
+    partial_bound = sig.bind_partial(*sample_args, **sample_kwargs)
+    # partial_bound.apply_defaults()
+    generated_args = {}
+    for arg in spec.args:
+        if arg not in partial_bound.arguments:
+            cls = spec.annotations.get(arg, float)
+            generated_args[arg] = symbol_maker(cls, postfix=arg, recurse_for=recurse_for)
+    partial_bound.arguments.update(generated_args)
+    normalized = normalized_args(wrapped, args=tuple(), kwargs=partial_bound.arguments)
+    f = lambdify_tree(normalized, wrapped(**normalized), modules=modules, **sym_kwargs)
+    return f
+
+
+def lambdify(recurse_for=tuple(), modules=sym, args=None, kwargs=None, **sym_kwargs):
+    # Rename to keep outer API succinct
+    sample_args = tuple() if args is None else args
+    sample_kwargs = {} if kwargs is None else kwargs
+
+    @wrapt.decorator
+    def lambdified(wrapped, instance, args, kwargs):
+        n_args = normalized_args(wrapped, args, kwargs)
+        f = _outer_lambdify(
+            wrapped=wrapped,
+            modules=modules,
+            sample_args=frozendict(sample_args),
+            sample_kwargs=frozendict(sample_kwargs),
+            sym_kwargs=frozendict(sym_kwargs),
+            recurse_for=recurse_for,
+        )
+        return f(n_args)
+
+    return lambdified

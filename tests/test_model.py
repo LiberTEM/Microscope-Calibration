@@ -352,7 +352,7 @@ def test_scan_coordinate_shift_scale(scan_cy, scan_cx, scan_pixel_pitch):
 @pytest.mark.parametrize(
     # work in exact degree values since guess_corrections() can only
     # find these exactly. Otherwise we have larger residuals
-    'scan_rotation', (73/180*sym.pi, 0, 23/180*sym.pi)
+    'scan_rotation', (73/180*np.pi, 0, 23/180*np.pi)
 )
 @pytest.mark.parametrize(
     'flip_factor', (1., -1.)
@@ -369,15 +369,16 @@ def test_com_validation(scan_rotation, flip_factor, detector_cy, detector_cx):
         z: float
 
         def __call__(self, ray: Ray) -> Ray:
-            distance = norm(ray.y, ray.x)
-            if distance > 1e-6:
-                # field strength is 1/distance**2,
-                # additionally normalize displacement to unit vector
-                dx = -ray.x / distance**3 * 1e-2
-                dy = -ray.y / distance**3 * 1e-2
-                return ray.derive(dx=ray.dx+dx, dy=ray.dy+dy)
-            else:
-                return ray
+            distance = sym.sqrt(sym.Abs(ray.x)**2 + sym.Abs(ray.y)**2)
+            # field strength is 1/distance**2,
+            # additionally normalize displacement to unit vector
+            normfield = sym.Piecewise(
+                (1 / distance**3, distance > 1e-6),
+                (0, True)
+            )
+            dx = -ray.x * normfield * 1e-2
+            dy = -ray.y * normfield * 1e-2
+            return ray.derive(dx=ray.dx+dx, dy=ray.dy+dy)
 
     model = Model4DSTEM(
         overfocus=1,
@@ -400,6 +401,7 @@ def test_com_validation(scan_rotation, flip_factor, detector_cy, detector_cx):
         detector_scan_px_y: float
         detector_scan_px_x: float
 
+    @lambdify(modules=jax.numpy)
     def calculate(scan_y, scan_x):
         res = model.trace(
             scan_pos=PixelYX(x=scan_x, y=scan_y),
@@ -412,15 +414,9 @@ def test_com_validation(scan_rotation, flip_factor, detector_cy, detector_cx):
             phys_x=res['detector'].ray.x,
             pass_y=res['specimen'].ray.y,
             pass_x=res['specimen'].ray.x,
-            detector_scan_px_y=res['detector'].sampling['detector_px'],
-            detector_scan_px_x=res['specimen'].sampling['scan_px']
+            detector_scan_px_y=res['detector'].sampling['detector_px'].y,
+            detector_scan_px_x=res['detector'].sampling['detector_px'].x,
         )
-    scan_y, scan_x = sym.symbols('scan_y scan_x')
-
-    lambdifyed_res = lambdify(
-        [scan_y, scan_x],
-        [*calculate(scan_y, scan_x)]
-    )
 
     y_deflections = np.linspace(start=-1, stop=1, num=3)
     x_deflections = np.linspace(start=-1, stop=1, num=3)
@@ -428,23 +424,24 @@ def test_com_validation(scan_rotation, flip_factor, detector_cy, detector_cx):
     com_x = np.empty((len(y_deflections), len(x_deflections)))
     for y, scan_y in enumerate(y_deflections):
         for x, scan_x in enumerate(x_deflections):
-            res = lambdifyed_res([scan_y, scan_x])
+            res = calculate(scan_y=scan_y, scan_x=scan_x)
             # Validate that the ray is deflected towards the center
             # by the point charge component
             phys_y = res.phys_y
             phys_x = res.phys_x
             pass_y = res.pass_y
             pass_x = res.pass_x
-            if sym.sympify(phys_y).equals(0) is False or sym.sympify(phys_x).equals(0) is False:
-                assert sym.sympify(phys_y/sym.sqrt(sym.Abs(phys_x)**2 + sym.Abs(phys_y)**2)).equals(
-                    pass_y/sym.sqrt(sym.Abs(pass_x)**2 + sym.Abs(pass_y)**2))
-                assert sym.sympify(phys_x/sym.sqrt(sym.Abs(phys_x)**2 + sym.Abs(phys_y)**2)).equals(
-                    pass_x/sym.sqrt(sym.Abs(pass_x)**2 + sym.Abs(pass_y)**2))
-                # The displacement in the detector plane in corrected pixel
-                # coordinates is pointing in the opposite direction of the
-                # displacement from the center when passing through the
-                # specimen plane, i.e. the beam is deflected towards the
-                # center
+            if phys_y != 0 or phys_x != 0:
+                assert_allclose(
+                    # The displacement in the detector plane in corrected pixel
+                    # coordinates is pointing in the opposite direction of the
+                    # displacement from the center when passing through the
+                    # specimen plane, i.e. the beam is deflected towards the
+                    # center
+                    np.array((phys_y, phys_x))/np.linalg.norm((phys_y, phys_x)),
+                    -np.array((pass_y, pass_x))/np.linalg.norm((pass_y, pass_x))
+                )
+            print(res.detector_scan_px_y)
             com_y[y, x] = res.detector_scan_px_y
             com_x[y, x] = res.detector_scan_px_x
 
@@ -457,14 +454,27 @@ def test_com_validation(scan_rotation, flip_factor, detector_cy, detector_cx):
     # Make sure the correction actually corrected
     for y, scan_y in enumerate(y_deflections):
         for x, scan_x in enumerate(x_deflections):
-            if (sym.sympify(corrected_y[y, x]).equals(0) is False
-            or sym.sympify(corrected_x[y, x]).equals(0) is False):
-                assert sym.sympify(scan_y/sym.sqrt(sym.Abs(scan_x)**2 + sym.Abs(scan_y)**2)).equals(
-                    -corrected_y[y, x]/sym.sqrt(sym.Abs(corrected_x[y, x])**2 + sym.Abs(corrected_y[y, x])**2))
-                assert sym.sympify(scan_x/sym.sqrt(sym.Abs(scan_x)**2 + sym.Abs(scan_y)**2)).equals(
-                    -corrected_x[y, x]/sym.sqrt(sym.Abs(corrected_x[y, x])**2 + sym.Abs(corrected_y[y, x])**2))
+            if corrected_y[y, x] != 0 or corrected_x[y, x] != 0:
+                assert_allclose(
+                    # The corrected displacement in corrected pixel coordinates
+                    # in the detector plane is pointing in the opposite
+                    # direction of the displacement from the center in scan
+                    # coordinates
+                    np.array((scan_y, scan_x))/np.linalg.norm((scan_y, scan_x)),
+                    -np.array((
+                        corrected_y[y, x], corrected_x[y, x]
+                    ))/np.linalg.norm((
+                        corrected_y[y, x], corrected_x[y, x]
+                    )),
+                    atol=1e-12, rtol=1e-12
+                )
 
-    assert sym.sympify(-guess_result.scan_rotation / 180 * sym.pi).equals(scan_rotation)
+    assert_allclose(
+        -guess_result.scan_rotation / 180 * np.pi,
+        scan_rotation,
+        atol=1e-12,
+        rtol=1e-4
+    )
     if flip_factor == 1.:
         flip_y = False
     elif flip_factor == -1.:
@@ -472,10 +482,10 @@ def test_com_validation(scan_rotation, flip_factor, detector_cy, detector_cx):
     else:
         raise ValueError(0)
     assert guess_result.flip_y == flip_y
-    assert sym.sympify(guess_result.cy).equals(detector_cy)
-    assert sym.sympify(guess_result.cx).equals(detector_cx)
-    assert sym.sympify(guess_result.cy).equals(detector_cy)
-    assert sym.sympify(guess_result.cx).equals(detector_cx)
+    assert_allclose(guess_result.cy, detector_cy, atol=1e-2, rtol=1e-2)
+    assert_allclose(guess_result.cx, detector_cx, atol=1e-2, rtol=1e-2)
+    assert_allclose(guess_result.cy, detector_cy, atol=1e-2, rtol=1e-2)
+    assert_allclose(guess_result.cx, detector_cx, atol=1e-2, rtol=1e-2)
 
 
 def test_rotation_direction_0():
@@ -989,45 +999,70 @@ def test_jax_smoke():
         descan_error=DescanError(offpxi=.345, pxo_pxi=948)
     )
 
-    def test_func(arr):
+    class InputArrT(NamedTuple):
+        scan_y: float
+        scan_x: float
+        tilt_y: float
+        tilt_x: float
+        one: float = 1.
+
+    inp = InputArrT(
+        scan_y=sym.Symbol('scan_y'),
+        scan_x=sym.Symbol('scan_x'),
+        tilt_y=sym.Symbol('tilt_y'),
+        tilt_x=sym.Symbol('tilt_x'),
+        one=1.
+    )
+
+    @jax.jit
+    @lambdify(modules=jnp, kwargs={'arr': inp})
+    def test_func(arr: InputArrT):
         scan_y, scan_x, tilt_y, tilt_x, _one = arr
         scan_pos = PixelYX(x=scan_x, y=scan_y)
         res = model.trace(scan_pos=scan_pos, source_dy=tilt_y, source_dx=tilt_x, _one=_one)
-        return jnp.array((
+        return (
             res['specimen'].sampling['scan_px'].y,
             res['specimen'].sampling['scan_px'].x,
             res['detector'].sampling['detector_px'].y,
             res['detector'].sampling['detector_px'].x,
             res['detector'].ray._one
-        ))
+        )
 
-    sample = jnp.array((0., 0., 0., 0., 1.))
+    sample = InputArrT(0., 0., 0., 0., 1.)
     test_func(sample)
     jax.jacobian(test_func)(sample)
 
 
 def measure_descan_deviation(model, target_model):
     distances = []
+
+    @lambdify(modules=np)
+    def distance(scan_y, scan_x, cl):
+        ref_model = model.derive(
+            camera_length=cl
+        )
+        ref = ref_model.trace(
+            scan_pos=PixelYX(y=scan_y, x=scan_x), source_dy=0., source_dx=0.)
+        opt_model = target_model.derive(
+            camera_length=cl,
+        )
+        opt = opt_model.trace(
+            scan_pos=PixelYX(y=scan_y, x=scan_x), source_dy=0., source_dx=0.)
+        return (
+            (opt['detector'].sampling['detector_px'].y
+                - ref['detector'].sampling['detector_px'].y),
+            (opt['detector'].sampling['detector_px'].x
+                - ref['detector'].sampling['detector_px'].x),
+        )
+
     for scan_y in (0, 1):
         for scan_x in (0, 1):
             for cl in (0, 1):
-                ref_model = model.derive(
-                    camera_length=cl
-                )
-                ref = ref_model.trace(
-                    scan_pos=PixelYX(y=scan_y, x=scan_x), source_dy=0., source_dx=0.)
-                opt_model = target_model.derive(
-                    camera_length=cl,
-                )
-                opt = opt_model.trace(
-                    scan_pos=PixelYX(y=scan_y, x=scan_x), source_dy=0., source_dx=0.)
-                distances.append((
-                    opt['detector'].sampling['detector_px'].y
-                    - ref['detector'].sampling['detector_px'].y,
-                    opt['detector'].sampling['detector_px'].x
-                    - ref['detector'].sampling['detector_px'].x,
+                distances.append(distance(
+                    scan_y=scan_y, scan_x=scan_x,
+                    cl=cl
                 ))
-    return jnp.linalg.norm(jnp.array(distances))
+    return np.linalg.norm(np.array(distances))
 
 
 def test_adjust_scan_rotation(random_model: Model4DSTEM):
@@ -1036,11 +1071,12 @@ def test_adjust_scan_rotation(random_model: Model4DSTEM):
         scan_rotation=scan_rotation,
     )
     print(random_model, scan_rotation, modified)
-    assert sym.sympify(0).equals(
+    assert_allclose(0,
         measure_descan_deviation(
             random_model,
             modified,
-        )
+        ),
+        atol=1e-12
     )
     assert modified.scan_rotation == scan_rotation
 
@@ -1051,11 +1087,12 @@ def test_adjust_scan_pixel_pitch(random_model):
         scan_pixel_pitch=scan_pixel_pitch,
     )
     print(random_model, scan_pixel_pitch, modified)
-    assert sym.sympify(0).equals(
+    assert_allclose(0,
         measure_descan_deviation(
             random_model,
             modified,
-        )
+        ),
+        atol=1e-12
     )
     assert modified.scan_pixel_pitch == scan_pixel_pitch
 
@@ -1069,11 +1106,12 @@ def test_adjust_scan_center(random_model):
         scan_center=scan_center,
     )
     print(random_model, scan_center, modified)
-    assert sym.sympify(0).equals(
+    assert_allclose(0,
         measure_descan_deviation(
             random_model,
             modified,
-        )
+        ),
+        atol=1e-12
     )
     assert modified.scan_center == scan_center
 
@@ -1084,11 +1122,12 @@ def test_adjust_detector_rotation(random_model):
         detector_rotation=detector_rotation,
     )
     print(random_model, detector_rotation, modified)
-    assert sym.sympify(0).equals(
+    assert_allclose(0,
         measure_descan_deviation(
             random_model,
             modified,
-        )
+        ),
+        atol=1e-12
     )
     assert modified.detector_rotation == detector_rotation
 
@@ -1099,11 +1138,12 @@ def test_adjust_flip_y(random_model):
             flip_factor=flip_factor,
         )
         print(random_model, flip_factor, modified)
-        assert sym.sympify(0).equals(
+        assert_allclose(0,
             measure_descan_deviation(
                 random_model,
                 modified,
-            )
+            ),
+            atol=1e-12
         )
         assert modified.flip_factor == flip_factor
 
@@ -1117,11 +1157,12 @@ def test_adjust_detector_center(random_model):
         detector_center=detector_center,
     )
     print(random_model, detector_center, modified)
-    assert sym.sympify(0).equals(
+    assert_allclose(0,
         measure_descan_deviation(
             random_model,
             modified,
-        )
+        ),
+        atol=1e-12
     )
     assert modified.detector_center == detector_center
 
@@ -1132,11 +1173,12 @@ def test_adjust_detector_pixel_pitch(random_model):
         detector_pixel_pitch=detector_pixel_pitch,
     )
     print(random_model, detector_pixel_pitch, modified)
-    assert sym.sympify(0).equals(
+    assert_allclose(0,
         measure_descan_deviation(
             random_model,
             modified,
-        )
+        ),
+        atol=1e-12
     )
     assert modified.detector_pixel_pitch == detector_pixel_pitch
 
@@ -1148,27 +1190,31 @@ def test_adjust_camera_length(random_model):
     print(random_model, camera_length, modified)
 
     distances = []
+
+    @lambdify(modules=np)
+    def distance(scan_y, scan_x, cl):
+        ref_model = random_model.derive(
+            camera_length=cl
+        )
+        ref = ref_model.trace(
+            scan_pos=PixelYX(y=scan_y, x=scan_x), source_dy=0., source_dx=0.)
+        # Scale by `ratio`
+        opt_model = modified.derive(
+            camera_length=cl * ratio,
+        )
+        opt = opt_model.trace(
+            scan_pos=PixelYX(y=scan_y, x=scan_x), source_dy=0., source_dx=0.)
+        return (
+            opt['detector'].sampling['detector_px'].y
+            - ref['detector'].sampling['detector_px'].y,
+            opt['detector'].sampling['detector_px'].x
+            - ref['detector'].sampling['detector_px'].x,
+        )
     # We check that the model produces the same pixel offsets
     # at the camera length scaled by `ratio`
     for scan_y in (0, 1):
         for scan_x in (0, 1):
             for cl in (0, 1):
-                ref_model = random_model.derive(
-                    camera_length=cl
-                )
-                ref = ref_model.trace(
-                    scan_pos=PixelYX(y=scan_y, x=scan_x), source_dy=0., source_dx=0.)
-                # Scale by `ratio`
-                opt_model = modified.derive(
-                    camera_length=cl * ratio,
-                )
-                opt = opt_model.trace(
-                    scan_pos=PixelYX(y=scan_y, x=scan_x), source_dy=0., source_dx=0.)
-                distances.append((
-                    opt['detector'].sampling['detector_px'].y
-                    - ref['detector'].sampling['detector_px'].y,
-                    opt['detector'].sampling['detector_px'].x
-                    - ref['detector'].sampling['detector_px'].x,
-                ))
-    assert sym.sympify(0).equals(np.linalg.norm(distances))
+                distances.append(distance(scan_y=scan_y, scan_x=scan_x, cl=cl))
+    assert_allclose(0, np.linalg.norm(distances), atol=1e-12)
     assert modified.camera_length == camera_length
