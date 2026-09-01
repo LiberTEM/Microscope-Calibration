@@ -5,6 +5,7 @@ import jax; jax.config.update("jax_enable_x64", True)  # noqa fmt: skip
 import jax.numpy as jnp
 import numba
 import numpy as np
+import sympy as sym
 
 from microscope_calibration.common.model import (
     CoordXY,
@@ -12,6 +13,7 @@ from microscope_calibration.common.model import (
     Model4DSTEM,
     PixelYX,
     Scanner,
+    lambdify_trace_for,
 )
 from microscope_calibration.util.sympy import lambdify
 
@@ -25,6 +27,9 @@ CoordMappingT = Callable[[CoordXY], PixelYX]
 
 class FittingError(RuntimeError):
     pass
+
+
+trace = lambdify_trace_for(jnp)
 
 
 def _do_lstsq(input_samples, output_samples):
@@ -378,24 +383,35 @@ def correct_frame(frame, mat, scan_y, scan_x, detector_out):
                 detector_out[det_corr_y, det_corr_x] += frame[det_y, det_x]
 
 
-@jax.jit
-def get_diffraction_pixel_radius(model: Model4DSTEM, twotheta: float):
+@lambdify(recurse_for=(PixelYX, Model4DSTEM, DescanError), modules=jnp)
+def trace_with_diffractor(
+    model: Model4DSTEM, scan_pos: PixelYX, source_dy, source_dx, twotheta
+):
     diffractor = Scanner(
         z=model.overfocus,
         scan_pos_x=0.0,
         scan_pos_y=0.0,
-        scan_tilt_x=jnp.tan(twotheta),
+        scan_tilt_x=sym.tan(twotheta),
     )
-    center_res = model.trace(
+    return model.trace(
+        scan_pos=scan_pos, source_dx=source_dx, source_dy=source_dy, specimen=diffractor
+    )
+
+
+@jax.jit
+def get_diffraction_pixel_radius(model: Model4DSTEM, twotheta: float):
+    center_res = trace(
+        model,
         scan_pos=PixelYX(0.0, 0.0),
         source_dx=0.0,
         source_dy=0.0,
     )
-    diff_res = model.trace(
+    diff_res = trace_with_diffractor(
+        model=model,
         scan_pos=PixelYX(0.0, 0.0),
         source_dx=0.0,
         source_dy=0.0,
-        specimen=diffractor,
+        twotheta=twotheta,
     )
     return jnp.linalg.norm(
         jnp.array(center_res["detector"].sampling["detector_px"])
@@ -405,12 +421,14 @@ def get_diffraction_pixel_radius(model: Model4DSTEM, twotheta: float):
 
 @jax.jit
 def get_primary_beam_radius(model: Model4DSTEM):
-    center_res = model.trace(
+    center_res = trace(
+        model,
         scan_pos=PixelYX(0.0, 0.0),
         source_dx=0.0,
         source_dy=0.0,
     )
-    border_res = model.trace(
+    border_res = trace(
+        model,
         scan_pos=PixelYX(0.0, 0.0),
         source_dx=model.semiconv,
         source_dy=0.0,
@@ -437,7 +455,8 @@ def ring_radii(model: Model4DSTEM, twothetas):
 
 @jax.jit
 def get_center(model: Model4DSTEM, scan_pos: PixelYX):
-    center_res = model.trace(
+    center_res = trace(
+        model,
         scan_pos=scan_pos,
         source_dx=0.0,
         source_dy=0.0,
