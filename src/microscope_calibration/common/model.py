@@ -2,7 +2,6 @@ from typing import NamedTuple
 from collections import OrderedDict
 
 import jax; jax.config.update("jax_enable_x64", True) # noqa fmt: skip
-import jax.numpy as jnp
 import jax_dataclasses as jdc
 import sympy as sym
 from jax.errors import TracerBoolConversionError
@@ -249,7 +248,7 @@ class Model4DSTEM:
         else:
             try:
                 # FIXME better solution later?
-                assert jnp.allclose(specimen.z, self.overfocus)
+                assert sym.simplify(specimen.z).equals(sym.simplify(self.overfocus))
             except TracerBoolConversionError:
                 pass
         scan_pos_phys = self.scan_to_real(scan_pos, _one=_one)
