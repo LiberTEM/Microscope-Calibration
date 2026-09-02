@@ -147,7 +147,7 @@ class CoordinateCorrectionLayout:
 
         # # GUI elements
         preview = self.get_preview()
-        self.nav_fig = ApertureFigure.new(preview["nav"], title="Nav map")
+        self.nav_fig = ApertureFigure.new(preview["nav"], title="Nav map", maxdim=350)
         self.adjust_layout(self.nav_fig, shape=preview["nav"].shape)
 
         self.cursor = (
@@ -160,7 +160,7 @@ class CoordinateCorrectionLayout:
         self.cursor.cursor.line_color = "red"
 
         frames = self.get_frames(pos=self.scan_pos)
-        self.pick_fig = ApertureFigure.new(frames["raw"], title="Picked detector frame")
+        self.pick_fig = ApertureFigure.new(frames["raw"], title="Picked detector frame", maxdim=350)
         self.adjust_layout(self.pick_fig, shape=frames["raw"].shape)
 
         self.beam_centre = (
@@ -184,7 +184,8 @@ class CoordinateCorrectionLayout:
             )
 
         self.corr_point_fig = ApertureFigure.new(
-            preview["corrected_point"], title="Corrected point analysis"
+            preview["corrected_point"], title="Corrected point analysis",
+            maxdim=250
         )
         self.adjust_layout(self.corr_point_fig, shape=preview["corrected_point"].shape)
         self.cursor_2 = (
@@ -218,7 +219,8 @@ class CoordinateCorrectionLayout:
         self.scalebar_line.glyph.line_color = "yellow"
 
         self.corr_pick_fig = ApertureFigure.new(
-            frames["corrected"], title="Frame corrected for descan error"
+            frames["corrected"], title="Frame corrected for descan error",
+            maxdim=250
         )
         self.adjust_layout(self.corr_pick_fig, shape=frames["corrected"].shape)
 
@@ -241,7 +243,8 @@ class CoordinateCorrectionLayout:
             )
 
         self.corr_sum_fig = ApertureFigure.new(
-            preview["corrected_sum"], title="Sum of frames corrected for descan error"
+            preview["corrected_sum"], title="Sum of frames corrected for descan error",
+            maxdim=250
         )
         self.adjust_layout(self.corr_sum_fig, shape=preview["corrected_sum"].shape)
         self.corr_beam_centre_2 = Cursor(
@@ -275,7 +278,8 @@ class CoordinateCorrectionLayout:
         self.cursor_3.cursor.line_color = "red"
 
         self.pick_fig_2 = ApertureFigure.new(
-            frames["raw"], title="Picked detector frame"
+            frames["raw"], title="Picked detector frame",
+            maxdim=350
         )
         self.adjust_layout(self.pick_fig_2, shape=frames["raw"].shape)
 
@@ -291,12 +295,14 @@ class CoordinateCorrectionLayout:
         self.back_sum_fig = ApertureFigure.new(
             preview["backprojected_sum"],
             title="Frames back-projected to scan coordinate system",
+            maxdim=350
         )
         self.adjust_layout(self.back_sum_fig, shape=preview["backprojected_sum"].shape)
 
         self.back_pick_fig = ApertureFigure.new(
             frames["backprojected"],
             title="Current frame back-projected to scan coordinate system",
+            maxdim=350
         )
         self.adjust_layout(self.back_pick_fig, shape=frames["backprojected"].shape)
 
@@ -430,10 +436,6 @@ class CoordinateCorrectionLayout:
     def adjust_layout(plot, shape):
         plot.fig.y_range.bounds = (0, shape[0])
         plot.fig.x_range.bounds = (0, shape[1])
-        plot.fig.sizing_mode = "scale_width"
-        plot.layout.max_width = 500
-        plot.layout.max_height = 500
-        # plot.layout.sizing_mode = "stretch_width"
 
     def on_model_model_change(self, attr, old, new):
         # This is a "bokeh-style" callback because it will trigger directly from a ColumnDataSource
