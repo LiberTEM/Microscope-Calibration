@@ -21,7 +21,7 @@ from libertem_ui.display.lines import Curve
 from libertem_ui.display.points import PointSet, RingSet
 from libertem_ui.figure import ApertureFigure
 
-from .common.model import DescanError, Model4DSTEM, PixelYX
+from .common.model import DescanError, Model4DSTEM, PixelYX, lambdify_trace_for
 from .common.stem_overfocus import (
     corrected_det_x,
     corrected_det_y,
@@ -47,6 +47,9 @@ SigModeT = Literal[
     "lin",
     "log",
 ]
+
+
+trace = lambdify_trace_for(jnp)
 
 
 class CoordinateCorrectionLayout:
@@ -735,7 +738,8 @@ class CoordinateCorrectionLayout:
             scan_pos=scan_pos,
             specimen_px=specimen_px,
         )
-        res = model.trace(
+        res = trace(
+            model,
             scan_pos=scan_pos,
             source_dy=slope.dy,
             source_dx=slope.dx,
@@ -787,7 +791,7 @@ class CoordinateCorrectionLayout:
         if self.sig_mode == "lin":
             result["corrected_sum"] = res[1]["corrected_sum"].data
         elif self.sig_mode == "log":
-            result["corrected_sum"] = np.log1p(res[1]["corrected_sum"].data)
+            result["corrected_sum"] = np.log1p(np.maximum(0, res[1]["corrected_sum"].data))
         else:
             raise ValueError()
         return result
@@ -805,7 +809,7 @@ class CoordinateCorrectionLayout:
         if self.sig_mode == "log":
 
             def fn(data):
-                return np.log1p(data)
+                return np.log1p(np.maximum(0, data))
         else:
 
             def fn(data):
