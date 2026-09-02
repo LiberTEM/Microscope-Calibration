@@ -13,7 +13,7 @@ dependencies = [
     "numpy",
     "libertem",
     "typing-extensions",
-    "temgym_core @ https://github.com/TemGym/TemGymCore/archive/refs/heads/main.zip",
+    # "temgym_core @ https://github.com/TemGym/TemGymCore/archive/refs/heads/main.zip",
     # Minimum constraints of numba for all Python versions we support
     # See https://numba.readthedocs.io/en/stable/release-notes-overview.html
     "numba>=0.55;python_version < '3.11'",
@@ -24,14 +24,15 @@ dependencies = [
     # that isn't constrained properly:
     "numba>=0.61;python_version >= '3.13'",
     "scikit-image",
-    # FIXME newer version made tests/test_overfocus.py::test_optimize fail
-    # Temporarily pinning version ahead of major rewrite of modeling and fitting code
-    # to make tests pass for the time being
-    # TODO release pin ASAP
-    "scipy<1.16",
+    "scipy",
     "jax",
     "optax",
     "optimistix",
+    "sympy",
+    "wrapt",
+    "frozendict",
+    "flax",
+    "libertem-blobfinder"
 ]
 classifiers = [
     "Programming Language :: Python :: 3",
