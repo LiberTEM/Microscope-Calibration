@@ -30,5 +30,8 @@ def get_twothetas(cif_filename, acceleration_voltage_V, reciprocal_radius=1):
             max_excitation_error=1,
         )
         sim.coordinates.calculate_theta(voltage=acceleration_voltage_V)
-        twothetas.update(np.round(sim.coordinates.theta, decimals=5))
+        thetas_with_intensity = [
+            item[1] for item in zip(sim.coordinates.intensity, sim.coordinates.theta) if item[0] > 1
+        ]
+        twothetas.update(np.round(thetas_with_intensity, decimals=5))
     return np.array(sorted(twothetas))
