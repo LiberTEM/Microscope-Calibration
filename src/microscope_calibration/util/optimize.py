@@ -19,6 +19,8 @@ from microscope_calibration.common.model import (
     lambdify_trace_for,
 )
 
+from microscope_calibration.util.sympy import lambdify
+
 if TYPE_CHECKING:
     from libertem.api import Context
     from libertem.io.dataset.base import DataSet
@@ -90,7 +92,7 @@ def make_overfocus_loss_function(
     """
     # Rotate and scale the angle so that the optimizer works between +-10,
     # corresponding to +- 5 deg
-    rotation_diff = model.scan_rotation * 180 / np.pi
+    rotation_diff = model.detector_rotation * 180 / np.pi
     rotation_scale = 1
     # Values to shift and scale the overfocus so that the optimizer works between +-10
     overfocus_diff = model.overfocus
@@ -113,8 +115,9 @@ def make_overfocus_loss_function(
         rotation = transformed_rotation / rotation_scale + rotation_diff
         overfocus = transformed_overfocus / overfocus_scale + overfocus_diff
         return model.derive(
-            overfocus=overfocus,
-            scan_rotation=rotation / 180 * np.pi,
+            overfocus=overfocus
+        ).adjust_detector_rotation(
+            detector_rotation=rotation / 180 * np.pi,
         )
 
     def loss(args) -> float:
@@ -616,6 +619,19 @@ class _CoordPointArgs(NamedTuple):
 
 
 @jax.jit
+@lambdify(recurse_for=(Model4DSTEM, PixelYX, DescanError), modules=jnp)
+def _coords_point_modelupdate(
+        model: Model4DSTEM, overfocus, detector_rotation, flip_factor) -> Model4DSTEM:
+    return model.derive(
+        overfocus=overfocus,
+    ).adjust_detector_rotation(
+        detector_rotation=detector_rotation,
+    ).adjust_flip_factor(
+        flip_factor=flip_factor,
+    )
+
+
+@jax.jit
 def _coords_point_loss(y, args: _CoordPointArgs):
     detector_rotation, overfocus, flip_factor = y[:3]
     # We need to co-optimize the source tilts that hit the detector pixel for
@@ -624,9 +640,10 @@ def _coords_point_loss(y, args: _CoordPointArgs):
 
     assert len(tilts) == 2 * len(args.points)
 
-    opt_model = args.model.derive(
-        detector_rotation=detector_rotation,
+    opt_model = _coords_point_modelupdate(
+        model=args.model,
         overfocus=overfocus,
+        detector_rotation=detector_rotation,
         flip_factor=flip_factor,
     )
 
@@ -677,9 +694,10 @@ def solve_coords_points(ref_model: Model4DSTEM, points: jnp.ndarray):
     residual = _coords_point_loss(opt_res.value, args)
     # Write the new values into the previous parameters
     detector_rotation, overfocus, flip_factor = opt_res.value[:3]
-    res_model = ref_model.derive(
-        detector_rotation=detector_rotation,
+    res_model = _coords_point_modelupdate(
+        model=ref_model,
         overfocus=overfocus,
+        detector_rotation=detector_rotation,
         flip_factor=flip_factor,
     ).normalize_types()
 
