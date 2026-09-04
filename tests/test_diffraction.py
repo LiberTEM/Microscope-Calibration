@@ -43,6 +43,7 @@ def test_twothetas(request):
 
     # spacing for 111
     # https://en.wikipedia.org/wiki/Miller_index#Cubic_structures
+    # convert to pm
     d_spacing = la.a * 100 / np.sqrt(3)
 
     # https://www.jeol.com/words/emterms/20121023.071258.php#gsc.tab=0

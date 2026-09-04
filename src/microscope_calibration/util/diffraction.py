@@ -21,17 +21,17 @@ def get_twothetas(cif_filename, acceleration_voltage_V, reciprocal_radius=1):
     structure = loadStructure(cif_filename)
     p = Phase(structure=structure, space_group=space_group)
     thetas = set()
-    for ha in (-1, 0, 1,):
-        for ka in (-1, 0, 1,):
-            for el in (-1, 0, 1):
+    for ha in (0, 1, 2, 3, 4, 5):
+        for ka in (0, 1, 2, 3):
+            for el in (0, 1, 2):
                 euler = get_rotation_from_z_to_direction(p.structure, [ha, ka, el])
-                rot = Rotation.from_euler(euler)
+                rot = Rotation.from_euler(euler, degrees=True)
                 sim = gen.calculate_diffraction2d(
                     phase=p,
                     rotation=rot,
                     reciprocal_radius=reciprocal_radius,
                     # This seems to avoid errorneous reflections while still including enough peaks
-                    max_excitation_error=0.0001,
+                    max_excitation_error=0.0005,
                 )
                 sim.coordinates.calculate_theta(voltage=acceleration_voltage_V)
                 thetas_with_intensity = [

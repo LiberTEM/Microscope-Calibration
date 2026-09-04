@@ -66,6 +66,11 @@ class CoordinateCorrectionLayout:
     ]
     coord_index_cols = coord_columns[:4]
 
+    model_columns = list(Model4DSTEM.__dataclass_fields__.keys())
+    model_columns.remove('descan_error')
+
+    descan_error_columns = list(DescanError.__annotations__.keys())
+
     def __init__(
         self,
         dataset: DataSet,
@@ -323,6 +328,13 @@ class CoordinateCorrectionLayout:
                 * 1e9
             ),
         )
+        self.scale_angle_display = pn.widgets.FloatInput(
+            name="Scale bar angle / deg",
+            disabled=True,
+            value=(
+                np.rad2deg(self.get_scalebar_angle(self.scalebar_model.data))
+            ),
+        )
         self.scan_rotation_input = pn.widgets.FloatInput(
             name="Scan rotation / degrees",
             step=0.1,
@@ -369,6 +381,20 @@ class CoordinateCorrectionLayout:
         self.optimize_button = pn.widgets.Button(
             name="Optimize sharpness of back-projection"
         )
+        model_dataframe = pd.DataFrame(columns=self.model_columns)
+        descan_error_dataframe = pd.DataFrame(columns=self.descan_error_columns)
+
+        self.model_table = pn.widgets.Tabulator(
+            model_dataframe,
+            # See https://github.com/holoviz/panel/pull/8256
+            selectable=False,
+        )
+        self.descan_error_table = pn.widgets.Tabulator(
+            descan_error_dataframe,
+            # See https://github.com/holoviz/panel/pull/8256
+            selectable=False,
+        )
+        self.update_model_tables(start_model)
 
         # # Event handler setup
 
@@ -437,6 +463,31 @@ class CoordinateCorrectionLayout:
         plot.fig.y_range.bounds = (0, shape[0])
         plot.fig.x_range.bounds = (0, shape[1])
 
+    def update_model_tables(self, model):
+        model_df = self.model_table.value
+        for key in self.model_columns:
+            value = getattr(model, key)
+            if isinstance(value, float):
+                if 'rotation' in key:
+                    value = np.rad2deg(value)
+                value = f"{value:.5}"
+                if 'rotation' in key:
+                    value = value + '°'
+            else:
+                value = str(value)
+            model_df.loc[0, key] = value
+        self.model_table.value = model_df
+
+        descan_df = self.descan_error_table.value
+        for key in self.descan_error_columns:
+            value = getattr(model.descan_error, key)
+            if isinstance(value, float):
+                value = f"{value:.5}"
+            else:
+                value = str(value)
+            descan_df.loc[0, key] = value
+        self.descan_error_table.value = descan_df
+
     def on_model_model_change(self, attr, old, new):
         # This is a "bokeh-style" callback because it will trigger directly from a ColumnDataSource
         # The callback must have three arguments [attr, old, new]
@@ -494,6 +545,7 @@ class CoordinateCorrectionLayout:
         self.update_with_force(
             self.feature_select_model, self.feature_update(detector_pos)
         )
+        self.update_model_tables(new_model)
 
     def on_scalebar_model_change(self, attr, old, new):
         # This is a "bokeh-style" callback because it will trigger directly from a ColumnDataSource
@@ -508,6 +560,7 @@ class CoordinateCorrectionLayout:
         # TODO use microscope_calibration.util.optimize.solve_scan_pixel_pitch
         # instead to not make assumption about linearity
         self.scalebar_input.value = length * self.model.scan_pixel_pitch * 1e9
+        self.scale_angle_display.value = np.rad2deg(self.get_scalebar_angle(new))
         self.push()
 
     def on_feature_model_change(self, attr, old, new):
@@ -671,29 +724,10 @@ class CoordinateCorrectionLayout:
     def default_model(self) -> Model4DSTEM:
         ds = self.dataset
         if ds is None:
-            scan_center = PixelYX(0.0, 0.0)
-            detector_center = PixelYX(0.0, 0.0)
+            ds_shape = (0, 0, 0, 0)
         else:
-            scan_center = PixelYX(
-                y=ds.shape.nav[0] / 2,
-                x=ds.shape.nav[1] / 2,
-            )
-            detector_center = PixelYX(
-                y=ds.shape.sig[0] / 2,
-                x=ds.shape.sig[1] / 2,
-            )
-        return Model4DSTEM(
-            overfocus=0.0,
-            scan_pixel_pitch=1e-6,
-            scan_center=scan_center,
-            scan_rotation=0.0,
-            camera_length=1.0,
-            detector_pixel_pitch=50e-6,
-            detector_center=detector_center,
-            semiconv=1e-3,  # radian
-            flip_factor=1.0,
-            # descan_error=DescanError(sxo_pxi=1, syo_pyi=-3)
-        )
+            ds_shape = ds.shape.to_tuple()
+        return Model4DSTEM.default(ds_shape)
 
     def get_model(self, model_data) -> Model4DSTEM:
         return self.deserialize(model_data["model"][0])
@@ -730,6 +764,17 @@ class CoordinateCorrectionLayout:
             (scalebar_data["scalebar_y"][1], scalebar_data["scalebar_x"][1])
         )
         return np.linalg.norm(stop - start)
+
+    @staticmethod
+    def get_scalebar_angle(scalebar_data) -> float:
+        start = np.array(
+            (scalebar_data["scalebar_y"][0], scalebar_data["scalebar_x"][0])
+        )
+        stop = np.array(
+            (scalebar_data["scalebar_y"][1], scalebar_data["scalebar_x"][1])
+        )
+        vector = stop - start
+        return float(np.arctan2(*vector))
 
     @staticmethod
     def get_feature_on_detector(
@@ -1003,6 +1048,7 @@ class CoordinateCorrectionLayout:
     def sharpen(self):
         def callback(args, model, res, blur):
             self.back_sum_fig.update(res[0]["backprojected_sum"].data)
+            self.update_model_tables(model)
 
         make_new_model, loss = make_overfocus_loss_function(
             model=self.model,
@@ -1064,6 +1110,7 @@ class CoordinateCorrectionLayout:
         )
         inputs_2 = pn.layout.Row(
             self.scalebar_input,
+            self.scale_angle_display,
         )
         raw_figs = pn.layout.Row(self.nav_fig.layout, self.pick_fig.layout)
         corrected_figs = pn.layout.Row(
@@ -1133,6 +1180,14 @@ class CoordinateCorrectionLayout:
         coord_section = pn.layout.Column(
             self.coord_label, self.coord_fixpoint_table, coord_buttons
         )
+        self.result_label = pn.pane.Markdown(
+            "### Current model parameters",
+        )
+        result_section = pn.layout.Column(
+            self.result_label,
+            self.model_table,
+            self.descan_error_table
+        )
         return pn.layout.Column(
             self.section_1_label,
             inputs_1,
@@ -1144,4 +1199,5 @@ class CoordinateCorrectionLayout:
             raw_figs_2,
             coord_section,
             back_figs,
+            result_section
         )

@@ -80,6 +80,42 @@ class Model4DSTEM:
     descan_error: DescanError = DescanError()
     detector_rotation: float = 0.0  # rad
 
+    @classmethod
+    def default(cls, dataset_shape: tuple[int, int, int, int]):
+        '''
+        Model with somewhat sensible default values for a given dataset shape
+
+        * Set beam center to scan and detector center
+        * In focus
+        * Camera length of 1 m
+        * 1 um scan step
+        * 50 um detector pixel pitch
+        * No descan error, rotation, or flip
+        '''
+        assert len(dataset_shape) == 4
+        nav_shape = dataset_shape[:2]
+        sig_shape = dataset_shape[2:4]
+
+        scan_center = PixelYX(
+            y=nav_shape[0] / 2,
+            x=nav_shape[1] / 2,
+        )
+        detector_center = PixelYX(
+            y=sig_shape[0] / 2,
+            x=sig_shape[1] / 2,
+        )
+        return cls(
+            overfocus=0.0,
+            scan_pixel_pitch=1e-6,
+            scan_center=scan_center,
+            scan_rotation=0.0,
+            camera_length=1.0,
+            detector_pixel_pitch=50e-6,
+            detector_center=detector_center,
+            semiconv=1e-3,  # radian
+            flip_factor=1.0,
+        )
+
     def derive(
         self,
         overfocus: float | None = None,  # m
