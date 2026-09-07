@@ -5,10 +5,141 @@ JEOL Neo-ARM at CEA in Grenoble.
 To be tested and adapted to other microscopes!
 '''
 
+from typing import Self
 from ncempy.io.dm import fileDM
 import pint
+import flax
+import json
+import numpy as np
 
-from microscope_calibration.common.model import Model4DSTEM
+from microscope_calibration.common.model import Model4DSTEM, DescanError
+from microscope_calibration.ui import AbstractCalibratedDataset
+from libertem.api import Context
+from libertem.io.dataset.base import DataSet
+
+
+class CalibratedJEOLDM4(AbstractCalibratedDataset):
+    def __init__(self, path: str, model: Model4DSTEM, ctx: Context | None = None):
+        handle = fileDM(path)
+        self.path = path
+        self.tags = handle.allTags
+        if ctx is None:
+            ctx = Context.make_with('inline')
+        self._ds = ctx.load('auto', path)
+        self._model = model
+
+    @classmethod
+    def new(cls, path: str, model: Model4DSTEM = None, ctx: Context | None = None) -> Self:
+        handle = fileDM(path)
+        model = derive_model_from_dm4(handle, model)
+        return cls(path=path, model=model, ctx=ctx)
+
+    def derive_relative_for(self, path: str, ctx: Context | None = None) -> Self:
+        old_handle = fileDM(self.path)
+        new_handle = fileDM(path)
+        model = derive_model_relative_dm4(
+            old_dm4=old_handle,
+            new_dm4=new_handle,
+            model=self.model
+        )
+        return self.__class__(
+            path=path,
+            model=model,
+            ctx=ctx,
+        )
+
+    @property
+    def dataset(self) -> DataSet:
+        return self._ds
+
+    @property
+    def dm4(self) -> fileDM:
+        return fileDM(self.path)
+
+    @property
+    def model(self) -> Model4DSTEM:
+        return self._model
+
+    def save(self, path: str):
+        statedict = flax.serialization.to_state_dict(
+            (self.path, self.model.normalize_types())
+        )
+        with open(path, mode='w') as f:
+            json.dump(statedict, f)
+
+    @classmethod
+    def load(cls, path: str, ctx: Context | None = None) -> Self:
+        with open(path) as f:
+            statedict = json.load(f)
+        dm4path, model = flax.serialization.from_state_dict(
+            target=('', Model4DSTEM.default()),
+            state=statedict
+        )
+        return cls(path=dm4path, model=model, ctx=ctx)
+
+    def microscope_info(self) -> dict:
+        tags = self.dm4.allTags
+        result = {}
+        search = 'ImageTags.Microscope Info.'
+        for tag, value in tags.items():
+            if search in tag:
+                subtag = tag.rsplit(search, 1)[-1]
+                if isinstance(value, np.number):
+                    value = value.item()
+                elif isinstance(value, np.ndarray):
+                    if len(value.shape) != 1:
+                        raise RuntimeError("Only works for 1D shapes for now")
+                    value = tuple(it. item() for it in value)
+                result[subtag] = value
+        return result
+
+    def compare(self, other: "CalibratedJEOLDM4") -> dict:
+        old_info = self.microscope_info()
+        new_info = other.microscope_info()
+        tmp_for_keys = old_info.copy()
+        tmp_for_keys.update(new_info)
+
+        dm4 = {}
+        for key in tmp_for_keys:
+            old_val = old_info.get(key)
+            new_val = new_info.get(key)
+            if old_val != new_val:
+                dm4[key] = (old_val, new_val)
+
+        model_attrs = list(Model4DSTEM.__dataclass_fields__.keys())
+        model_attrs.remove('descan_error')
+
+        old_model = self.model
+        new_model = other.model
+
+        model = {}
+
+        for attr in model_attrs:
+            old_val = getattr(old_model, attr)
+            new_val = getattr(new_model, attr)
+            if not np.allclose(old_val, new_val):
+                model[attr] = (old_val, new_val)
+
+        descan_error_attrs = list(DescanError.__annotations__.keys())
+        descan_error = {}
+        for attr in descan_error_attrs:
+            old_val = getattr(old_model.descan_error, attr)
+            new_val = getattr(new_model.descan_error, attr)
+            if not np.allclose(old_val, new_val, rtol=1e-5):
+                descan_error[attr] = (old_val, new_val)
+
+        return {
+            'dm4': dm4,
+            'model': model,
+            'descan_error': descan_error,
+        }
+
+    def calibrated(self, model: Model4DSTEM, ctx: Context | None = None) -> "CalibratedJEOLDM4":
+        return self.__class__(
+            path=self.path,
+            model=model,
+            ctx=ctx
+        )
 
 
 def acceleration_from_dm4(dm4file: fileDM) -> pint.Quantity:
