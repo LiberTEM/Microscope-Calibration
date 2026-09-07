@@ -81,7 +81,7 @@ class Model4DSTEM:
     detector_rotation: float = 0.0  # rad
 
     @classmethod
-    def default(cls, dataset_shape: tuple[int, int, int, int]):
+    def default(cls, dataset_shape: tuple[int, int, int, int] = (0, 0, 0, 0)):
         '''
         Model with somewhat sensible default values for a given dataset shape
 

@@ -1,5 +1,6 @@
 import concurrent.futures
 from typing import Literal
+from abc import ABC, abstractmethod
 
 import flax
 import jax.numpy as jnp
@@ -52,6 +53,22 @@ SigModeT = Literal[
 trace = lambdify_trace_for(jnp)
 
 
+class AbstractCalibratedDataset(ABC):
+    @property
+    @abstractmethod
+    def model(self) -> Model4DSTEM:
+        raise NotImplementedError()
+
+    @property
+    @abstractmethod
+    def dataset(self) -> DataSet:
+        raise NotImplementedError()
+
+    @abstractmethod
+    def calibrated(self, model: Model4DSTEM) -> "AbstractCalibratedDataset":
+        raise NotImplementedError()
+
+
 class CoordinateCorrectionLayout:
     descan_columns = ["scan_y", "scan_x", "detector_cy", "detector_cx"]
     descan_index_cols = descan_columns[:2]
@@ -73,23 +90,20 @@ class CoordinateCorrectionLayout:
 
     def __init__(
         self,
-        dataset: DataSet,
+        calibrated_dataset: AbstractCalibratedDataset,
         ctx: Context,
         nav_mode: NavModeT = "point",
         sig_mode: SigModeT = "lin",
         twothetas: np.ndarray | None = None,
-        start_model=None,
     ):
         # # Stuff
         self.executor = concurrent.futures.ThreadPoolExecutor(max_workers=1)
-        self.dataset = dataset
+        self.calibrated_dataset = calibrated_dataset
         self.ctx = ctx
         self.nav_mode = nav_mode
         self.sig_mode = sig_mode
 
-        if start_model is None:
-            start_model = self.default_model()
-        self.start_model = start_model
+        self.start_model = calibrated_dataset.model
 
         if twothetas is None:
             twothetas = np.array((0.0,))
@@ -317,7 +331,7 @@ class CoordinateCorrectionLayout:
         self.semiconv_input = pn.widgets.FloatInput(
             name="Convergence semi-angle / mrad",
             step=0.01,
-            value=start_model.semiconv * 1000,
+            value=self.start_model.semiconv * 1000,
         )
         self.scalebar_input = pn.widgets.FloatInput(
             name="Scale bar / nm",
@@ -394,7 +408,7 @@ class CoordinateCorrectionLayout:
             # See https://github.com/holoviz/panel/pull/8256
             selectable=False,
         )
-        self.update_model_tables(start_model)
+        self.update_model_tables(self.start_model)
 
         # # Event handler setup
 
@@ -462,6 +476,13 @@ class CoordinateCorrectionLayout:
     def adjust_layout(plot, shape):
         plot.fig.y_range.bounds = (0, shape[0])
         plot.fig.x_range.bounds = (0, shape[1])
+
+    @property
+    def dataset(self) -> DataSet:
+        return self.calibrated_dataset.dataset
+
+    def current_calibrated(self) -> AbstractCalibratedDataset:
+        return self.calibrated_dataset.calibrated(self.model)
 
     def update_model_tables(self, model):
         model_df = self.model_table.value
@@ -720,14 +741,6 @@ class CoordinateCorrectionLayout:
         t = self.coord_fixpoint_table
         t.value = t.value.drop(t.value.index)
         self.coords_adjusted = False
-
-    def default_model(self) -> Model4DSTEM:
-        ds = self.dataset
-        if ds is None:
-            ds_shape = (0, 0, 0, 0)
-        else:
-            ds_shape = ds.shape.to_tuple()
-        return Model4DSTEM.default(ds_shape)
 
     def get_model(self, model_data) -> Model4DSTEM:
         return self.deserialize(model_data["model"][0])
@@ -1186,7 +1199,7 @@ class CoordinateCorrectionLayout:
         result_section = pn.layout.Column(
             self.result_label,
             self.model_table,
-            self.descan_error_table
+            self.descan_error_table,
         )
         return pn.layout.Column(
             self.section_1_label,
