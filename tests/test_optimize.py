@@ -103,7 +103,7 @@ def test_optimize():
         else:
             valdict["val"] = True
             assert_allclose(args, [0, 0])
-            assert model == new_model
+            assert model.normalize_types() == new_model.normalize_types()
             assert_allclose(
                 udf_results[0]["backprojected_sum"].data.astype(bool), obj.astype(bool)
             )

@@ -1,4 +1,4 @@
-from typing import NamedTuple
+from typing import NamedTuple, Self
 from collections import OrderedDict
 
 import jax; jax.config.update("jax_enable_x64", True) # noqa fmt: skip
@@ -679,6 +679,15 @@ class Model4DSTEM:
         return self.derive(
             camera_length=camera_length,
             descan_error=new_de,
+        )
+
+    def invert_focus(self) -> Self:
+        return self.derive(
+            overfocus=-self.overfocus
+        ).adjust_detector_rotation(
+            detector_rotation=self.detector_rotation + sym.pi
+        ).adjust_camera_length(
+            camera_length=self.camera_length + 2 * self.overfocus
         )
 
 

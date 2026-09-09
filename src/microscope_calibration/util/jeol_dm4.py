@@ -117,7 +117,7 @@ class CalibratedJEOLDM4(AbstractCalibratedDataset):
         for attr in model_attrs:
             old_val = getattr(old_model, attr)
             new_val = getattr(new_model, attr)
-            if not np.allclose(old_val, new_val):
+            if not np.allclose(old_val, new_val, rtol=1e-5, atol=1e-15):
                 model[attr] = (old_val, new_val)
 
         descan_error_attrs = list(DescanError.__annotations__.keys())
@@ -125,7 +125,7 @@ class CalibratedJEOLDM4(AbstractCalibratedDataset):
         for attr in descan_error_attrs:
             old_val = getattr(old_model.descan_error, attr)
             new_val = getattr(new_model.descan_error, attr)
-            if not np.allclose(old_val, new_val, rtol=1e-5):
+            if not np.allclose(old_val, new_val, rtol=1e-5, atol=1e-15):
                 descan_error[attr] = (old_val, new_val)
 
         return {
@@ -227,7 +227,8 @@ def derive_model_relative_dm4(old_dm4: fileDM, new_dm4: fileDM, model: Model4DST
         scan_rotation=(
             model.scan_rotation + new_valmodel.scan_rotation - old_valmodel.scan_rotation
         ),
-        # FIXME check direction
+        # Stage Z points up, meaning at constant focus
+        # it reduces overfocus
         # TODO also include focus
-        overfocus=model.overfocus + (new_z - old_z).to('m').magnitude
+        overfocus=model.overfocus - (new_z - old_z).to('m').magnitude
     )
