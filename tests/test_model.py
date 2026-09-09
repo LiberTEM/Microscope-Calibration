@@ -1,5 +1,5 @@
 import pytest
-from numpy.testing import assert_allclose
+from numpy.testing import assert_allclose, assert_equal
 
 import jax; jax.config.update("jax_enable_x64", True)  # noqa fmt: skip
 
@@ -14,7 +14,7 @@ from temgym_core.propagator import Propagator
 from temgym_core.ray import Ray
 from temgym_core.source import Source
 
-from microscope_calibration.common.model import Model4DSTEM
+from microscope_calibration.common.model import Model4DSTEM, lambdify_trace_for
 from microscope_calibration.util.sympy import lambdify
 
 
@@ -994,8 +994,7 @@ def test_jax_smoke():
     jax.jacobian(test_func)(sample)
 
 
-def measure_descan_deviation(model, target_model):
-    distances = []
+def assert_no_descan_deviation(model, target_model):
 
     @lambdify(modules=np)
     def distance(scan_y, scan_x, cl):
@@ -1023,151 +1022,21 @@ def measure_descan_deviation(model, target_model):
     for scan_y in (0, 1):
         for scan_x in (0, 1):
             for cl in (0, 1):
-                distances.append(distance(scan_y=scan_y, scan_x=scan_x, cl=cl))
-    return np.linalg.norm(np.array(distances))
+                print(scan_y, scan_x, cl)
+                assert_allclose(0, distance(scan_y=scan_y, scan_x=scan_x, cl=cl), atol=1e-12)
 
 
-def test_adjust_scan_rotation(random_model: Model4DSTEM):
-    scan_rotation = np.random.uniform(-sym.pi, sym.pi)
-    modified = random_model.adjust_scan_rotation(
-        scan_rotation=scan_rotation,
-    )
-    print(random_model, scan_rotation, modified)
-    assert_allclose(
-        0,
-        measure_descan_deviation(
-            random_model,
-            modified,
-        ),
-        atol=1e-12,
-    )
-    assert modified.scan_rotation == scan_rotation
-
-
-def test_adjust_scan_pixel_pitch(random_model):
-    scan_pixel_pitch = np.random.uniform(0.0001, 2)
-    modified = random_model.adjust_scan_pixel_pitch(
-        scan_pixel_pitch=scan_pixel_pitch,
-    )
-    print(random_model, scan_pixel_pitch, modified)
-    assert_allclose(
-        0,
-        measure_descan_deviation(
-            random_model,
-            modified,
-        ),
-        atol=1e-12,
-    )
-    assert modified.scan_pixel_pitch == scan_pixel_pitch
-
-
-def test_adjust_scan_center(random_model):
-    scan_center = PixelYX(
-        y=np.random.uniform(-10, 10),
-        x=np.random.uniform(-10, 10),
-    )
-    modified = random_model.adjust_scan_center(
-        scan_center=scan_center,
-    )
-    print(random_model, scan_center, modified)
-    assert_allclose(
-        0,
-        measure_descan_deviation(
-            random_model,
-            modified,
-        ),
-        atol=1e-12,
-    )
-    assert modified.scan_center == scan_center
-
-
-def test_adjust_detector_rotation(random_model):
-    detector_rotation = np.random.uniform(-sym.pi, sym.pi)
-    modified = random_model.adjust_detector_rotation(
-        detector_rotation=detector_rotation,
-    )
-    print(random_model, detector_rotation, modified)
-    assert_allclose(
-        0,
-        measure_descan_deviation(
-            random_model,
-            modified,
-        ),
-        atol=1e-12,
-    )
-    assert modified.detector_rotation == detector_rotation
-
-
-def test_adjust_flip_y(random_model):
-    for flip_factor in (-1.0, 1.0):
-        modified = random_model.adjust_flip_factor(
-            flip_factor=flip_factor,
-        )
-        print(random_model, flip_factor, modified)
-        assert_allclose(
-            0,
-            measure_descan_deviation(
-                random_model,
-                modified,
-            ),
-            atol=1e-12,
-        )
-        assert modified.flip_factor == flip_factor
-
-
-def test_adjust_detector_center(random_model):
-    detector_center = PixelYX(
-        y=np.random.uniform(-10, 10),
-        x=np.random.uniform(-10, 10),
-    )
-    modified = random_model.adjust_detector_center(
-        detector_center=detector_center,
-    )
-    print(random_model, detector_center, modified)
-    assert_allclose(
-        0,
-        measure_descan_deviation(
-            random_model,
-            modified,
-        ),
-        atol=1e-12,
-    )
-    assert modified.detector_center == detector_center
-
-
-def test_adjust_detector_pixel_pitch(random_model):
-    detector_pixel_pitch = np.random.uniform(0.0001, 2)
-    modified = random_model.adjust_detector_pixel_pitch(
-        detector_pixel_pitch=detector_pixel_pitch,
-    )
-    print(random_model, detector_pixel_pitch, modified)
-    assert_allclose(
-        0,
-        measure_descan_deviation(
-            random_model,
-            modified,
-        ),
-        atol=1e-12,
-    )
-    assert modified.detector_pixel_pitch == detector_pixel_pitch
-
-
-def test_adjust_camera_length(random_model):
-    camera_length = np.random.uniform(0.0001, 2)
-    modified = random_model.adjust_camera_length(camera_length)
-    ratio = modified.camera_length / random_model.camera_length
-    print(random_model, camera_length, modified)
-
-    distances = []
+def assert_no_descan_deviation_cl(model, target_model):
+    ratio = target_model.camera_length / model.camera_length
 
     @lambdify(modules=np)
     def distance(scan_y, scan_x, cl):
-        ref_model = random_model.derive(camera_length=cl)
+        ref_model = model.derive(camera_length=cl)
         ref = ref_model.trace(
             scan_pos=PixelYX(y=scan_y, x=scan_x), source_dy=0.0, source_dx=0.0
         )
         # Scale by `ratio`
-        opt_model = modified.derive(
+        opt_model = target_model.derive(
             camera_length=cl * ratio,
         )
         opt = opt_model.trace(
@@ -1185,6 +1054,142 @@ def test_adjust_camera_length(random_model):
     for scan_y in (0, 1):
         for scan_x in (0, 1):
             for cl in (0, 1):
-                distances.append(distance(scan_y=scan_y, scan_x=scan_x, cl=cl))
-    assert_allclose(0, np.linalg.norm(distances), atol=1e-12)
+                print(scan_y, scan_x, cl)
+                assert_allclose(0, distance(scan_y=scan_y, scan_x=scan_x, cl=cl), atol=1e-12)
+
+
+def test_adjust_scan_rotation(random_model: Model4DSTEM):
+    scan_rotation = np.random.uniform(-sym.pi, sym.pi)
+    modified = random_model.adjust_scan_rotation(
+        scan_rotation=scan_rotation,
+    )
+    print(random_model, scan_rotation, modified)
+    assert_no_descan_deviation(random_model, modified)
+    assert modified.scan_rotation == scan_rotation
+
+
+def test_adjust_scan_pixel_pitch(random_model):
+    scan_pixel_pitch = np.random.uniform(0.0001, 2)
+    modified = random_model.adjust_scan_pixel_pitch(
+        scan_pixel_pitch=scan_pixel_pitch,
+    )
+    print(random_model, scan_pixel_pitch, modified)
+    assert_no_descan_deviation(random_model, modified)
+    assert modified.scan_pixel_pitch == scan_pixel_pitch
+
+
+def test_adjust_scan_center(random_model):
+    scan_center = PixelYX(
+        y=np.random.uniform(-10, 10),
+        x=np.random.uniform(-10, 10),
+    )
+    modified = random_model.adjust_scan_center(
+        scan_center=scan_center,
+    )
+    print(random_model, scan_center, modified)
+    assert_no_descan_deviation(random_model, modified)
+    assert modified.scan_center == scan_center
+
+
+def test_adjust_detector_rotation(random_model):
+    detector_rotation = np.random.uniform(-sym.pi, sym.pi)
+    modified = random_model.adjust_detector_rotation(
+        detector_rotation=detector_rotation,
+    )
+    print(random_model, detector_rotation, modified)
+    assert_no_descan_deviation(random_model, modified)
+    assert modified.detector_rotation == detector_rotation
+
+
+def test_adjust_flip_y(random_model):
+    for flip_factor in (-1.0, 1.0):
+        modified = random_model.adjust_flip_factor(
+            flip_factor=flip_factor,
+        )
+        print(random_model, flip_factor, modified)
+        assert_no_descan_deviation(random_model, modified)
+        assert modified.flip_factor == flip_factor
+
+
+def test_adjust_detector_center(random_model):
+    detector_center = PixelYX(
+        y=np.random.uniform(-10, 10),
+        x=np.random.uniform(-10, 10),
+    )
+    modified = random_model.adjust_detector_center(
+        detector_center=detector_center,
+    )
+    print(random_model, detector_center, modified)
+    assert_no_descan_deviation(random_model, modified)
+    assert modified.detector_center == detector_center
+
+
+def test_adjust_detector_pixel_pitch(random_model):
+    detector_pixel_pitch = np.random.uniform(0.0001, 2)
+    modified = random_model.adjust_detector_pixel_pitch(
+        detector_pixel_pitch=detector_pixel_pitch,
+    )
+    print(random_model, detector_pixel_pitch, modified)
+    assert_no_descan_deviation(random_model, modified)
+    assert modified.detector_pixel_pitch == detector_pixel_pitch
+
+
+def test_adjust_camera_length(random_model):
+    camera_length = np.random.uniform(0.0001, 2)
+    modified = random_model.adjust_camera_length(camera_length)
+    print(random_model, camera_length, modified)
+
+    assert_no_descan_deviation_cl(random_model, modified)
     assert modified.camera_length == camera_length
+
+
+def test_invert_focus(random_model):
+    # model = Model4DSTEM.default().derive(
+    #     overfocus=0.1,
+    #     descan_error=DescanError().derive(syo_pxi=0.1),
+    # )
+    model = random_model
+    trace = lambdify_trace_for(np)
+    inverted_model = model.invert_focus().normalize_types()
+    assert_equal(model.overfocus, -inverted_model.overfocus)
+    assert_allclose(
+        np.abs(model.detector_rotation - inverted_model.detector_rotation),
+        np.pi,
+        atol=1e-12
+    )
+    print(model)
+
+    assert_no_descan_deviation_cl(model, inverted_model)
+
+    def slope(res, center, dim1, dim2):
+        delta1 = (
+            getattr(res["detector"].sampling["detector_px"], dim1)
+            - getattr(center["detector"].sampling["detector_px"], dim1))
+        delta2 = (
+            getattr(res["specimen"].sampling["scan_px"], dim2)
+            - getattr(center["specimen"].sampling["scan_px"], dim2))
+        return delta1 / delta2
+
+    # Check that the ratio between scan coordinate displacement and detector
+    # coordinate displacement between straight beam and sloped beam remains
+    # constant.
+    # That means that the projection from specimen in scan coordinates to
+    # detector pixel coordinates is the same at a given scan position.
+    for scan_pos in ((0, 0), (0, 1), (3, 2)):
+        for dy in (-0.1, .023):
+            for dx in (-.02, -.017):
+                center = trace(
+                    model=model, scan_pos=PixelYX(*scan_pos), source_dy=0., source_dx=0.)
+                inverted_center = trace(
+                    model=model, scan_pos=PixelYX(*scan_pos), source_dy=0., source_dx=0.)
+                res = trace(
+                    model=model, scan_pos=PixelYX(*scan_pos), source_dy=dy, source_dx=dx)
+                inv_res = trace(
+                    model=inverted_model, scan_pos=PixelYX(*scan_pos), source_dy=dy, source_dx=dx)
+                for dim1 in 'x', 'y':
+                    for dim2 in 'x', 'y':
+                        assert_allclose(
+                            slope(res, center, dim1, dim2),
+                            slope(inv_res, inverted_center, dim1, dim2),
+                            atol=1e-12,
+                        )
