@@ -398,6 +398,10 @@ class CoordinateCorrectionLayout:
         model_dataframe = pd.DataFrame(columns=self.model_columns)
         descan_error_dataframe = pd.DataFrame(columns=self.descan_error_columns)
 
+        self.invert_focus_button = pn.widgets.Button(
+            name="Invert sign of overfocus"
+        )
+
         self.model_table = pn.widgets.Tabulator(
             model_dataframe,
             # See https://github.com/holoviz/panel/pull/8256
@@ -471,6 +475,7 @@ class CoordinateCorrectionLayout:
         self.coord_apply_button.on_click(lambda e: self.perform_coord_update())
         self.coord_clear_button.on_click(lambda e: self.coord_drop())
         self.optimize_button.on_click(lambda e: self.sharpen())
+        self.invert_focus_button.on_click(lambda e: self.invert_focus())
 
     @staticmethod
     def adjust_layout(plot, shape):
@@ -966,6 +971,9 @@ class CoordinateCorrectionLayout:
             self.update_with_force(self.model_model, self.model_update(new_model))
             self.coords_adjusted = True
 
+    def invert_focus(self):
+        self.update_with_force(self.model_model, self.model_update(self.model.invert_focus()))
+
     def _push(self):
         self.nav_fig.push(
             self.pick_fig,
@@ -1198,6 +1206,7 @@ class CoordinateCorrectionLayout:
         )
         result_section = pn.layout.Column(
             self.result_label,
+            self.invert_focus_button,
             self.model_table,
             self.descan_error_table,
         )
