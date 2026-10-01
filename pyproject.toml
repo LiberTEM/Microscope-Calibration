@@ -9,30 +9,18 @@ license = {file = "LICENSE"}
 keywords = ["microscopy", "LiberTEM", "TEM", "STEM"]
 requires-python = ">=3.14"
 dynamic = ["version", "readme"]
+# Stripped down to only support model.py
+# TODO strategy on how to integrate with other SW without pulling in
+# all scientific Python packages
 dependencies = [
-    "numpy",
-    "libertem",
-    "typing-extensions",
-    # "temgym_core @ https://github.com/TemGym/TemGymCore/archive/refs/heads/main.zip",
-    # Minimum constraints of numba for all Python versions we support
-    # See https://numba.readthedocs.io/en/stable/release-notes-overview.html
-    "numba>=0.55;python_version < '3.11'",
-    "numba>=0.57;python_version < '3.12'",
-    "numba>=0.59;python_version < '3.13'",
-    # for any future Python release, constrain numba to a recent version,
-    # otherwise, version resolution might try to install an ancient version
-    # that isn't constrained properly:
-    "numba>=0.61;python_version >= '3.13'",
-    "scikit-image",
-    "scipy",
     "jax",
-    "optax",
-    "optimistix",
+    "jax-dataclasses",
+    # FIXME change to release TemGymCore when possible
+    "temgym-core@git+https://github.com/uellue/TemGymCore.git@fixes",
     "sympy",
     "wrapt",
     "frozendict",
     "flax",
-    "libertem-blobfinder"
 ]
 classifiers = [
     "Programming Language :: Python :: 3",
@@ -48,8 +36,34 @@ repository = "https://github.com/LiberTEM/Microscope-Calibration"
 
 [project.optional-dependencies]
 test = ["pytest", "pytest-cov"]
-examples = ["ipywidgets", "libertem[bqplot]", "jupyter-ui-poll"]
-diffraction = ["pycifrw", "diffpy.structure", "orix", "diffsims"]
+common = [
+    "libertem",
+    # Minimum constraints of numba for all Python versions we support
+    # See https://numba.readthedocs.io/en/stable/release-notes-overview.html
+    "numba>=0.55;python_version < '3.11'",
+    "numba>=0.57;python_version < '3.12'",
+    "numba>=0.59;python_version < '3.13'",
+    # for any future Python release, constrain numba to a recent version,
+    # otherwise, version resolution might try to install an ancient version
+    # that isn't constrained properly:
+    "numba>=0.61;python_version >= '3.13'",
+    "scipy",
+    "scikit-image",
+    "optax",
+    "optimistix",
+    "numpy",
+]
+diffraction = [
+    "pycifrw",
+    "diffpy.structure",
+    "orix",
+    # Until https://github.com/pyxem/diffsims/pull/245/ is released
+    "diffsims@git+https://github.com/pyxem/diffsims"
+]
+gui = [
+    "libertem-blobfinder", "libertem-ui", "ipywidgets",
+    # Also requires diffraction, TODO how to handle?
+]
 
 [tool.setuptools.dynamic]
 version = {attr = "microscope_calibration.__version__"}
