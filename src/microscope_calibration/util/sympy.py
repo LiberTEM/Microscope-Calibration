@@ -6,10 +6,14 @@ from numbers import Number
 from typing import Any, TypeVar
 
 import jax
+
+jax.config.update("jax_enable_x64", True)  # noqa: E702
+# ruff: disable[E402]
 import sympy as sym
 import wrapt
 from frozendict import frozendict
 from jax.errors import TracerBoolConversionError
+# ruff: enable[E402]
 
 T = TypeVar("T")
 
@@ -62,9 +66,7 @@ def is_sympy(expr: Any) -> bool:
     return isinstance(expr, (sym.Basic, sym.MatrixBase, sym.NDimArray))
 
 
-def symbol_maker(
-    params_cls: type[T], postfix: str | None = None, recurse_for: Container = ()
-) -> T:
+def symbol_maker(params_cls: type[T], postfix: str | None = None, recurse_for: Container = ()) -> T:
     """
     Declare sympy symbols for each attribute of a given parameter class.
 
@@ -207,9 +209,7 @@ def normalized_args(wrapped, args, kwargs):
 
 
 @cache
-def _outer_lambdify(
-    wrapped, modules, sample_args, sample_kwargs, sym_kwargs, recurse_for
-):
+def _outer_lambdify(wrapped, modules, sample_args, sample_kwargs, sym_kwargs, recurse_for):
     sig = inspect.signature(wrapped)
     spec = inspect.getfullargspec(wrapped)
     partial_bound = sig.bind_partial(*sample_args, **sample_kwargs)
@@ -218,9 +218,7 @@ def _outer_lambdify(
     for arg in spec.args:
         if arg not in partial_bound.arguments:
             cls = spec.annotations.get(arg, float)
-            generated_args[arg] = symbol_maker(
-                cls, postfix=arg, recurse_for=recurse_for
-            )
+            generated_args[arg] = symbol_maker(cls, postfix=arg, recurse_for=recurse_for)
     partial_bound.arguments.update(generated_args)
     normalized = normalized_args(wrapped, args=(), kwargs=partial_bound.arguments)
     f = lambdify_tree(normalized, wrapped(**normalized), modules=modules, **sym_kwargs)

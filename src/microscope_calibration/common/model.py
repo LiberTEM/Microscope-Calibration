@@ -1,7 +1,10 @@
 from typing import NamedTuple, Self
 from collections import OrderedDict
 
-import jax; jax.config.update("jax_enable_x64", True) # noqa fmt: skip
+import jax
+
+jax.config.update("jax_enable_x64", True)  # noqa: E702
+# ruff: disable[E402]
 import jax_dataclasses as jdc
 import sympy as sym
 from jax.errors import TracerBoolConversionError
@@ -13,6 +16,7 @@ from temgym_core.run import run_iter
 from temgym_core.source import PointSource, Source
 
 from microscope_calibration.util.sympy import lambdify
+# ruff: enable[E402]
 
 
 def equals(ray1: Ray, ray2: Ray) -> bool:
@@ -82,7 +86,7 @@ class Model4DSTEM:
 
     @classmethod
     def default(cls, dataset_shape: tuple[int, int, int, int] = (0, 0, 0, 0)):
-        '''
+        """
         Model with somewhat sensible default values for a given dataset shape
 
         * Set beam center to scan and detector center
@@ -91,7 +95,7 @@ class Model4DSTEM:
         * 1 um scan step
         * 50 um detector pixel pitch
         * No descan error, rotation, or flip
-        '''
+        """
         assert len(dataset_shape) == 4
         nav_shape = dataset_shape[:2]
         sig_shape = dataset_shape[2:4]
@@ -139,17 +143,11 @@ class Model4DSTEM:
         return Model4DSTEM(
             overfocus=overfocus if overfocus is not None else self.overfocus,
             scan_pixel_pitch=(
-                scan_pixel_pitch
-                if scan_pixel_pitch is not None
-                else self.scan_pixel_pitch
+                scan_pixel_pitch if scan_pixel_pitch is not None else self.scan_pixel_pitch
             ),
             scan_center=scan_center if scan_center is not None else self.scan_center,
-            scan_rotation=scan_rotation
-            if scan_rotation is not None
-            else self.scan_rotation,
-            camera_length=camera_length
-            if camera_length is not None
-            else self.camera_length,
+            scan_rotation=scan_rotation if scan_rotation is not None else self.scan_rotation,
+            camera_length=camera_length if camera_length is not None else self.camera_length,
             detector_pixel_pitch=(
                 detector_pixel_pitch
                 if detector_pixel_pitch is not None
@@ -159,15 +157,11 @@ class Model4DSTEM:
                 detector_center if detector_center is not None else self.detector_center
             ),
             detector_rotation=(
-                detector_rotation
-                if detector_rotation is not None
-                else self.detector_rotation
+                detector_rotation if detector_rotation is not None else self.detector_rotation
             ),
             semiconv=semiconv if semiconv is not None else self.semiconv,
             flip_factor=flip_factor if flip_factor is not None else self.flip_factor,
-            descan_error=descan_error
-            if descan_error is not None
-            else self.descan_error,
+            descan_error=descan_error if descan_error is not None else self.descan_error,
         )
 
     def normalize_types(self) -> Model4DSTEM:
@@ -682,12 +676,10 @@ class Model4DSTEM:
         )
 
     def invert_focus(self) -> Self:
-        return self.derive(
-            overfocus=-self.overfocus
-        ).adjust_detector_rotation(
-            detector_rotation=self.detector_rotation + sym.pi
-        ).adjust_camera_length(
-            camera_length=self.camera_length + 2 * self.overfocus
+        return (
+            self.derive(overfocus=-self.overfocus)
+            .adjust_detector_rotation(detector_rotation=self.detector_rotation + sym.pi)
+            .adjust_camera_length(camera_length=self.camera_length + 2 * self.overfocus)
         )
 
 

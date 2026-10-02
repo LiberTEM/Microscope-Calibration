@@ -1,31 +1,27 @@
-import pytest
-from numpy.testing import assert_allclose
-
 import numpy as np
+import pytest
 from libertem.api import Context
+from numpy.testing import assert_allclose
 
 from microscope_calibration.common.model import Model4DSTEM, PixelYX
 from microscope_calibration.ui import CalibratedDataset, CoordinateCorrectionLayout
 
 
 @pytest.mark.parametrize(
-    'kwargs', [
+    "kwargs",
+    [
         {},
-        {'nav_mode': 'point', 'sig_mode': 'lin'},
-        {'nav_mode': 'sumsig', 'sig_mode': 'log', 'twothetas': np.array((0.01, 0.02, 0.03))},
-    ]
+        {"nav_mode": "point", "sig_mode": "lin"},
+        {"nav_mode": "sumsig", "sig_mode": "log", "twothetas": np.array((0.01, 0.02, 0.03))},
+    ],
 )
 def test_smoke(kwargs):
-    ctx = Context.make_with('inline')
+    ctx = Context.make_with("inline")
     data = np.zeros((4, 5, 6, 7))
-    ds = ctx.load('memory', data=data)
+    ds = ctx.load("memory", data=data)
     calib_ds = CalibratedDataset(dataset=ds, model=Model4DSTEM.default(dataset_shape=ds.shape))
 
-    _ = CoordinateCorrectionLayout(
-        calibrated_dataset=calib_ds,
-        ctx=ctx,
-        **kwargs
-    ).layout
+    _ = CoordinateCorrectionLayout(calibrated_dataset=calib_ds, ctx=ctx, **kwargs).layout
 
 
 class MockEvent(PixelYX):
@@ -33,21 +29,18 @@ class MockEvent(PixelYX):
 
 
 @pytest.mark.parametrize(
-    'kwargs', [
-        {'nav_mode': 'sumsig', 'sig_mode': 'log', 'twothetas': np.array((0.01, 0.02, 0.03))},
-    ]
+    "kwargs",
+    [
+        {"nav_mode": "sumsig", "sig_mode": "log", "twothetas": np.array((0.01, 0.02, 0.03))},
+    ],
 )
 def test_events(kwargs):
-    ctx = Context.make_with('inline')
+    ctx = Context.make_with("inline")
     data = np.zeros((4, 5, 6, 7))
-    ds = ctx.load('memory', data=data)
+    ds = ctx.load("memory", data=data)
     calib_ds = CalibratedDataset(dataset=ds, model=Model4DSTEM.default(dataset_shape=ds.shape))
 
-    layout = CoordinateCorrectionLayout(
-        calibrated_dataset=calib_ds,
-        ctx=ctx,
-        **kwargs
-    )
+    layout = CoordinateCorrectionLayout(calibrated_dataset=calib_ds, ctx=ctx, **kwargs)
 
     _ = layout.layout
 

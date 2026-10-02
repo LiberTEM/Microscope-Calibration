@@ -1,9 +1,8 @@
-from numpy.testing import assert_equal, assert_almost_equal, assert_allclose
-
-
 import os
-from diffpy.structure import load_structure
+
 import numpy as np
+from diffpy.structure import load_structure
+from numpy.testing import assert_allclose, assert_almost_equal, assert_equal
 
 from microscope_calibration.util.diffraction import get_twothetas
 
@@ -26,7 +25,7 @@ def test_twothetas(request):
         26.88,  # 133, 0.0934 nm
     ]
 
-    cif_path = os.path.join(os.path.dirname(request.path), 'AuEntryWithCollCode163723.cif')
+    cif_path = os.path.join(os.path.dirname(request.path), "AuEntryWithCollCode163723.cif")
 
     structure = load_structure(cif_path)
 
@@ -66,9 +65,9 @@ def test_twothetas(request):
     assert_almost_equal(without_zero[0], np.round(expected_111_twotheta, decimals=5), decimal=4)
 
     if len(without_zero) > len(corrected_au):
-        without_zero = without_zero[:len(corrected_au)]
+        without_zero = without_zero[: len(corrected_au)]
     elif len(without_zero) < len(corrected_au):
-        corrected_au = corrected_au[:len(without_zero)]
+        corrected_au = corrected_au[: len(without_zero)]
 
     # convert reference to radian
     assert_allclose(corrected_au / 1000, without_zero, rtol=5e-3)

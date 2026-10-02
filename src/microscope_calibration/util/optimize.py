@@ -1,13 +1,14 @@
-from typing import NamedTuple
+from typing import NamedTuple, TYPE_CHECKING
 
+import jax
+
+jax.config.update("jax_enable_x64", True)  # noqa: E702
+# ruff: disable[E402]
 import numpy as np
 from scipy.optimize import shgo
 from skimage.measure import blur_effect
-from typing import TYPE_CHECKING
 from collections.abc import Callable
 from collections.abc import Iterable
-
-import jax; jax.config.update("jax_enable_x64", True)  # noqa fmt: skip
 
 import jax.numpy as jnp
 import optimistix
@@ -18,8 +19,8 @@ from microscope_calibration.common.model import (
     PixelYX,
     lambdify_trace_for,
 )
-
 from microscope_calibration.util.sympy import lambdify
+# ruff: enable[E402]
 
 if TYPE_CHECKING:
     from libertem.api import Context
@@ -114,9 +115,7 @@ def make_overfocus_loss_function(
         transformed_rotation, transformed_overfocus = args
         rotation = transformed_rotation / rotation_scale + rotation_diff
         overfocus = transformed_overfocus / overfocus_scale + overfocus_diff
-        return model.derive(
-            overfocus=overfocus
-        ).adjust_detector_rotation(
+        return model.derive(overfocus=overfocus).adjust_detector_rotation(
             detector_rotation=rotation / 180 * np.pi,
         )
 
@@ -138,9 +137,7 @@ def make_overfocus_loss_function(
         model = make_new_model(args)
         # Hack to make parameter update work
         overfocus_udf.params.overfocus_model["model"] = model
-        res = ctx.run_udf(
-            dataset=dataset, udf=[overfocus_udf] + list(extra_udfs), **kwargs
-        )
+        res = ctx.run_udf(dataset=dataset, udf=[overfocus_udf] + list(extra_udfs), **kwargs)
         blur = blur_function(res[0]["backprojected_sum"].data)
         if callback is not None:
             callback(args, overfocus_udf.params.overfocus_model["model"], res, blur)
@@ -197,9 +194,7 @@ def _cl_loss(y, args: _CLArgs):
 # FIXME include wavelength calculation etc for more practical
 # input parameters
 def solve_camera_length(ref_model: Model4DSTEM, diffraction_angle, radius_px):
-    args = _CLArgs(
-        radius_px=radius_px, test_dx=jnp.tan(diffraction_angle), ref_model=ref_model
-    )
+    args = _CLArgs(radius_px=radius_px, test_dx=jnp.tan(diffraction_angle), ref_model=ref_model)
     start = jnp.array((ref_model.camera_length,))
     opt_res = optimistix.least_squares(
         fn=_cl_loss, args=args, solver=optimistix.BFGS(atol=1e-12, rtol=1e-12), y0=start
@@ -296,12 +291,8 @@ def _de_full_loss(y, args: _DEFullArgs):
                 dxdy = reg[1, 1]
                 dydx = reg[2, 0]
                 dxdx = reg[2, 1]
-                det_y = opt_model.detector_center.y + (
-                    dy + dydy * scan_y + dydx * scan_x
-                )
-                det_x = opt_model.detector_center.x + (
-                    dx + dxdy * scan_y + dxdx * scan_x
-                )
+                det_y = opt_model.detector_center.y + (dy + dydy * scan_y + dydx * scan_x)
+                det_x = opt_model.detector_center.x + (dx + dxdy * scan_y + dxdx * scan_x)
                 res = trace(
                     opt_model,
                     scan_pos=PixelYX(y=scan_y, x=scan_x),
@@ -545,9 +536,7 @@ def solve_tilt_descan_error(ref_model: Model4DSTEM, regression: CoMRegression):
 
     # Bring descan error back to original coordinate system
     res_model = (
-        aligned_model.derive(
-            descan_error=_tilt_descan(aligned_model.descan_error, opt_res.value)
-        )
+        aligned_model.derive(descan_error=_tilt_descan(aligned_model.descan_error, opt_res.value))
         .adjust_detector_rotation(ref_model.detector_rotation)
         .adjust_scan_rotation(ref_model.scan_rotation)
         .adjust_flip_factor(ref_model.flip_factor)
@@ -565,9 +554,7 @@ class _DETiltPointArgs(NamedTuple):
 
 @jax.jit
 def _de_tilt_point_loss(y, args: _DETiltPointArgs):
-    opt_model = args.model.derive(
-        descan_error=_tilt_descan(de=args.model.descan_error, y=y)
-    )
+    opt_model = args.model.derive(descan_error=_tilt_descan(de=args.model.descan_error, y=y))
 
     distances = []
     for scan_y, scan_x, det_y, det_x in args.points:
@@ -621,13 +608,18 @@ class _CoordPointArgs(NamedTuple):
 @jax.jit
 @lambdify(recurse_for=(Model4DSTEM, PixelYX, DescanError), modules=jnp)
 def _coords_point_modelupdate(
-        model: Model4DSTEM, overfocus, detector_rotation, flip_factor) -> Model4DSTEM:
-    return model.derive(
-        overfocus=overfocus,
-    ).adjust_detector_rotation(
-        detector_rotation=detector_rotation,
-    ).adjust_flip_factor(
-        flip_factor=flip_factor,
+    model: Model4DSTEM, overfocus, detector_rotation, flip_factor
+) -> Model4DSTEM:
+    return (
+        model.derive(
+            overfocus=overfocus,
+        )
+        .adjust_detector_rotation(
+            detector_rotation=detector_rotation,
+        )
+        .adjust_flip_factor(
+            flip_factor=flip_factor,
+        )
     )
 
 
@@ -650,10 +642,8 @@ def _coords_point_loss(y, args: _CoordPointArgs):
     detector_distances = []
     specimen_distances = []
     for i, (scan_y, scan_x, spec_y, spec_x, det_y, det_x) in enumerate(args.points):
-        dy, dx = tilts[2 * i: 2 * i + 2]
-        res = trace(
-            opt_model, scan_pos=PixelYX(y=scan_y, x=scan_x), source_dx=dx, source_dy=dy
-        )
+        dy, dx = tilts[2 * i : 2 * i + 2]
+        res = trace(opt_model, scan_pos=PixelYX(y=scan_y, x=scan_x), source_dx=dx, source_dy=dy)
         detector_distances.extend(
             (
                 res["detector"].sampling["detector_px"].y - det_y,
@@ -669,9 +659,7 @@ def _coords_point_loss(y, args: _CoordPointArgs):
 
     # Strongly encourage flip_factor in (-1., 1.)
     aspect = jnp.array((jnp.abs(jnp.abs(flip_factor) - 1) * 100,))
-    return jnp.concatenate(
-        (jnp.array(detector_distances), jnp.array(specimen_distances), aspect)
-    )
+    return jnp.concatenate((jnp.array(detector_distances), jnp.array(specimen_distances), aspect))
 
 
 def solve_coords_points(ref_model: Model4DSTEM, points: jnp.ndarray):
@@ -717,9 +705,7 @@ def _hit_specimen_loss(y, args: _HitSpecimenArgs):
 
     res = trace(opt_model, scan_pos=args.scan_pos, source_dx=dx, source_dy=dy)
     specimen_px = res["specimen"].sampling["scan_px"]
-    return jnp.array(
-        (specimen_px.x - args.specimen_px.x, specimen_px.y - args.specimen_px.y)
-    )
+    return jnp.array((specimen_px.x - args.specimen_px.x, specimen_px.y - args.specimen_px.y))
 
 
 class SlopeYX(NamedTuple):

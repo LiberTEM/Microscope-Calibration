@@ -1,6 +1,9 @@
 from collections.abc import Callable
 
-import jax; jax.config.update("jax_enable_x64", True)  # noqa fmt: skip
+import jax
+
+jax.config.update("jax_enable_x64", True)  # noqa: E702
+# ruff: disable[E402]
 
 import jax.numpy as jnp
 import numba
@@ -16,6 +19,7 @@ from microscope_calibration.common.model import (
     lambdify_trace_for,
 )
 from microscope_calibration.util.sympy import lambdify
+# ruff: enable[E402]
 
 # Define here to facilitate mocking in order to test
 # the code that checks for float64 support in JAX as a probable cause
@@ -40,9 +44,7 @@ def _do_lstsq(input_samples, output_samples):
 
     # FIXME include test also based on singular values
     if len(residuals) != output_samples.shape[1]:
-        raise FittingError(
-            "Mismatch between residuals and samples, likely ill-posed or sth."
-        )
+        raise FittingError("Mismatch between residuals and samples, likely ill-posed or sth.")
     # Confirm that the solution is exact, in particular that
     # the model is linear
     assert rank == input_samples.shape[1]
@@ -139,9 +141,7 @@ def get_backward_transformation_matrix(
         if specimen_to_image is None:
             spec_px = res["specimen"].sampling["scan_px"]
         else:
-            spec_px = specimen_to_image(
-                CoordXY(x=res["specimen"].ray.x, y=res["specimen"].ray.y)
-            )
+            spec_px = specimen_to_image(CoordXY(x=res["specimen"].ray.x, y=res["specimen"].ray.y))
         input_sample = (scan_pos.y, scan_pos.x, spec_px.y, spec_px.x, 1.0)
         output_sample = (
             res["detector"].sampling["detector_px"].y,
@@ -230,18 +230,11 @@ def project_frame_backwards(frame, source_semiconv, mat, scan_y, scan_x, image_o
                 det_x = project_det_x(image_y, image_x, scan_y, scan_x, mat)
                 det_y = int(np.round(det_y))
                 det_x = int(np.round(det_x))
-                if (
-                    det_y >= 0
-                    and det_y < frame.shape[0]
-                    and det_x >= 0
-                    and det_x < frame.shape[1]
-                ):
+                if det_y >= 0 and det_y < frame.shape[0] and det_x >= 0 and det_x < frame.shape[1]:
                     image_out[image_y, image_x] += frame[det_y, det_x]
 
 
-def get_detector_correction_matrix(
-    rec_model: Model4DSTEM, ref_model: Model4DSTEM | None = None
-):
+def get_detector_correction_matrix(rec_model: Model4DSTEM, ref_model: Model4DSTEM | None = None):
     """
     Calculate a transformation matrix that maps from scan position in scan pixel
     coordinates and output detector pixel coordinates in a reference system to
@@ -374,19 +367,12 @@ def correct_frame(frame, mat, scan_y, scan_x, detector_out):
             det_x = corrected_det_x(det_corr_y, det_corr_x, scan_y, scan_x, mat)
             det_y = int(np.round(det_y))
             det_x = int(np.round(det_x))
-            if (
-                det_y >= 0
-                and det_y < frame.shape[0]
-                and det_x >= 0
-                and det_x < frame.shape[1]
-            ):
+            if det_y >= 0 and det_y < frame.shape[0] and det_x >= 0 and det_x < frame.shape[1]:
                 detector_out[det_corr_y, det_corr_x] += frame[det_y, det_x]
 
 
 @lambdify(recurse_for=(PixelYX, Model4DSTEM, DescanError), modules=jnp)
-def trace_with_diffractor(
-    model: Model4DSTEM, scan_pos: PixelYX, source_dy, source_dx, twotheta
-):
+def trace_with_diffractor(model: Model4DSTEM, scan_pos: PixelYX, source_dy, source_dx, twotheta):
     diffractor = Scanner(
         z=model.overfocus,
         scan_pos_x=0.0,
@@ -442,10 +428,7 @@ def get_primary_beam_radius(model: Model4DSTEM):
 @jax.jit
 def ring_radii(model: Model4DSTEM, twothetas):
     pixel_radii = jnp.array(
-        [
-            get_diffraction_pixel_radius(model=model, twotheta=twotheta)
-            for twotheta in twothetas
-        ]
+        [get_diffraction_pixel_radius(model=model, twotheta=twotheta) for twotheta in twothetas]
     )
     beam_radius = get_primary_beam_radius(model)
     ri = jnp.maximum(pixel_radii - beam_radius, 0)

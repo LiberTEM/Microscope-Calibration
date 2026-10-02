@@ -68,3 +68,13 @@ gui = [
 [tool.setuptools.dynamic]
 version = {attr = "microscope_calibration.__version__"}
 readme = {file = ["README.md"], content-type="text/markdown"}
+
+[tool.ruff]
+
+line-length = 100
+extend-exclude = ["prototypes"]
+force-exclude = true
+
+[tool.ruff.lint]
+select = ["E", "F", "B"]
+ignore = ["E24", "E226", "E241", "E242", "B007"]
