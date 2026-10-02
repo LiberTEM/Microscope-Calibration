@@ -37,7 +37,7 @@ class BaseCorrectionUDF(UDF):
         if overfocus_model["model"] != ref_model:
             back_mat = self._back_mat(rec_model=overfocus_model["model"])
             corr_mat = self._corr_mat(rec_model=overfocus_model["model"])
-        return super().__init__(
+        super().__init__(
             *args,
             overfocus_model=overfocus_model,
             back_mat=back_mat,
