@@ -15,7 +15,7 @@ from microscope_calibration.common.stem_overfocus import (
     get_detector_correction_matrix,
     project_frame_backwards,
 )
-from microscope_calibration.udf.stem_overfocus import OverfocusUDF
+from microscope_calibration.udf.stem_overfocus import OverfocusUDF, CorrectedPickUDF
 
 trace = lambdify_trace_for(jax.numpy)
 
@@ -110,3 +110,47 @@ def test_udf():
     assert_allclose(ref_back, res["backprojected_sum"])
     assert_allclose(ref_corr, res["corrected_sum"])
     assert_allclose(ref_point, res["corrected_point"])
+
+    scan_y = 1
+    scan_x = 9
+    roi = ds.roi[scan_y, scan_x]
+    pick_res = ctx.run_udf(
+        dataset=ds, udf=CorrectedPickUDF(overfocus_model={"model": model}), roi=roi
+    )
+
+    assert pick_res["corrected"].raw_data.shape[0] == np.count_nonzero(roi)
+    assert pick_res["backprojected"].raw_data.shape[0] == np.count_nonzero(roi)
+
+    pick_ref_corrected = np.zeros_like(data[scan_y, scan_x])
+    pick_ref_back = np.zeros_like(data[:, :, 0, 0])
+    correct_frame(
+        frame=data[scan_y, scan_x],
+        mat=corr_mat,
+        scan_y=scan_y,
+        scan_x=scan_x,
+        detector_out=pick_ref_corrected,
+    )
+    project_frame_backwards(
+        frame=data[scan_y, scan_x],
+        source_semiconv=model.semiconv,
+        mat=back_mat,
+        scan_y=scan_y,
+        scan_x=scan_x,
+        image_out=pick_ref_back,
+    )
+
+    assert_allclose(pick_res["corrected"].raw_data[0], pick_ref_corrected)
+    assert_allclose(pick_res["backprojected"].raw_data[0], pick_ref_back)
+
+
+def test_corrected_pick_delayed():
+    ctx = Context.make_with("delayed")
+    ref_ctx = Context.make_with("inline")
+    data = np.random.random((2, 3, 4, 5))
+    ds = ctx.load("memory", data=data)
+    udf = CorrectedPickUDF(overfocus_model={"model": Model4DSTEM.default(dataset_shape=ds.shape)})
+    res = ctx.run_udf(dataset=ds, udf=udf)
+    ref = ref_ctx.run_udf(dataset=ds, udf=udf)
+    for key, value in res.items():
+        print(key)
+        assert_allclose(value.delayed_data.compute(), ref[key].data)
