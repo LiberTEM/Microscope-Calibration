@@ -65,7 +65,7 @@ class AbstractCalibratedDataset(ABC):
         raise NotImplementedError()
 
     @abstractmethod
-    def calibrated(self, model: Model4DSTEM) -> "AbstractCalibratedDataset":
+    def calibrated(self, model: Model4DSTEM) -> AbstractCalibratedDataset:
         raise NotImplementedError()
 
 
@@ -82,7 +82,7 @@ class CalibratedDataset(AbstractCalibratedDataset):
     def model(self) -> Model4DSTEM:
         return self._model
 
-    def calibrated(self, model) -> 'CalibratedDataset':
+    def calibrated(self, model) -> CalibratedDataset:
         return CalibratedDataset(dataset=self.dataset, model=model)
 
 

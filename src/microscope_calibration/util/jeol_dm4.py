@@ -83,7 +83,7 @@ class CalibratedJEOLDM4(CalibratedDataset):
                 result[subtag] = value
         return result
 
-    def compare(self, other: "CalibratedJEOLDM4") -> dict:
+    def compare(self, other: CalibratedJEOLDM4) -> dict:
         old_info = self.microscope_info()
         new_info = other.microscope_info()
         tmp_for_keys = old_info.copy()
@@ -124,7 +124,7 @@ class CalibratedJEOLDM4(CalibratedDataset):
             'descan_error': descan_error,
         }
 
-    def calibrated(self, model: Model4DSTEM, ctx: Context | None = None) -> "CalibratedJEOLDM4":
+    def calibrated(self, model: Model4DSTEM, ctx: Context | None = None) -> CalibratedJEOLDM4:
         return self.__class__(
             path=self.path,
             model=model,

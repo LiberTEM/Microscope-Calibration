@@ -34,11 +34,11 @@ trace = lambdify_trace_for(jnp)
 
 def make_overfocus_loss_function(
     model: Model4DSTEM,
-    ctx: "Context",
-    dataset: "DataSet",
-    overfocus_udf: "OverfocusUDF",
+    ctx: Context,
+    dataset: DataSet,
+    overfocus_udf: OverfocusUDF,
     blur_function: Callable | None = None,
-    extra_udfs: Iterable["UDF"] = (),
+    extra_udfs: Iterable[UDF] = (),
     callback: Callable | None = None,
     **kwargs,
 ):

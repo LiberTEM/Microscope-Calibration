@@ -130,7 +130,7 @@ class Model4DSTEM:
         flip_y: bool | None = None,
         flip_factor: float | None = None,
         descan_error: DescanError | None = None,
-    ) -> "Model4DSTEM":
+    ) -> Model4DSTEM:
         if flip_factor is not None:
             assert flip_y is None
         if flip_y is not None:
@@ -170,7 +170,7 @@ class Model4DSTEM:
             else self.descan_error,
         )
 
-    def normalize_types(self) -> "Model4DSTEM":
+    def normalize_types(self) -> Model4DSTEM:
         return self.derive(
             overfocus=float(self.overfocus),
             scan_pixel_pitch=float(self.scan_pixel_pitch),
@@ -427,7 +427,7 @@ class Model4DSTEM:
         assert len(run_result) == 0
         return result
 
-    def adjust_scan_rotation(self, scan_rotation: float) -> "Model4DSTEM":
+    def adjust_scan_rotation(self, scan_rotation: float) -> Model4DSTEM:
         """
         Adjust the scan rotation while keeping the effective descan error
         compensation the same.
@@ -464,7 +464,7 @@ class Model4DSTEM:
             descan_error=new_de,
         )
 
-    def adjust_scan_pixel_pitch(self, scan_pixel_pitch: float) -> "Model4DSTEM":
+    def adjust_scan_pixel_pitch(self, scan_pixel_pitch: float) -> Model4DSTEM:
         """
         Adjust the scan pixel pitch while keeping the effective descan error
         compensation the same.
@@ -493,7 +493,7 @@ class Model4DSTEM:
             descan_error=new_de,
         )
 
-    def adjust_scan_center(self, scan_center: PixelYX) -> "Model4DSTEM":
+    def adjust_scan_center(self, scan_center: PixelYX) -> Model4DSTEM:
         # Compensate effect of different scan centers with
         # constant offsets of the descanner. We simply measure how much these offsets should be
         # by comparing rays along the optical axis
@@ -525,7 +525,7 @@ class Model4DSTEM:
             descan_error=new_de,
         )
 
-    def adjust_detector_rotation(self, detector_rotation: float) -> "Model4DSTEM":
+    def adjust_detector_rotation(self, detector_rotation: float) -> Model4DSTEM:
         de = self.descan_error
         angle = detector_rotation - self.detector_rotation
         # rotate the output direction
@@ -559,7 +559,7 @@ class Model4DSTEM:
             descan_error=new_de,
         )
 
-    def adjust_flip_factor(self, flip_factor: float) -> "Model4DSTEM":
+    def adjust_flip_factor(self, flip_factor: float) -> Model4DSTEM:
         # Some import gymnastic to keep the naming clean
         from .model import flip_y
 
@@ -605,7 +605,7 @@ class Model4DSTEM:
         else:
             return self
 
-    def adjust_detector_center(self, detector_center: PixelYX) -> "Model4DSTEM":
+    def adjust_detector_center(self, detector_center: PixelYX) -> Model4DSTEM:
         de = self.descan_error
         zero = PixelYX(0, 0)
         other = self.derive(
@@ -635,7 +635,7 @@ class Model4DSTEM:
             descan_error=new_de,
         )
 
-    def adjust_detector_pixel_pitch(self, detector_pixel_pitch: float) -> "Model4DSTEM":
+    def adjust_detector_pixel_pitch(self, detector_pixel_pitch: float) -> Model4DSTEM:
         de = self.descan_error
         ratio = detector_pixel_pitch / self.detector_pixel_pitch
 
@@ -658,7 +658,7 @@ class Model4DSTEM:
             descan_error=new_de,
         )
 
-    def adjust_camera_length(self, camera_length: float) -> "Model4DSTEM":
+    def adjust_camera_length(self, camera_length: float) -> Model4DSTEM:
         de = self.descan_error
         ratio = self.camera_length / camera_length
 
