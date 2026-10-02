@@ -60,18 +60,10 @@ def test_model_consistency_backproject():
 
     assert_allclose(out[4], 1)
     res = trace(model, scan_pos=scan_pos, source_dx=source_dx, source_dy=source_dy)
-    assert_allclose(
-        out[0], res["detector"].sampling["detector_px"].y, rtol=1e-12, atol=1e-12
-    )
-    assert_allclose(
-        out[1], res["detector"].sampling["detector_px"].x, rtol=1e-12, atol=1e-12
-    )
-    assert_allclose(
-        inp[2], res["specimen"].sampling["scan_px"].y, rtol=1e-12, atol=1e-12
-    )
-    assert_allclose(
-        inp[3], res["specimen"].sampling["scan_px"].x, rtol=1e-12, atol=1e-12
-    )
+    assert_allclose(out[0], res["detector"].sampling["detector_px"].y, rtol=1e-12, atol=1e-12)
+    assert_allclose(out[1], res["detector"].sampling["detector_px"].x, rtol=1e-12, atol=1e-12)
+    assert_allclose(inp[2], res["specimen"].sampling["scan_px"].y, rtol=1e-12, atol=1e-12)
+    assert_allclose(inp[3], res["specimen"].sampling["scan_px"].x, rtol=1e-12, atol=1e-12)
 
 
 def test_model_consistency_correct():
@@ -141,22 +133,12 @@ def test_model_consistency_correct():
     assert_allclose(out[4], 1)
     res = trace(model, scan_pos=scan_pos, source_dx=source_dx, source_dy=source_dy)
 
-    ref_res = trace(
-        ref_model, scan_pos=scan_pos, source_dx=source_dx, source_dy=source_dy
-    )
+    ref_res = trace(ref_model, scan_pos=scan_pos, source_dx=source_dx, source_dy=source_dy)
 
-    assert_allclose(
-        inp[2], ref_res["detector"].sampling["detector_px"].y, rtol=1e-12, atol=1e-12
-    )
-    assert_allclose(
-        inp[3], ref_res["detector"].sampling["detector_px"].x, rtol=1e-12, atol=1e-12
-    )
-    assert_allclose(
-        out[0], res["detector"].sampling["detector_px"].y, rtol=1e-12, atol=1e-12
-    )
-    assert_allclose(
-        out[1], res["detector"].sampling["detector_px"].x, rtol=1e-12, atol=1e-12
-    )
+    assert_allclose(inp[2], ref_res["detector"].sampling["detector_px"].y, rtol=1e-12, atol=1e-12)
+    assert_allclose(inp[3], ref_res["detector"].sampling["detector_px"].x, rtol=1e-12, atol=1e-12)
+    assert_allclose(out[0], res["detector"].sampling["detector_px"].y, rtol=1e-12, atol=1e-12)
+    assert_allclose(out[1], res["detector"].sampling["detector_px"].x, rtol=1e-12, atol=1e-12)
 
 
 def test_backproject_identity():
@@ -222,9 +204,7 @@ def test_backproject_counterrotate():
 @pytest.mark.parametrize("rotate_detector", (False, True))
 @pytest.mark.parametrize("fixed_reference", (False, True))
 @pytest.mark.parametrize("flip_factor", (1.0, -1.0))
-def test_backproject_rot90_flip(
-    rotate_scan, rotate_detector, fixed_reference, flip_factor
-):
+def test_backproject_rot90_flip(rotate_scan, rotate_detector, fixed_reference, flip_factor):
     # 1:1 size mapping between detector and specimen
     # rotating scan and detector in fixed reference frame and
     # scan reference frame.
@@ -330,9 +310,7 @@ def test_backproject_scale_fixed():
         specimen_to_image=map_coord,
     )
 
-    mat = get_backward_transformation_matrix(
-        rec_model=model, specimen_to_image=map_coord
-    )
+    mat = get_backward_transformation_matrix(rec_model=model, specimen_to_image=map_coord)
     project_frame_backwards(
         frame=projected[16, 16],
         source_semiconv=np.pi / 2,
@@ -397,9 +375,7 @@ def test_correct(scan_rotation, detector_rotation, flip_factor, manual_reference
     camera_length = 1.0
     propagation_distance = overfocus + camera_length
     obj_half_size = 16
-    angle = np.arctan2(
-        obj_half_size * detector_pixel_pitch / 2 + 0.00314157, propagation_distance
-    )
+    angle = np.arctan2(obj_half_size * detector_pixel_pitch / 2 + 0.00314157, propagation_distance)
 
     model = Model4DSTEM(
         overfocus=overfocus,
@@ -505,9 +481,7 @@ def test_correct_flip(scan_rotation, detector_rotation):
     camera_length = 1.0
     propagation_distance = overfocus + camera_length
     obj_half_size = 16
-    angle = np.arctan2(
-        obj_half_size * detector_pixel_pitch / 2 + 0.00314157, propagation_distance
-    )
+    angle = np.arctan2(obj_half_size * detector_pixel_pitch / 2 + 0.00314157, propagation_distance)
 
     model = Model4DSTEM(
         overfocus=overfocus,
@@ -606,9 +580,7 @@ def test_correct_fixed_manualref(scan_rotation, detector_rotation):
     camera_length = 1.0
     propagation_distance = overfocus + camera_length
     obj_half_size = 16
-    angle = np.arctan2(
-        obj_half_size * detector_pixel_pitch / 2 + 0.00314157, propagation_distance
-    )
+    angle = np.arctan2(obj_half_size * detector_pixel_pitch / 2 + 0.00314157, propagation_distance)
 
     # Fixed mapping from physical to image for forward simulations
     def map_coord(inp):

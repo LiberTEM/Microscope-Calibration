@@ -22,9 +22,7 @@ trace = lambdify_trace_for(jax.numpy)
 
 @jax.jit
 def get_beam_center(model: Model4DSTEM, scan_y, scan_x):
-    res = trace(
-        model, scan_pos=PixelYX(y=scan_y, x=scan_x), source_dx=0.0, source_dy=0.0
-    )
+    res = trace(model, scan_pos=PixelYX(y=scan_y, x=scan_x), source_dx=0.0, source_dy=0.0)
     center = res["detector"].sampling["detector_px"]
     return (center.y, center.x)
 

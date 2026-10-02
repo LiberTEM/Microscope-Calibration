@@ -1,8 +1,6 @@
 import pytest
 from numpy.testing import assert_allclose
 
-import jax; jax.config.update("jax_enable_x64", True)  # noqa fmt: skip
-import jax.numpy as jnp
 import numpy as np
 import sympy as sym
 from libertem.corrections.coordinates import flip_y, identity, rotate, scale
@@ -20,6 +18,8 @@ from microscope_calibration.util.stem_overfocus_sim import (
     project,
     project_frame_forward,
 )
+import jax.numpy as jnp
+
 
 trace = lambdify_trace_for(np)
 
@@ -111,18 +111,10 @@ def test_model_consistency():
 
     assert_allclose(out[4], 1)
     res = trace(model, scan_pos=scan_pos, source_dx=source_dx, source_dy=source_dy)
-    assert_allclose(
-        inp[2], res["detector"].sampling["detector_px"].y, rtol=1e-12, atol=1e-12
-    )
-    assert_allclose(
-        inp[3], res["detector"].sampling["detector_px"].x, rtol=1e-12, atol=1e-12
-    )
-    assert_allclose(
-        out[0], res["specimen"].sampling["scan_px"].y, rtol=1e-12, atol=1e-12
-    )
-    assert_allclose(
-        out[1], res["specimen"].sampling["scan_px"].x, rtol=1e-12, atol=1e-12
-    )
+    assert_allclose(inp[2], res["detector"].sampling["detector_px"].y, rtol=1e-12, atol=1e-12)
+    assert_allclose(inp[3], res["detector"].sampling["detector_px"].x, rtol=1e-12, atol=1e-12)
+    assert_allclose(out[0], res["specimen"].sampling["scan_px"].y, rtol=1e-12, atol=1e-12)
+    assert_allclose(out[1], res["specimen"].sampling["scan_px"].x, rtol=1e-12, atol=1e-12)
 
 
 def distort(x):
@@ -632,9 +624,7 @@ def test_project_aperture():
     propagation_distance = overfocus + camera_length
     obj_half_size = 16
     # Small epsilon to avoid hitting numerical errors at exactly the pixel boundary
-    angle = np.arctan2(
-        obj_half_size * detector_pixel_pitch / 2 + 0.001, propagation_distance
-    )
+    angle = np.arctan2(obj_half_size * detector_pixel_pitch / 2 + 0.001, propagation_distance)
 
     model = Model4DSTEM(
         overfocus=overfocus,
@@ -675,9 +665,7 @@ def test_project_descan():
     propagation_distance = overfocus + camera_length
     obj_half_size = 16
     # Small epsilon to avoid hitting numerical errors at exactly the pixel boundary
-    angle = np.arctan2(
-        obj_half_size * detector_pixel_pitch / 2 + 0.001, propagation_distance
-    )
+    angle = np.arctan2(obj_half_size * detector_pixel_pitch / 2 + 0.001, propagation_distance)
 
     model = Model4DSTEM(
         overfocus=overfocus,

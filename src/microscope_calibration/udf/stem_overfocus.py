@@ -118,12 +118,7 @@ class OverfocusUDF(BaseCorrectionUDF):
             )
             det_y = int(np.round(det_y))
             det_x = int(np.round(det_x))
-            if (
-                det_y >= 0
-                and det_y < frame.shape[0]
-                and det_x >= 0
-                and det_x < frame.shape[1]
-            ):
+            if det_y >= 0 and det_y < frame.shape[0] and det_x >= 0 and det_x < frame.shape[1]:
                 self.results.corrected_point[:] = frame[det_y, det_x]
 
             correct_frame(
@@ -184,9 +179,7 @@ class CorrectedPickUDF(BaseCorrectionUDF):
         # accomodate multiple frames in the last and not first dimension.
         # A "nav" buffer would allocate a NaN-filled buffer for the whole dataset.
         return {
-            "corrected": self.buffer(
-                kind="single", extra_shape=(navsize,) + sigshape, dtype=dtype
-            ),
+            "corrected": self.buffer(kind="single", extra_shape=(navsize,) + sigshape, dtype=dtype),
             "backprojected": self.buffer(
                 kind="single", extra_shape=(navsize,) + backprojection_fov, dtype=dtype
             ),

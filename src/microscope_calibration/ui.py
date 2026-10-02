@@ -1,7 +1,11 @@
 import concurrent.futures
-from typing import Literal
 from abc import ABC, abstractmethod
+from typing import Literal
 
+import jax
+
+jax.config.update("jax_enable_x64", True)  # noqa: E702
+# ruff: disable[E402]
 import flax
 import jax.numpy as jnp
 import numpy as np
@@ -39,6 +43,7 @@ from .util.optimize import (
     solve_tilt_descan_error,
     solve_tilt_descan_error_points,
 )
+# ruff: enable[E402]
 
 NavModeT = Literal[
     "point",
@@ -101,7 +106,7 @@ class CoordinateCorrectionLayout:
     coord_index_cols = coord_columns[:4]
 
     model_columns = list(Model4DSTEM.__dataclass_fields__.keys())
-    model_columns.remove('descan_error')
+    model_columns.remove("descan_error")
 
     descan_error_columns = list(DescanError.__annotations__.keys())
 
@@ -173,9 +178,7 @@ class CoordinateCorrectionLayout:
             )
         else:
             feature_select_start = self.start_model.detector_center
-        self.feature_select_model = ColumnDataSource(
-            data=self.feature_update(feature_select_start)
-        )
+        self.feature_select_model = ColumnDataSource(data=self.feature_update(feature_select_start))
 
         self.coord_fixpoints = pd.DataFrame(columns=self.coord_columns).set_index(
             self.coord_index_cols
@@ -220,8 +223,7 @@ class CoordinateCorrectionLayout:
             )
 
         self.corr_point_fig = ApertureFigure.new(
-            preview["corrected_point"], title="Corrected point analysis",
-            maxdim=250
+            preview["corrected_point"], title="Corrected point analysis", maxdim=250
         )
         self.adjust_layout(self.corr_point_fig, shape=preview["corrected_point"].shape)
         self.cursor_2 = (
@@ -255,8 +257,7 @@ class CoordinateCorrectionLayout:
         self.scalebar_line.glyph.line_color = "yellow"
 
         self.corr_pick_fig = ApertureFigure.new(
-            frames["corrected"], title="Frame corrected for descan error",
-            maxdim=250
+            frames["corrected"], title="Frame corrected for descan error", maxdim=250
         )
         self.adjust_layout(self.corr_pick_fig, shape=frames["corrected"].shape)
 
@@ -279,8 +280,7 @@ class CoordinateCorrectionLayout:
             )
 
         self.corr_sum_fig = ApertureFigure.new(
-            preview["corrected_sum"], title="Sum of frames corrected for descan error",
-            maxdim=250
+            preview["corrected_sum"], title="Sum of frames corrected for descan error", maxdim=250
         )
         self.adjust_layout(self.corr_sum_fig, shape=preview["corrected_sum"].shape)
         self.corr_beam_centre_2 = Cursor(
@@ -314,8 +314,7 @@ class CoordinateCorrectionLayout:
         self.cursor_3.cursor.line_color = "red"
 
         self.pick_fig_2 = ApertureFigure.new(
-            frames["raw"], title="Picked detector frame",
-            maxdim=350
+            frames["raw"], title="Picked detector frame", maxdim=350
         )
         self.adjust_layout(self.pick_fig_2, shape=frames["raw"].shape)
 
@@ -331,14 +330,14 @@ class CoordinateCorrectionLayout:
         self.back_sum_fig = ApertureFigure.new(
             preview["backprojected_sum"],
             title="Frames back-projected to scan coordinate system",
-            maxdim=350
+            maxdim=350,
         )
         self.adjust_layout(self.back_sum_fig, shape=preview["backprojected_sum"].shape)
 
         self.back_pick_fig = ApertureFigure.new(
             frames["backprojected"],
             title="Current frame back-projected to scan coordinate system",
-            maxdim=350
+            maxdim=350,
         )
         self.adjust_layout(self.back_pick_fig, shape=frames["backprojected"].shape)
 
@@ -362,9 +361,7 @@ class CoordinateCorrectionLayout:
         self.scale_angle_display = pn.widgets.FloatInput(
             name="Scale bar angle / deg",
             disabled=True,
-            value=(
-                np.rad2deg(self.get_scalebar_angle(self.scalebar_model.data))
-            ),
+            value=(np.rad2deg(self.get_scalebar_angle(self.scalebar_model.data))),
         )
         self.scan_rotation_input = pn.widgets.FloatInput(
             name="Scan rotation / degrees",
@@ -390,9 +387,7 @@ class CoordinateCorrectionLayout:
         self.record_button = pn.widgets.Button(name="Record")
         self.apply_button = pn.widgets.Button(name="Apply correction from table")
         self.clear_button = pn.widgets.Button(name="Clear")
-        self.correlate_button = pn.widgets.Button(
-            name="Refine correction with cross-correlation"
-        )
+        self.correlate_button = pn.widgets.Button(name="Refine correction with cross-correlation")
 
         self.coord_fixpoint_table = pn.widgets.Tabulator(
             self.coord_fixpoints,
@@ -405,19 +400,13 @@ class CoordinateCorrectionLayout:
         )
 
         self.coord_record_button = pn.widgets.Button(name="Record")
-        self.coord_apply_button = pn.widgets.Button(
-            name="Derive coordinate system from table"
-        )
+        self.coord_apply_button = pn.widgets.Button(name="Derive coordinate system from table")
         self.coord_clear_button = pn.widgets.Button(name="Clear")
-        self.optimize_button = pn.widgets.Button(
-            name="Optimize sharpness of back-projection"
-        )
+        self.optimize_button = pn.widgets.Button(name="Optimize sharpness of back-projection")
         model_dataframe = pd.DataFrame(columns=self.model_columns)
         descan_error_dataframe = pd.DataFrame(columns=self.descan_error_columns)
 
-        self.invert_focus_button = pn.widgets.Button(
-            name="Invert sign of overfocus"
-        )
+        self.invert_focus_button = pn.widgets.Button(name="Invert sign of overfocus")
 
         self.model_table = pn.widgets.Tabulator(
             model_dataframe,
@@ -511,11 +500,11 @@ class CoordinateCorrectionLayout:
         for key in self.model_columns:
             value = getattr(model, key)
             if isinstance(value, float):
-                if 'rotation' in key:
+                if "rotation" in key:
                     value = np.rad2deg(value)
                 value = f"{value:.5}"
-                if 'rotation' in key:
-                    value = value + '°'
+                if "rotation" in key:
+                    value = value + "°"
             else:
                 value = str(value)
             model_df.loc[0, key] = value
@@ -585,9 +574,7 @@ class CoordinateCorrectionLayout:
             scan_pos=new_pos,
             specimen_px=self.get_scan_pos(self.feature_model.data),
         )
-        self.update_with_force(
-            self.feature_select_model, self.feature_update(detector_pos)
-        )
+        self.update_with_force(self.feature_select_model, self.feature_update(detector_pos))
         self.update_model_tables(new_model)
 
     def on_scalebar_model_change(self, attr, old, new):
@@ -620,9 +607,7 @@ class CoordinateCorrectionLayout:
                 scan_pos=self.get_scan_pos(self.model_model.data),
                 specimen_px=self.get_scan_pos(new),
             )
-            self.update_with_force(
-                self.feature_select_model, self.feature_update(feature_pos)
-            )
+            self.update_with_force(self.feature_select_model, self.feature_update(feature_pos))
 
     def update_cl(self, event):
         base = self.model
@@ -647,9 +632,7 @@ class CoordinateCorrectionLayout:
         self.update_with_force(self.model_model, self.model_update(model))
 
     def update_detector_pitch(self, event):
-        model = self.model.adjust_detector_pixel_pitch(
-            detector_pixel_pitch=event.new / 1e6
-        )
+        model = self.model.adjust_detector_pixel_pitch(detector_pixel_pitch=event.new / 1e6)
         self.update_with_force(self.model_model, self.model_update(model))
 
     def move_scan_to(self, event):
@@ -688,9 +671,7 @@ class CoordinateCorrectionLayout:
         scan_pos = self.scan_pos
         center_pos = self.get_detector_center(self.ring_model.data)
         idx = (int(np.round(scan_pos.y)), int(np.round(scan_pos.x)))
-        new_df = pd.DataFrame(
-            [idx + (center_pos.y, center_pos.x)], columns=self.descan_columns
-        )
+        new_df = pd.DataFrame([idx + (center_pos.y, center_pos.x)], columns=self.descan_columns)
         new_df = new_df.set_index(self.descan_index_cols)
         t = self.descan_fixpoint_table
         if idx in t.value.index:
@@ -726,9 +707,7 @@ class CoordinateCorrectionLayout:
             float(feature_nav_pos.y),
             float(feature_nav_pos.x),
         )
-        new_df = pd.DataFrame(
-            [idx + (feature_pos.y, feature_pos.x)], columns=self.coord_columns
-        )
+        new_df = pd.DataFrame([idx + (feature_pos.y, feature_pos.x)], columns=self.coord_columns)
         new_df = new_df.set_index(self.coord_index_cols)
         t = self.coord_fixpoint_table
         if idx in t.value.index:
@@ -755,9 +734,7 @@ class CoordinateCorrectionLayout:
         self.update_with_force(self.model_model, self.scan_pos_update(scan_pos))
         self.update_with_force(self.feature_model, self.scan_pos_update(specimen_pos))
         detector_pos = PixelYX(y=detector[0], x=detector[1])
-        self.update_with_force(
-            self.feature_select_model, self.feature_update(detector_pos)
-        )
+        self.update_with_force(self.feature_select_model, self.feature_update(detector_pos))
 
     def coord_drop(self):
         t = self.coord_fixpoint_table
@@ -792,22 +769,14 @@ class CoordinateCorrectionLayout:
 
     @staticmethod
     def get_scalebar_length(scalebar_data):
-        start = np.array(
-            (scalebar_data["scalebar_y"][0], scalebar_data["scalebar_x"][0])
-        )
-        stop = np.array(
-            (scalebar_data["scalebar_y"][1], scalebar_data["scalebar_x"][1])
-        )
+        start = np.array((scalebar_data["scalebar_y"][0], scalebar_data["scalebar_x"][0]))
+        stop = np.array((scalebar_data["scalebar_y"][1], scalebar_data["scalebar_x"][1]))
         return np.linalg.norm(stop - start)
 
     @staticmethod
     def get_scalebar_angle(scalebar_data) -> float:
-        start = np.array(
-            (scalebar_data["scalebar_y"][0], scalebar_data["scalebar_x"][0])
-        )
-        stop = np.array(
-            (scalebar_data["scalebar_y"][1], scalebar_data["scalebar_x"][1])
-        )
+        start = np.array((scalebar_data["scalebar_y"][0], scalebar_data["scalebar_x"][0]))
+        stop = np.array((scalebar_data["scalebar_y"][1], scalebar_data["scalebar_x"][1]))
         vector = stop - start
         return float(np.arctan2(*vector))
 
@@ -968,9 +937,7 @@ class CoordinateCorrectionLayout:
         }
 
     def perform_descan_update(self):
-        points = (
-            self.descan_fixpoint_table.value.reset_index().to_numpy().astype(np.float32)
-        )
+        points = self.descan_fixpoint_table.value.reset_index().to_numpy().astype(np.float32)
         if len(points):
             new_model, residual = solve_tilt_descan_error_points(
                 ref_model=self.model, points=jnp.array(points)
@@ -978,9 +945,7 @@ class CoordinateCorrectionLayout:
             self.update_with_force(self.model_model, self.model_update(new_model))
 
     def perform_coord_update(self):
-        points = (
-            self.coord_fixpoint_table.value.reset_index().to_numpy().astype(np.float32)
-        )
+        points = self.coord_fixpoint_table.value.reset_index().to_numpy().astype(np.float32)
         if len(points):
             new_model, residual = solve_coords_points(
                 ref_model=self.model, points=jnp.array(points)
@@ -1078,12 +1043,8 @@ class CoordinateCorrectionLayout:
         y, x = np.ogrid[: field.shape[0], : field.shape[1]]
         inp[..., 1] = y
         inp[..., 2] = x
-        reg_res = np.linalg.lstsq(
-            inp.reshape((-1, 3)), field.reshape((-1, 2)), rcond=None
-        )
-        new_model, residual = solve_tilt_descan_error(
-            ref_model=model, regression=reg_res[0]
-        )
+        reg_res = np.linalg.lstsq(inp.reshape((-1, 3)), field.reshape((-1, 2)), rcond=None)
+        new_model, residual = solve_tilt_descan_error(ref_model=model, regression=reg_res[0])
         self.model_model.data.update(**self.model_update(new_model))
         self.push()
 
@@ -1219,9 +1180,7 @@ class CoordinateCorrectionLayout:
         self.coord_label = pn.pane.Markdown(
             "### Coordinate system calibration table",
         )
-        coord_section = pn.layout.Column(
-            self.coord_label, self.coord_fixpoint_table, coord_buttons
-        )
+        coord_section = pn.layout.Column(self.coord_label, self.coord_fixpoint_table, coord_buttons)
         self.result_label = pn.pane.Markdown(
             "### Current model parameters",
         )
@@ -1242,5 +1201,5 @@ class CoordinateCorrectionLayout:
             raw_figs_2,
             coord_section,
             back_figs,
-            result_section
+            result_section,
         )

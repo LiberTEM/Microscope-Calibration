@@ -1,4 +1,7 @@
-import jax; jax.config.update("jax_enable_x64", True)  # noqa fmt: skip
+import jax
+
+jax.config.update("jax_enable_x64", True)  # noqa fmt: skip
+# ruff: disable[E402]
 
 import numba
 import numpy as np
@@ -6,6 +9,7 @@ import numpy as np
 from microscope_calibration.common.model import CoordXY, Model4DSTEM, PixelYX
 from microscope_calibration.common.stem_overfocus import CoordMappingT, _do_lstsq
 from microscope_calibration.util.sympy import lambdify
+# ruff: enable[E402]
 
 
 def smiley(size):
@@ -13,16 +17,14 @@ def smiley(size):
     Smiley face test object from https://doi.org/10.1093/micmic/ozad021
     """
     obj = np.ones((size, size), dtype=np.complex64)
-    y, x = np.ogrid[-size // 2: size // 2, -size // 2: size // 2]
+    y, x = np.ogrid[-size // 2 : size // 2, -size // 2 : size // 2]
 
     outline = (((y * 1.2) ** 2 + x**2) > (110 / 256 * size) ** 2) & (
         ((y * 1.2) ** 2 + x**2) < (120 / 256 * size) ** 2
     )
     obj[outline] = 0.0
 
-    left_eye = ((y + 40 / 256 * size) ** 2 + (x + 40 / 256 * size) ** 2) < (
-        20 / 256 * size
-    ) ** 2
+    left_eye = ((y + 40 / 256 * size) ** 2 + (x + 40 / 256 * size) ** 2) < (20 / 256 * size) ** 2
     obj[left_eye] = 0
     right_eye = (np.abs(y + 40 / 256 * size) < 15 / 256 * size) & (
         np.abs(x - 40 / 256 * size) < 30 / 256 * size
@@ -42,8 +44,7 @@ def smiley(size):
     obj[mouth] = 0
 
     tongue = (
-        ((y - 50 / 256 * size) ** 2 + (x - 50 / 256 * size) ** 2)
-        < (20 / 256 * size) ** 2
+        ((y - 50 / 256 * size) ** 2 + (x - 50 / 256 * size) ** 2) < (20 / 256 * size) ** 2
     ) & ((y**2 + x**2) > (70 / 256 * size) ** 2)
     obj[tongue] = 0
 
@@ -105,15 +106,11 @@ def get_forward_transformation_matrix(
     @lambdify(modules=np)
     def get_sample(scan_pos_x, scan_pos_y, source_dy, source_dx):
         scan_pos = PixelYX(x=scan_pos_x, y=scan_pos_y)
-        res = sim_model.trace(
-            scan_pos=scan_pos, source_dy=source_dy, source_dx=source_dx
-        )
+        res = sim_model.trace(scan_pos=scan_pos, source_dy=source_dy, source_dx=source_dx)
         if specimen_to_image is None:
             spec_px = res["specimen"].sampling["scan_px"]
         else:
-            spec_px = specimen_to_image(
-                CoordXY(x=res["specimen"].ray.x, y=res["specimen"].ray.y)
-            )
+            spec_px = specimen_to_image(CoordXY(x=res["specimen"].ray.x, y=res["specimen"].ray.y))
         input_sample = (
             scan_pos.y,
             scan_pos.x,
@@ -189,12 +186,7 @@ def project_frame_forward(obj, source_semiconv, mat, scan_y, scan_x, out):
                 )
                 spec_y = int(np.round(spec_y))
                 spec_x = int(np.round(spec_x))
-                if (
-                    spec_y >= 0
-                    and spec_y < obj.shape[0]
-                    and spec_x >= 0
-                    and spec_x < obj.shape[1]
-                ):
+                if spec_y >= 0 and spec_y < obj.shape[0] and spec_x >= 0 and spec_x < obj.shape[1]:
                     out[det_y, det_x] = obj[spec_y, spec_x]
             else:
                 out[det_y, det_x] = 0.0

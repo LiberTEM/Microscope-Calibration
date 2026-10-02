@@ -1,16 +1,6 @@
 from numpy.testing import assert_allclose
 import pytest
 
-import jax; jax.config.update("jax_enable_x64", True)  # noqa fmt: skip
-
-import jax.numpy as jnp
-import numpy as np
-import optax
-from libertem.api import Context
-from libertem.udf.com import CoMUDF, RegressionOptions
-from libertem.udf.sum import SumUDF
-from skimage.measure import blur_effect
-
 from microscope_calibration.common.model import (
     DescanError,
     Model4DSTEM,
@@ -31,6 +21,15 @@ from microscope_calibration.util.optimize import (
 )
 from microscope_calibration.util.stem_overfocus_sim import project
 
+import jax
+import jax.numpy as jnp
+import numpy as np
+import optax
+from libertem.api import Context
+from libertem.udf.com import CoMUDF, RegressionOptions
+from libertem.udf.sum import SumUDF
+from skimage.measure import blur_effect
+
 trace = lambdify_trace_for(jnp)
 
 
@@ -45,9 +44,7 @@ def test_optimize():
     camera_length = 1.0
     propagation_distance = overfocus + camera_length
     obj_half_size = 16
-    angle = np.arctan2(
-        obj_half_size * detector_pixel_pitch / 2 + 0.00314157, propagation_distance
-    )
+    angle = np.arctan2(obj_half_size * detector_pixel_pitch / 2 + 0.00314157, propagation_distance)
 
     model = Model4DSTEM(
         overfocus=overfocus,
@@ -104,9 +101,7 @@ def test_optimize():
             valdict["val"] = True
             assert_allclose(args, [0, 0])
             assert model.normalize_types() == new_model.normalize_types()
-            assert_allclose(
-                udf_results[0]["backprojected_sum"].data.astype(bool), obj.astype(bool)
-            )
+            assert_allclose(udf_results[0]["backprojected_sum"].data.astype(bool), obj.astype(bool))
 
     make_new_model, loss = make_overfocus_loss_function(
         model=model,
@@ -135,9 +130,7 @@ def test_descan_error():
     camera_length = 1.0
     propagation_distance = overfocus + camera_length
     obj_half_size = 16
-    angle = np.arctan2(
-        obj_half_size * detector_pixel_pitch / 2 + 0.00314157, propagation_distance
-    )
+    angle = np.arctan2(obj_half_size * detector_pixel_pitch / 2 + 0.00314157, propagation_distance)
 
     model = Model4DSTEM(
         overfocus=overfocus,
@@ -220,7 +213,6 @@ def test_descan_error():
 
     @jax.jit
     def optstep(optargs, opt_state):
-
         value, grad = value_and_grad(optargs, state=opt_state)
         updates, opt_state = solver.update(
             grad, opt_state, optargs, value=value, grad=grad, value_fn=loss
@@ -246,9 +238,7 @@ def test_camera_length():
     obj_half_size = 16
     # This is known, e.g. from crystal structure, diffraction order and
     # wavelength
-    angle = np.arctan2(
-        obj_half_size * detector_pixel_pitch / 2 + 0.00314157, propagation_distance
-    )
+    angle = np.arctan2(obj_half_size * detector_pixel_pitch / 2 + 0.00314157, propagation_distance)
     model = Model4DSTEM(
         overfocus=overfocus,
         scan_pixel_pitch=scan_pixel_pitch,
@@ -280,9 +270,7 @@ def test_scan_pixel_pitch():
     camera_length = 1.234
     propagation_distance = overfocus + camera_length
     obj_half_size = 16
-    angle = np.arctan2(
-        obj_half_size * detector_pixel_pitch / 2 + 0.00314157, propagation_distance
-    )
+    angle = np.arctan2(obj_half_size * detector_pixel_pitch / 2 + 0.00314157, propagation_distance)
     model = Model4DSTEM(
         overfocus=overfocus,
         scan_pixel_pitch=scan_pixel_pitch,
@@ -332,9 +320,7 @@ def test_full_descan_error(scan_rotation, flip_factor, detector_rotation, descan
     propagation_distance = overfocus + camera_length
     obj_half_size = 8
     # Small epsilon to combat aliasing
-    angle = np.arctan2(
-        obj_half_size * detector_pixel_pitch / 2 * 2 + 0.001, propagation_distance
-    )
+    angle = np.arctan2(obj_half_size * detector_pixel_pitch / 2 * 2 + 0.001, propagation_distance)
 
     model = Model4DSTEM(
         overfocus=overfocus,
@@ -356,22 +342,10 @@ def test_full_descan_error(scan_rotation, flip_factor, detector_rotation, descan
             pyo_pyi=descans[5] * detector_pixel_pitch / scan_pixel_pitch,
             pyo_pxi=-descans[6] * detector_pixel_pitch / scan_pixel_pitch,
             pxo_pyi=-descans[7] * detector_pixel_pitch / scan_pixel_pitch,
-            sxo_pxi=descans[8]
-            * detector_pixel_pitch
-            / scan_pixel_pitch
-            / camera_length,
-            syo_pyi=descans[9]
-            * detector_pixel_pitch
-            / scan_pixel_pitch
-            / camera_length,
-            syo_pxi=-descans[10]
-            * detector_pixel_pitch
-            / scan_pixel_pitch
-            / camera_length,
-            sxo_pyi=-descans[11]
-            * detector_pixel_pitch
-            / scan_pixel_pitch
-            / camera_length,
+            sxo_pxi=descans[8] * detector_pixel_pitch / scan_pixel_pitch / camera_length,
+            syo_pyi=descans[9] * detector_pixel_pitch / scan_pixel_pitch / camera_length,
+            syo_pxi=-descans[10] * detector_pixel_pitch / scan_pixel_pitch / camera_length,
+            sxo_pyi=-descans[11] * detector_pixel_pitch / scan_pixel_pitch / camera_length,
         ),
     )
 
@@ -405,15 +379,9 @@ def test_full_descan_error(scan_rotation, flip_factor, detector_rotation, descan
     exact_regs = {}
     for cl in sims:
         exact_model = model.derive(camera_length=cl)
-        res_0 = trace(
-            exact_model, scan_pos=PixelYX(y=0.0, x=0.0), source_dy=0.0, source_dx=0.0
-        )
-        res_y = trace(
-            exact_model, scan_pos=PixelYX(y=1.0, x=0.0), source_dy=0.0, source_dx=0.0
-        )
-        res_x = trace(
-            exact_model, scan_pos=PixelYX(y=0.0, x=1.0), source_dy=0.0, source_dx=0.0
-        )
+        res_0 = trace(exact_model, scan_pos=PixelYX(y=0.0, x=0.0), source_dy=0.0, source_dx=0.0)
+        res_y = trace(exact_model, scan_pos=PixelYX(y=1.0, x=0.0), source_dy=0.0, source_dx=0.0)
+        res_x = trace(exact_model, scan_pos=PixelYX(y=0.0, x=1.0), source_dy=0.0, source_dx=0.0)
         dy = res_0["detector"].sampling["detector_px"].y - model.detector_center.y
         dx = res_0["detector"].sampling["detector_px"].x - model.detector_center.x
         dydy = (
@@ -467,12 +435,8 @@ def test_normalize_descan(random_model):
                 pn = normalized.derive(
                     camera_length=cl,
                 )
-                ref = trace(
-                    pr, scan_pos=PixelYX(y=sy, x=sx), source_dy=0.0, source_dx=0.0
-                )
-                norm = trace(
-                    pn, scan_pos=PixelYX(y=sy, x=sx), source_dy=0.0, source_dx=0.0
-                )
+                ref = trace(pr, scan_pos=PixelYX(y=sy, x=sx), source_dy=0.0, source_dx=0.0)
+                norm = trace(pn, scan_pos=PixelYX(y=sy, x=sx), source_dy=0.0, source_dx=0.0)
                 assert_allclose(
                     ref["detector"].sampling["detector_px"].x,
                     norm["detector"].sampling["detector_px"].x,
@@ -508,9 +472,7 @@ def test_tilt_descan_error(scan_rotation, flip_factor, detector_rotation, descan
     propagation_distance = overfocus + camera_length
     obj_half_size = 8
     # Small epsilon to combat aliasing
-    angle = np.arctan2(
-        obj_half_size * detector_pixel_pitch / 2 * 2 + 0.001, propagation_distance
-    )
+    angle = np.arctan2(obj_half_size * detector_pixel_pitch / 2 * 2 + 0.001, propagation_distance)
 
     model = Model4DSTEM(
         overfocus=overfocus,
@@ -532,22 +494,10 @@ def test_tilt_descan_error(scan_rotation, flip_factor, detector_rotation, descan
             pyo_pyi=descans[5] * detector_pixel_pitch / scan_pixel_pitch,
             pyo_pxi=-descans[6] * detector_pixel_pitch / scan_pixel_pitch,
             pxo_pyi=-descans[7] * detector_pixel_pitch / scan_pixel_pitch,
-            sxo_pxi=descans[8]
-            * detector_pixel_pitch
-            / scan_pixel_pitch
-            / camera_length,
-            syo_pyi=descans[9]
-            * detector_pixel_pitch
-            / scan_pixel_pitch
-            / camera_length,
-            syo_pxi=-descans[10]
-            * detector_pixel_pitch
-            / scan_pixel_pitch
-            / camera_length,
-            sxo_pyi=-descans[11]
-            * detector_pixel_pitch
-            / scan_pixel_pitch
-            / camera_length,
+            sxo_pxi=descans[8] * detector_pixel_pitch / scan_pixel_pitch / camera_length,
+            syo_pyi=descans[9] * detector_pixel_pitch / scan_pixel_pitch / camera_length,
+            syo_pxi=-descans[10] * detector_pixel_pitch / scan_pixel_pitch / camera_length,
+            sxo_pyi=-descans[11] * detector_pixel_pitch / scan_pixel_pitch / camera_length,
         ),
     )
 
@@ -579,22 +529,10 @@ def test_tilt_descan_error(scan_rotation, flip_factor, detector_rotation, descan
     res_x = trace(model, scan_pos=PixelYX(y=0.0, x=1.0), source_dy=0.0, source_dx=0.0)
     dy = res_0["detector"].sampling["detector_px"].y - model.detector_center.y
     dx = res_0["detector"].sampling["detector_px"].x - model.detector_center.x
-    dydy = (
-        res_y["detector"].sampling["detector_px"].y
-        - res_0["detector"].sampling["detector_px"].y
-    )
-    dxdy = (
-        res_y["detector"].sampling["detector_px"].x
-        - res_0["detector"].sampling["detector_px"].x
-    )
-    dydx = (
-        res_x["detector"].sampling["detector_px"].y
-        - res_0["detector"].sampling["detector_px"].y
-    )
-    dxdx = (
-        res_x["detector"].sampling["detector_px"].x
-        - res_0["detector"].sampling["detector_px"].x
-    )
+    dydy = res_y["detector"].sampling["detector_px"].y - res_0["detector"].sampling["detector_px"].y
+    dxdy = res_y["detector"].sampling["detector_px"].x - res_0["detector"].sampling["detector_px"].x
+    dydx = res_x["detector"].sampling["detector_px"].y - res_0["detector"].sampling["detector_px"].y
+    dxdx = res_x["detector"].sampling["detector_px"].x - res_0["detector"].sampling["detector_px"].x
 
     exact_reg = np.array(((dy, dx), (dydy, dxdy), (dydx, dxdx)))
 
@@ -660,9 +598,7 @@ def test_tilt_descan_error_points(
     propagation_distance = overfocus + camera_length
     obj_half_size = 8
     # Small epsilon to combat aliasing
-    angle = np.arctan2(
-        obj_half_size * detector_pixel_pitch / 2 * 2 + 0.001, propagation_distance
-    )
+    angle = np.arctan2(obj_half_size * detector_pixel_pitch / 2 * 2 + 0.001, propagation_distance)
 
     model = Model4DSTEM(
         overfocus=overfocus,
@@ -684,22 +620,10 @@ def test_tilt_descan_error_points(
             pyo_pyi=descans[5] * detector_pixel_pitch / scan_pixel_pitch,
             pyo_pxi=-descans[6] * detector_pixel_pitch / scan_pixel_pitch,
             pxo_pyi=-descans[7] * detector_pixel_pitch / scan_pixel_pitch,
-            sxo_pxi=descans[8]
-            * detector_pixel_pitch
-            / scan_pixel_pitch
-            / camera_length,
-            syo_pyi=descans[9]
-            * detector_pixel_pitch
-            / scan_pixel_pitch
-            / camera_length,
-            syo_pxi=-descans[10]
-            * detector_pixel_pitch
-            / scan_pixel_pitch
-            / camera_length,
-            sxo_pyi=-descans[11]
-            * detector_pixel_pitch
-            / scan_pixel_pitch
-            / camera_length,
+            sxo_pxi=descans[8] * detector_pixel_pitch / scan_pixel_pitch / camera_length,
+            syo_pyi=descans[9] * detector_pixel_pitch / scan_pixel_pitch / camera_length,
+            syo_pxi=-descans[10] * detector_pixel_pitch / scan_pixel_pitch / camera_length,
+            sxo_pyi=-descans[11] * detector_pixel_pitch / scan_pixel_pitch / camera_length,
         ),
     )
 

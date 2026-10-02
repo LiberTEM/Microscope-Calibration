@@ -1,8 +1,10 @@
 import pytest
 from numpy.testing import assert_allclose, assert_equal
 
-import jax; jax.config.update("jax_enable_x64", True)  # noqa fmt: skip
+from microscope_calibration.common.model import Model4DSTEM, lambdify_trace_for
+from microscope_calibration.util.sympy import lambdify
 
+import jax
 import jax.numpy as jnp
 import jax_dataclasses as jdc
 import numpy as np
@@ -13,9 +15,6 @@ from temgym_core.components import Component, DescanError, NamedTuple
 from temgym_core.propagator import Propagator
 from temgym_core.ray import Ray
 from temgym_core.source import Source
-
-from microscope_calibration.common.model import Model4DSTEM, lambdify_trace_for
-from microscope_calibration.util.sympy import lambdify
 
 
 def norm(y, x):
@@ -167,9 +166,7 @@ def test_scan(dy, dx, scan_y, scan_x):
         flip_factor=1.0,
         descan_error=DescanError(),
     )
-    res_straight = model.trace(
-        scan_pos=PixelYX(y=0.0, x=0.0), source_dx=dx, source_dy=dy
-    )
+    res_straight = model.trace(scan_pos=PixelYX(y=0.0, x=0.0), source_dx=dx, source_dy=dy)
     res = model.trace(scan_pos=PixelYX(y=scan_y, x=scan_x), source_dx=dx, source_dy=dy)
 
     for key in res.keys():
@@ -205,9 +202,7 @@ def test_scan(dy, dx, scan_y, scan_x):
             # Ray propagates straight
             assert sym.sympify(sect.ray.x).equals(sect.ray.z * dx)
             assert sym.sympify(sect.ray.y).equals(sect.ray.z * dy)
-    assert sym.sympify(res["detector"].ray.z).equals(
-        model.overfocus + model.camera_length
-    )
+    assert sym.sympify(res["detector"].ray.z).equals(model.overfocus + model.camera_length)
     assert sym.sympify(res["source"].ray.z).equals(0.0)
     # Correct scan deflection
     assert sym.sympify(res["specimen"].sampling["scan_px"].x).equals(
@@ -221,12 +216,8 @@ def test_scan(dy, dx, scan_y, scan_x):
         assert sym.sympify(res["specimen"].sampling["scan_px"].x).equals(scan_x)
         assert sym.sympify(res["specimen"].sampling["scan_px"].y).equals(scan_y)
     # check physical coords equals pixel coords
-    assert sym.sympify(res["specimen"].sampling["scan_px"].x).equals(
-        res["specimen"].ray.x
-    )
-    assert sym.sympify(res["specimen"].sampling["scan_px"].y).equals(
-        res["specimen"].ray.y
-    )
+    assert sym.sympify(res["specimen"].sampling["scan_px"].x).equals(res["specimen"].ray.x)
+    assert sym.sympify(res["specimen"].sampling["scan_px"].y).equals(res["specimen"].ray.y)
     assert sym.sympify(res["detector"].sampling["detector_px"].x).equals(
         dx * (model.overfocus + model.camera_length)
     )
@@ -234,12 +225,8 @@ def test_scan(dy, dx, scan_y, scan_x):
         dy * (model.overfocus + model.camera_length)
     )
     # check physical coords equals pixel coords
-    assert sym.sympify(res["detector"].sampling["detector_px"].x).equals(
-        res["detector"].ray.x
-    )
-    assert sym.sympify(res["detector"].sampling["detector_px"].y).equals(
-        res["detector"].ray.y
-    )
+    assert sym.sympify(res["detector"].sampling["detector_px"].x).equals(res["detector"].ray.x)
+    assert sym.sympify(res["detector"].sampling["detector_px"].y).equals(res["detector"].ray.y)
 
 
 # detector coordinate systems
@@ -286,21 +273,14 @@ def test_detector_coordinate_shift_scale_flip(
         float(
             sym.sympify(
                 flip_factor
-                * (
-                    res["detector"].ray.y / detector_pixel_pitch
-                    + flip_factor * detector_cy
-                )
+                * (res["detector"].ray.y / detector_pixel_pitch + flip_factor * detector_cy)
             ).evalf()
         ),
     )
     if dy == 0.0:
-        assert sym.sympify(res["detector"].sampling["detector_px"].y).equals(
-            detector_cy
-        )
+        assert sym.sympify(res["detector"].sampling["detector_px"].y).equals(detector_cy)
     if dx == 0.0:
-        assert sym.sympify(res["detector"].sampling["detector_px"].x).equals(
-            detector_cx
-        )
+        assert sym.sympify(res["detector"].sampling["detector_px"].x).equals(detector_cx)
 
 
 # scan coordinate systems
@@ -346,10 +326,7 @@ def test_scan_coordinate_shift_scale(scan_cy, scan_cx, scan_pixel_pitch):
         float(
             sym.sympify(
                 flip_factor
-                * (
-                    res["detector"].ray.y / detector_pixel_pitch
-                    + flip_factor * detector_cy
-                )
+                * (res["detector"].ray.y / detector_pixel_pitch + flip_factor * detector_cy)
             ).evalf()
         ),
     )
@@ -466,9 +443,7 @@ def test_com_validation(scan_rotation, flip_factor, detector_cy, detector_cx):
                     rtol=1e-12,
                 )
 
-    assert_allclose(
-        -guess_result.scan_rotation / 180 * np.pi, scan_rotation, atol=1e-12, rtol=1e-4
-    )
+    assert_allclose(-guess_result.scan_rotation / 180 * np.pi, scan_rotation, atol=1e-12, rtol=1e-4)
     if flip_factor == 1.0:
         flip_y = False
     elif flip_factor == -1.0:
@@ -716,9 +691,7 @@ def test_descan_offset():
         flip_factor=1.0,
         descan_error=DescanError(),
     )
-    res_ref = model_ref.trace(
-        scan_pos=PixelYX(y=23.0, x=-13.0), source_dx=0.5, source_dy=-0.1
-    )
+    res_ref = model_ref.trace(scan_pos=PixelYX(y=23.0, x=-13.0), source_dx=0.5, source_dy=-0.1)
 
     offpxi = sym.Symbol("offpxi")
     offpyi = sym.Symbol("offpyi")
@@ -734,9 +707,7 @@ def test_descan_offset():
         detector_center=PixelYX(y=0.0, x=0.0),
         semiconv=0.023,
         flip_factor=1.0,
-        descan_error=DescanError(
-            offpxi=offpxi, offpyi=offpyi, offsxi=offsxi, offsyi=offsyi
-        ),
+        descan_error=DescanError(offpxi=offpxi, offpyi=offpyi, offsxi=offsxi, offsyi=offsyi),
     )
     res = model.trace(scan_pos=PixelYX(y=23.0, x=-13.0), source_dx=0.5, source_dy=-0.1)
 
@@ -744,9 +715,7 @@ def test_descan_offset():
         sect_ref = res_ref[key]
         sect = res[key]
         for attr in ("y", "x", "dy", "dx", "z"):
-            assert sym.sympify(getattr(sect.ray, attr)).equals(
-                getattr(sect_ref.ray, attr)
-            )
+            assert sym.sympify(getattr(sect.ray, attr)).equals(getattr(sect_ref.ray, attr))
     sect_ref = res_ref["descanner"]
     sect = res["descanner"]
     assert sym.sympify(sect.ray.x).equals(sect_ref.ray.x + offpxi)
@@ -828,17 +797,11 @@ def test_descan_position(scan):
         sect_ref = res_ref[key]
         sect = res[key]
         for attr in ("y", "x", "dy", "dx", "z"):
-            assert sym.sympify(getattr(sect.ray, attr)).equals(
-                getattr(sect_ref.ray, attr)
-            )
+            assert sym.sympify(getattr(sect.ray, attr)).equals(getattr(sect_ref.ray, attr))
     sect_ref = res_ref["descanner"]
     sect = res["descanner"]
-    assert sym.sympify(sect.ray.x).equals(
-        sect_ref.ray.x + pxo_pxi * scan.x + pxo_pyi * scan.y
-    )
-    assert sym.sympify(sect.ray.y).equals(
-        sect_ref.ray.y + pyo_pxi * scan.x + pyo_pyi * scan.y
-    )
+    assert sym.sympify(sect.ray.x).equals(sect_ref.ray.x + pxo_pxi * scan.x + pxo_pyi * scan.y)
+    assert sym.sympify(sect.ray.y).equals(sect_ref.ray.y + pyo_pxi * scan.x + pyo_pyi * scan.y)
     assert sym.sympify(sect.ray.dx).equals(sect_ref.ray.dx)
     assert sym.sympify(sect.ray.dy).equals(sect_ref.ray.dy)
     assert sym.sympify(sect.ray.z).equals(sect_ref.ray.z)
@@ -916,17 +879,11 @@ def test_descan_slope(scan):
         sect_ref = res_ref[key]
         sect = res[key]
         for attr in ("y", "x", "dy", "dx", "z"):
-            assert sym.sympify(getattr(sect.ray, attr)).equals(
-                getattr(sect_ref.ray, attr)
-            )
+            assert sym.sympify(getattr(sect.ray, attr)).equals(getattr(sect_ref.ray, attr))
     sect_ref = res_ref["descanner"]
     sect = res["descanner"]
-    assert sym.sympify(sect.ray.dx).equals(
-        sect_ref.ray.dx + sxo_pxi * scan.x + sxo_pyi * scan.y
-    )
-    assert sym.sympify(sect.ray.dy).equals(
-        sect_ref.ray.dy + syo_pxi * scan.x + syo_pyi * scan.y
-    )
+    assert sym.sympify(sect.ray.dx).equals(sect_ref.ray.dx + sxo_pxi * scan.x + sxo_pyi * scan.y)
+    assert sym.sympify(sect.ray.dy).equals(sect_ref.ray.dy + syo_pxi * scan.x + syo_pyi * scan.y)
     assert sym.sympify(sect.ray.x).equals(sect_ref.ray.x)
     assert sym.sympify(sect.ray.y).equals(sect_ref.ray.y)
     assert sym.sympify(sect.ray.z).equals(sect_ref.ray.z)
@@ -978,9 +935,7 @@ def test_jax_smoke():
     def test_func(arr: InputArrT):
         scan_y, scan_x, tilt_y, tilt_x, _one = arr
         scan_pos = PixelYX(x=scan_x, y=scan_y)
-        res = model.trace(
-            scan_pos=scan_pos, source_dy=tilt_y, source_dx=tilt_x, _one=_one
-        )
+        res = model.trace(scan_pos=scan_pos, source_dy=tilt_y, source_dx=tilt_x, _one=_one)
         return (
             res["specimen"].sampling["scan_px"].y,
             res["specimen"].sampling["scan_px"].x,
@@ -995,28 +950,17 @@ def test_jax_smoke():
 
 
 def assert_no_descan_deviation(model, target_model):
-
     @lambdify(modules=np)
     def distance(scan_y, scan_x, cl):
         ref_model = model.derive(camera_length=cl)
-        ref = ref_model.trace(
-            scan_pos=PixelYX(y=scan_y, x=scan_x), source_dy=0.0, source_dx=0.0
-        )
+        ref = ref_model.trace(scan_pos=PixelYX(y=scan_y, x=scan_x), source_dy=0.0, source_dx=0.0)
         opt_model = target_model.derive(
             camera_length=cl,
         )
-        opt = opt_model.trace(
-            scan_pos=PixelYX(y=scan_y, x=scan_x), source_dy=0.0, source_dx=0.0
-        )
+        opt = opt_model.trace(scan_pos=PixelYX(y=scan_y, x=scan_x), source_dy=0.0, source_dx=0.0)
         return (
-            (
-                opt["detector"].sampling["detector_px"].y
-                - ref["detector"].sampling["detector_px"].y
-            ),
-            (
-                opt["detector"].sampling["detector_px"].x
-                - ref["detector"].sampling["detector_px"].x
-            ),
+            (opt["detector"].sampling["detector_px"].y - ref["detector"].sampling["detector_px"].y),
+            (opt["detector"].sampling["detector_px"].x - ref["detector"].sampling["detector_px"].x),
         )
 
     for scan_y in (0, 1):
@@ -1032,21 +976,15 @@ def assert_no_descan_deviation_cl(model, target_model):
     @lambdify(modules=np)
     def distance(scan_y, scan_x, cl):
         ref_model = model.derive(camera_length=cl)
-        ref = ref_model.trace(
-            scan_pos=PixelYX(y=scan_y, x=scan_x), source_dy=0.0, source_dx=0.0
-        )
+        ref = ref_model.trace(scan_pos=PixelYX(y=scan_y, x=scan_x), source_dy=0.0, source_dx=0.0)
         # Scale by `ratio`
         opt_model = target_model.derive(
             camera_length=cl * ratio,
         )
-        opt = opt_model.trace(
-            scan_pos=PixelYX(y=scan_y, x=scan_x), source_dy=0.0, source_dx=0.0
-        )
+        opt = opt_model.trace(scan_pos=PixelYX(y=scan_y, x=scan_x), source_dy=0.0, source_dx=0.0)
         return (
-            opt["detector"].sampling["detector_px"].y
-            - ref["detector"].sampling["detector_px"].y,
-            opt["detector"].sampling["detector_px"].x
-            - ref["detector"].sampling["detector_px"].x,
+            opt["detector"].sampling["detector_px"].y - ref["detector"].sampling["detector_px"].y,
+            opt["detector"].sampling["detector_px"].x - ref["detector"].sampling["detector_px"].x,
         )
 
     # We check that the model produces the same pixel offsets
@@ -1153,21 +1091,19 @@ def test_invert_focus(random_model):
     inverted_model = model.invert_focus().normalize_types()
     assert_equal(model.overfocus, -inverted_model.overfocus)
     assert_allclose(
-        np.abs(model.detector_rotation - inverted_model.detector_rotation),
-        np.pi,
-        atol=1e-12
+        np.abs(model.detector_rotation - inverted_model.detector_rotation), np.pi, atol=1e-12
     )
     print(model)
 
     assert_no_descan_deviation_cl(model, inverted_model)
 
     def slope(res, center, dim1, dim2):
-        delta1 = (
-            getattr(res["detector"].sampling["detector_px"], dim1)
-            - getattr(center["detector"].sampling["detector_px"], dim1))
-        delta2 = (
-            getattr(res["specimen"].sampling["scan_px"], dim2)
-            - getattr(center["specimen"].sampling["scan_px"], dim2))
+        delta1 = getattr(res["detector"].sampling["detector_px"], dim1) - getattr(
+            center["detector"].sampling["detector_px"], dim1
+        )
+        delta2 = getattr(res["specimen"].sampling["scan_px"], dim2) - getattr(
+            center["specimen"].sampling["scan_px"], dim2
+        )
         return delta1 / delta2
 
     # Check that the ratio between scan coordinate displacement and detector
@@ -1176,18 +1112,20 @@ def test_invert_focus(random_model):
     # That means that the projection from specimen in scan coordinates to
     # detector pixel coordinates is the same at a given scan position.
     for scan_pos in ((0, 0), (0, 1), (3, 2)):
-        for dy in (-0.1, .023):
-            for dx in (-.02, -.017):
+        for dy in (-0.1, 0.023):
+            for dx in (-0.02, -0.017):
                 center = trace(
-                    model=model, scan_pos=PixelYX(*scan_pos), source_dy=0., source_dx=0.)
+                    model=model, scan_pos=PixelYX(*scan_pos), source_dy=0.0, source_dx=0.0
+                )
                 inverted_center = trace(
-                    model=model, scan_pos=PixelYX(*scan_pos), source_dy=0., source_dx=0.)
-                res = trace(
-                    model=model, scan_pos=PixelYX(*scan_pos), source_dy=dy, source_dx=dx)
+                    model=model, scan_pos=PixelYX(*scan_pos), source_dy=0.0, source_dx=0.0
+                )
+                res = trace(model=model, scan_pos=PixelYX(*scan_pos), source_dy=dy, source_dx=dx)
                 inv_res = trace(
-                    model=inverted_model, scan_pos=PixelYX(*scan_pos), source_dy=dy, source_dx=dx)
-                for dim1 in 'x', 'y':
-                    for dim2 in 'x', 'y':
+                    model=inverted_model, scan_pos=PixelYX(*scan_pos), source_dy=dy, source_dx=dx
+                )
+                for dim1 in "x", "y":
+                    for dim2 in "x", "y":
                         assert_allclose(
                             slope(res, center, dim1, dim2),
                             slope(inv_res, inverted_center, dim1, dim2),
