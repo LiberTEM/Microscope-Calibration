@@ -17,6 +17,7 @@ from microscope_calibration.util.stem_overfocus_sim import (
     get_forward_transformation_matrix,
     project,
     project_frame_forward,
+    smiley,
 )
 import jax.numpy as jnp
 
@@ -714,3 +715,10 @@ def test_project_descan():
     )
     assert_allclose(det_ref, res[obj_half_size, obj_half_size])
     assert_allclose(det_ref2, res[obj_half_size + 1, obj_half_size + 1])
+
+
+def test_smiley():
+    s = smiley(23)
+
+    assert s.shape == (23, 23)
+    assert np.min(s) != np.max(s)
