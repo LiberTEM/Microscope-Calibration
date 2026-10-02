@@ -20,6 +20,7 @@ from microscope_calibration.util.stem_overfocus_sim import project
 trace = lambdify_trace_for(np)
 
 
+@pytest.mark.with_numba
 def test_model_consistency_backproject():
     model = Model4DSTEM(
         overfocus=0.123,
@@ -66,6 +67,7 @@ def test_model_consistency_backproject():
     assert_allclose(inp[3], res["specimen"].sampling["scan_px"].x, rtol=1e-12, atol=1e-12)
 
 
+@pytest.mark.with_numba
 def test_model_consistency_correct():
     model = Model4DSTEM(
         overfocus=0.123,
@@ -141,6 +143,7 @@ def test_model_consistency_correct():
     assert_allclose(out[1], res["detector"].sampling["detector_px"].x, rtol=1e-12, atol=1e-12)
 
 
+@pytest.mark.with_numba
 def test_backproject_identity():
     # 1:1 size mapping between detector and specimen
     model = Model4DSTEM(
@@ -580,6 +583,125 @@ def test_correct_fixed_manualref(scan_rotation, detector_rotation):
     camera_length = 1.0
     propagation_distance = overfocus + camera_length
     obj_half_size = 16
+    angle = np.arctan2(obj_half_size * detector_pixel_pitch / 2 + 0.00314157, propagation_distance)
+
+    # Fixed mapping from physical to image for forward simulations
+    def map_coord(inp):
+        cy = obj.shape[0] / 2
+        cx = obj.shape[1] / 2
+        inp_vec = np.array((inp.y, inp.x))
+        y, x = rotate(-np.pi / 2) @ scale(1 / scan_pixel_pitch) @ inp_vec
+        return PixelYX(y=y + cy + 2, x=x + cx - 3)
+
+    model = Model4DSTEM(
+        overfocus=overfocus,
+        scan_pixel_pitch=scan_pixel_pitch,
+        camera_length=camera_length,
+        detector_pixel_pitch=detector_pixel_pitch,
+        semiconv=angle,
+        scan_center=PixelYX(x=obj_half_size, y=obj_half_size),
+        scan_rotation=scan_rotation,
+        flip_factor=1.0,
+        # Simulate detector larger than object to avoid clipping at the borders
+        detector_center=PixelYX(x=obj_half_size * 2, y=obj_half_size * 2),
+        detector_rotation=detector_rotation,
+        # Descan error designed to give whole pixel shifts
+        descan_error=DescanError(
+            offpxi=detector_pixel_pitch,
+            offpyi=detector_pixel_pitch * 2,
+            offsxi=-1 * detector_pixel_pitch / camera_length,
+            offsyi=-2 * detector_pixel_pitch / camera_length,
+            pxo_pxi=2 * detector_pixel_pitch / scan_pixel_pitch,
+            pyo_pyi=3 * detector_pixel_pitch / scan_pixel_pitch,
+            sxo_pxi=-3 * detector_pixel_pitch / scan_pixel_pitch / camera_length,
+            syo_pyi=-4 * detector_pixel_pitch / scan_pixel_pitch / camera_length,
+        ),
+    )
+    # Manual reference parametes that introduce flip_y
+    # and compensate the rotations
+    model_ref_manual = Model4DSTEM(
+        overfocus=overfocus,
+        # No impact on correction
+        scan_pixel_pitch=scan_pixel_pitch * 42,
+        camera_length=camera_length,
+        detector_pixel_pitch=detector_pixel_pitch * 2,
+        semiconv=angle,
+        scan_center=PixelYX(x=obj_half_size, y=obj_half_size),
+        # Has no impact since we don't remap the scan dimension,
+        # only the projection after the specimen
+        scan_rotation=np.pi / 23,
+        flip_factor=-1.0,
+        detector_center=PixelYX(x=obj_half_size * 2 - 1, y=obj_half_size * 2 + 2),
+        detector_rotation=0.0,
+        descan_error=DescanError(),
+    )
+    # Parameters for simulated result with flip_y
+    model_ref_sim = Model4DSTEM(
+        overfocus=overfocus,
+        scan_pixel_pitch=scan_pixel_pitch,
+        camera_length=camera_length,
+        detector_pixel_pitch=detector_pixel_pitch * 2,
+        semiconv=angle,
+        scan_center=PixelYX(x=obj_half_size, y=obj_half_size),
+        # Has to match the input scan rotation since we don't
+        # remap the scan dimension
+        scan_rotation=scan_rotation,
+        flip_factor=-1.0,
+        detector_center=PixelYX(x=obj_half_size * 2 - 1, y=obj_half_size * 2 + 2),
+        detector_rotation=0.0,
+        descan_error=DescanError(),
+    )
+    # Obtain correction matrix for 4D STEM dataset that transforms the data as
+    # if the rotations were 0, flip_y, and the descan error was 0.
+    mat = get_detector_correction_matrix(
+        rec_model=model,
+        ref_model=model_ref_manual,
+    )
+    obj = np.random.random((obj_half_size * 2, obj_half_size * 2))
+    projected = project(
+        image=obj,
+        detector_shape=(obj_half_size * 4, obj_half_size * 4),
+        scan_shape=(obj_half_size * 2, obj_half_size * 2),
+        sim_model=model,
+        # Detector image correction doesn't interfere with
+        # how scan positions are mapped
+        specimen_to_image=map_coord,
+    )
+    # Calculate corrected 4D STEM dataset with the rotations were 0,
+    # flip, and no descan error.
+    out = np.zeros_like(projected)
+    for scan_y in range(out.shape[0]):
+        for scan_x in range(out.shape[1]):
+            correct_frame(
+                frame=projected[scan_y, scan_x],
+                mat=mat,
+                scan_y=scan_y,
+                scan_x=scan_x,
+                detector_out=out[scan_y, scan_x],
+            )
+    projected_ref = project(
+        image=obj,
+        detector_shape=(obj_half_size * 4, obj_half_size * 4),
+        scan_shape=(obj_half_size * 2, obj_half_size * 2),
+        sim_model=model_ref_sim,
+        # Detector image correction doesn't interfere with
+        # how scan positions are mapped, so we have to use the same mapping here
+        specimen_to_image=map_coord,
+    )
+    # 100 % match between corrected frames and simulated reference without aberrations
+    assert_allclose(projected_ref, out)
+
+
+@pytest.mark.with_numba
+def test_correct_smallnumba():
+    scan_rotation = 0.0
+    detector_rotation = 0.0
+    scan_pixel_pitch = 0.1
+    detector_pixel_pitch = 0.2
+    overfocus = 1.0
+    camera_length = 1.0
+    propagation_distance = overfocus + camera_length
+    obj_half_size = 1
     angle = np.arctan2(obj_half_size * detector_pixel_pitch / 2 + 0.00314157, propagation_distance)
 
     # Fixed mapping from physical to image for forward simulations
