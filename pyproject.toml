@@ -61,7 +61,7 @@ diffraction = [
     "diffsims@git+https://github.com/pyxem/diffsims"
 ]
 gui = [
-    "libertem-blobfinder", "libertem-ui", "ipywidgets",
+    "libertem-blobfinder", "libertem-ui", "ipywidgets", "pandas", "panel", "bokeh", "sparse"
     # Also requires diffraction, TODO how to handle?
 ]
 

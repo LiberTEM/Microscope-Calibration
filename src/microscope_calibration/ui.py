@@ -69,6 +69,23 @@ class AbstractCalibratedDataset(ABC):
         raise NotImplementedError()
 
 
+class CalibratedDataset(AbstractCalibratedDataset):
+    def __init__(self, dataset: DataSet, model: Model4DSTEM):
+        self._ds = dataset
+        self._model = model
+
+    @property
+    def dataset(self) -> DataSet:
+        return self._ds
+
+    @property
+    def model(self) -> Model4DSTEM:
+        return self._model
+
+    def calibrated(self, model) -> 'CalibratedDataset':
+        return CalibratedDataset(dataset=self.dataset, model=model)
+
+
 class CoordinateCorrectionLayout:
     descan_columns = ["scan_y", "scan_x", "detector_cy", "detector_cx"]
     descan_index_cols = descan_columns[:2]
@@ -993,11 +1010,15 @@ class CoordinateCorrectionLayout:
     def update_with_force(self, cds: ColumnDataSource, update):
         cds.data.update(**update)
         self.push()
-        holding = cds.document.callbacks._hold
-        cds.document.callbacks.unhold()
+        if cds.document is not None:
+            holding = cds.document.callbacks._hold
+            cds.document.callbacks.unhold()
+        else:
+            holding = None
         cds.data.update(**update)
         self.push()
-        cds.document.callbacks.hold(holding)
+        if cds.document is not None:
+            cds.document.callbacks.hold(holding)
 
     def center_correlation_regression(self):
         # Delicious! 🍝🍝🍝

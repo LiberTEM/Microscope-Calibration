@@ -13,20 +13,18 @@ import json
 import numpy as np
 
 from microscope_calibration.common.model import Model4DSTEM, DescanError
-from microscope_calibration.ui import AbstractCalibratedDataset
+from microscope_calibration.ui import CalibratedDataset
 from libertem.api import Context
-from libertem.io.dataset.base import DataSet
 
 
-class CalibratedJEOLDM4(AbstractCalibratedDataset):
+class CalibratedJEOLDM4(CalibratedDataset):
     def __init__(self, path: str, model: Model4DSTEM, ctx: Context | None = None):
         handle = fileDM(path)
         self.path = path
         self.tags = handle.allTags
         if ctx is None:
             ctx = Context.make_with('inline')
-        self._ds = ctx.load('auto', path)
-        self._model = model
+        super().__init__(dataset=ctx.load('auto', path), model=model)
 
     @classmethod
     def new(cls, path: str, model: Model4DSTEM = None, ctx: Context | None = None) -> Self:
@@ -49,16 +47,8 @@ class CalibratedJEOLDM4(AbstractCalibratedDataset):
         )
 
     @property
-    def dataset(self) -> DataSet:
-        return self._ds
-
-    @property
     def dm4(self) -> fileDM:
         return fileDM(self.path)
-
-    @property
-    def model(self) -> Model4DSTEM:
-        return self._model
 
     def save(self, path: str):
         statedict = flax.serialization.to_state_dict(
