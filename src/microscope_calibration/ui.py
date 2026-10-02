@@ -342,15 +342,15 @@ class CoordinateCorrectionLayout:
         self.adjust_layout(self.back_pick_fig, shape=frames["backprojected"].shape)
 
         self.cl_input = pn.widgets.FloatInput(
-            name="Camera length / m", step=0.01, value=self.start_model.camera_length
+            label="Camera length / m", step=0.01, value=self.start_model.camera_length
         )
         self.semiconv_input = pn.widgets.FloatInput(
-            name="Convergence semi-angle / mrad",
+            label="Convergence semi-angle / mrad",
             step=0.01,
             value=self.start_model.semiconv * 1000,
         )
         self.scalebar_input = pn.widgets.FloatInput(
-            name="Scale bar / nm",
+            label="Scale bar / nm",
             step=0.01,
             value=(
                 self.start_model.scan_pixel_pitch
@@ -359,17 +359,17 @@ class CoordinateCorrectionLayout:
             ),
         )
         self.scale_angle_display = pn.widgets.FloatInput(
-            name="Scale bar angle / deg",
+            label="Scale bar angle / deg",
             disabled=True,
             value=(np.rad2deg(self.get_scalebar_angle(self.scalebar_model.data))),
         )
         self.scan_rotation_input = pn.widgets.FloatInput(
-            name="Scan rotation / degrees",
+            label="Scan rotation / degrees",
             step=0.1,
             value=self.start_model.scan_rotation * 180 / np.pi,
         )
         self.detector_pitch_input = pn.widgets.FloatInput(
-            name="Detector pixel pitch / µm",
+            label="Detector pixel pitch / µm",
             step=0.1,
             value=self.start_model.detector_pixel_pitch * 1e6,
         )
@@ -384,10 +384,10 @@ class CoordinateCorrectionLayout:
             selectable=False,
         )
 
-        self.record_button = pn.widgets.Button(name="Record")
-        self.apply_button = pn.widgets.Button(name="Apply correction from table")
-        self.clear_button = pn.widgets.Button(name="Clear")
-        self.correlate_button = pn.widgets.Button(name="Refine correction with cross-correlation")
+        self.record_button = pn.widgets.Button(label="Record")
+        self.apply_button = pn.widgets.Button(label="Apply correction from table")
+        self.clear_button = pn.widgets.Button(label="Clear")
+        self.correlate_button = pn.widgets.Button(label="Refine correction with cross-correlation")
 
         self.coord_fixpoint_table = pn.widgets.Tabulator(
             self.coord_fixpoints,
@@ -399,14 +399,14 @@ class CoordinateCorrectionLayout:
             selectable=False,
         )
 
-        self.coord_record_button = pn.widgets.Button(name="Record")
-        self.coord_apply_button = pn.widgets.Button(name="Derive coordinate system from table")
-        self.coord_clear_button = pn.widgets.Button(name="Clear")
-        self.optimize_button = pn.widgets.Button(name="Optimize sharpness of back-projection")
+        self.coord_record_button = pn.widgets.Button(label="Record")
+        self.coord_apply_button = pn.widgets.Button(label="Derive coordinate system from table")
+        self.coord_clear_button = pn.widgets.Button(label="Clear")
+        self.optimize_button = pn.widgets.Button(label="Optimize sharpness of back-projection")
         model_dataframe = pd.DataFrame(columns=self.model_columns)
         descan_error_dataframe = pd.DataFrame(columns=self.descan_error_columns)
 
-        self.invert_focus_button = pn.widgets.Button(name="Invert sign of overfocus")
+        self.invert_focus_button = pn.widgets.Button(label="Invert sign of overfocus")
 
         self.model_table = pn.widgets.Tabulator(
             model_dataframe,

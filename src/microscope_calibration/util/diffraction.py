@@ -1,6 +1,6 @@
 import numpy as np
 from CifFile import ReadCif
-from diffpy.structure import loadStructure
+from diffpy.structure import load_structure
 from diffsims.generators.simulation_generator import SimulationGenerator
 from diffsims.generators.zap_map_generator import get_rotation_from_z_to_direction
 from orix.crystal_map import Phase
@@ -18,7 +18,7 @@ def get_twothetas(cif_filename, acceleration_voltage_V, reciprocal_radius=1):
     structure_raw = ReadCif(cif_filename)
     key = list(structure_raw.keys())[0]
     space_group = int(structure_raw[key]["_space_group_IT_number"])
-    structure = loadStructure(cif_filename)
+    structure = load_structure(cif_filename)
     p = Phase(structure=structure, space_group=space_group)
     thetas = set()
     for ha in (0, 1, 2, 3, 4, 5):
