@@ -63,7 +63,7 @@ diffraction = [
 gui = [
     "libertem-blobfinder",
     # FIXME change to release LiberTEM-panel-ui when possible
-    "libertem-ui@git+https://github.com/matbryan52/LiberTEM-panel-ui",
+    "libertem-ui@git+https://github.com/LiberTEM/LiberTEM-panel-ui",
     "ipywidgets", "pandas", "panel", "bokeh", "sparse"
     # Also requires diffraction, TODO how to handle?
 ]
