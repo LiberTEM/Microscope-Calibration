@@ -22,7 +22,7 @@ class CalibratedJEOLDM4(CalibratedDataset):
     def __init__(self, path: str, model: Model4DSTEM, ctx: Context | None = None):
         handle = fileDM(path)
         self.path = path
-        self.tags = handle.allTags
+        self._tags = handle.allTags
         if ctx is None:
             ctx = Context.make_with("inline")
         super().__init__(dataset=ctx.load("auto", path), model=model)
@@ -61,11 +61,14 @@ class CalibratedJEOLDM4(CalibratedDataset):
         )
         return cls(path=dm4path, model=model, ctx=ctx)
 
+    @property
+    def tags(self):
+        return self._tags
+
     def microscope_info(self) -> dict:
-        tags = self.dm4.allTags
         result = {}
         search = "ImageTags.Microscope Info."
-        for tag, value in tags.items():
+        for tag, value in self.tags.items():
             if search in tag:
                 subtag = tag.rsplit(search, 1)[-1]
                 if isinstance(value, np.number):
@@ -168,9 +171,14 @@ def derive_model_from_dm4(dm4file: fileDM, model: Model4DSTEM | None = None) -> 
     )
     # Seems to be opposite of what Model4DSTEM works with
     scan_rotation = pint.Quantity(-tags[".ImageList.2.ImageTags.DigiScan.Rotation"], "degree")
+    # Seems to be opposite of what Model4DSTEM works with
+    detector_rotation = pint.Quantity(
+        -tags[".ImageList.2.ImageTags.DigiScan.Rotation Offset"], "degree"
+    )
     return model.derive(
         scan_pixel_pitch=scan_step_x.to("m").magnitude,
         scan_rotation=scan_rotation.to("radian").magnitude,
+        detector_rotation=detector_rotation.to("radian").magnitude,
         camera_length=camera_length.to("m").magnitude,
         detector_pixel_pitch=cam_pixel_pitch.to("m").magnitude,
     )
