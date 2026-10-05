@@ -1,6 +1,8 @@
 import concurrent.futures
 from abc import ABC, abstractmethod
-from typing import Literal
+from typing import Literal, Any
+from collections.abc import Mapping
+import html
 
 import jax
 
@@ -73,6 +75,11 @@ class AbstractCalibratedDataset(ABC):
     def calibrated(self, model: Model4DSTEM) -> AbstractCalibratedDataset:
         raise NotImplementedError()
 
+    @property
+    @abstractmethod
+    def tags(self) -> Mapping[str, Any]:
+        raise NotImplementedError()
+
 
 class CalibratedDataset(AbstractCalibratedDataset):
     def __init__(self, dataset: DataSet, model: Model4DSTEM):
@@ -89,6 +96,10 @@ class CalibratedDataset(AbstractCalibratedDataset):
 
     def calibrated(self, model) -> CalibratedDataset:
         return CalibratedDataset(dataset=self.dataset, model=model)
+
+    @property
+    def tags(self):
+        return {}
 
 
 class CoordinateCorrectionLayout:
@@ -186,7 +197,9 @@ class CoordinateCorrectionLayout:
 
         # # GUI elements
         preview = self.get_preview()
-        self.nav_fig = ApertureFigure.new(preview["nav"], title="Nav map", maxdim=350)
+        self.nav_fig = ApertureFigure.new(
+            preview["nav"], title=f"Uncorrected scan map (method: {self.nav_mode})", maxdim=350
+        )
         self.adjust_layout(self.nav_fig, shape=preview["nav"].shape)
 
         self.cursor = (
@@ -199,7 +212,11 @@ class CoordinateCorrectionLayout:
         self.cursor.cursor.line_color = "red"
 
         frames = self.get_frames(pos=self.scan_pos)
-        self.pick_fig = ApertureFigure.new(frames["raw"], title="Picked detector frame", maxdim=350)
+        self.pick_fig = ApertureFigure.new(
+            frames["raw"],
+            title=f"Currently picked uncorrected detector frame ({self.sig_mode})",
+            maxdim=350,
+        )
         self.adjust_layout(self.pick_fig, shape=frames["raw"].shape)
 
         self.beam_centre = (
@@ -223,7 +240,9 @@ class CoordinateCorrectionLayout:
             )
 
         self.corr_point_fig = ApertureFigure.new(
-            preview["corrected_point"], title="Corrected point analysis", maxdim=250
+            preview["corrected_point"],
+            title="Point analysis corrected for de-scan error",
+            maxdim=250,
         )
         self.adjust_layout(self.corr_point_fig, shape=preview["corrected_point"].shape)
         self.cursor_2 = (
@@ -257,7 +276,9 @@ class CoordinateCorrectionLayout:
         self.scalebar_line.glyph.line_color = "yellow"
 
         self.corr_pick_fig = ApertureFigure.new(
-            frames["corrected"], title="Frame corrected for descan error", maxdim=250
+            frames["corrected"],
+            title=f"Frame corrected for de-scan error  ({self.sig_mode})",
+            maxdim=250,
         )
         self.adjust_layout(self.corr_pick_fig, shape=frames["corrected"].shape)
 
@@ -280,7 +301,9 @@ class CoordinateCorrectionLayout:
             )
 
         self.corr_sum_fig = ApertureFigure.new(
-            preview["corrected_sum"], title="Sum of frames corrected for descan error", maxdim=250
+            preview["corrected_sum"],
+            title=f"Sum of frames corrected for de-scan error ({self.sig_mode})",
+            maxdim=250,
         )
         self.adjust_layout(self.corr_sum_fig, shape=preview["corrected_sum"].shape)
         self.corr_beam_centre_2 = Cursor(
@@ -301,7 +324,9 @@ class CoordinateCorrectionLayout:
                 ).on(self.corr_sum_fig.fig)
             )
 
-        self.nav_fig_2 = ApertureFigure.new(preview["nav"], title="Nav map")
+        self.nav_fig_2 = ApertureFigure.new(
+            preview["nav"], title=f"Uncorrected scan map (method: {self.nav_mode})"
+        )
         self.adjust_layout(self.nav_fig_2, shape=preview["nav"].shape)
 
         self.cursor_3 = (
@@ -314,7 +339,9 @@ class CoordinateCorrectionLayout:
         self.cursor_3.cursor.line_color = "red"
 
         self.pick_fig_2 = ApertureFigure.new(
-            frames["raw"], title="Picked detector frame", maxdim=350
+            frames["raw"],
+            title=f"Currently picked uncorrected detector frame ({self.sig_mode})",
+            maxdim=350,
         )
         self.adjust_layout(self.pick_fig_2, shape=frames["raw"].shape)
 
@@ -329,14 +356,14 @@ class CoordinateCorrectionLayout:
 
         self.back_sum_fig = ApertureFigure.new(
             preview["backprojected_sum"],
-            title="Frames back-projected to scan coordinate system",
+            title="Frames superimposed in scan coordinate system",
             maxdim=350,
         )
         self.adjust_layout(self.back_sum_fig, shape=preview["backprojected_sum"].shape)
 
         self.back_pick_fig = ApertureFigure.new(
             frames["backprojected"],
-            title="Current frame back-projected to scan coordinate system",
+            title="Currently selected frame back-projected to scan coordinate system",
             maxdim=350,
         )
         self.adjust_layout(self.back_pick_fig, shape=frames["backprojected"].shape)
@@ -1067,32 +1094,57 @@ class CoordinateCorrectionLayout:
 
     @property
     def layout(self):
-        self.section_1_label = pn.pane.Markdown(
+
+        if self.calibrated_dataset.tags:
+            tag_html = [
+                f"<tr><td>{html.escape(str(key))}</td><td>{html.escape(str(value))}</td></tr>"
+                for key, value in self.calibrated_dataset.tags.items()
+            ]
+            tag_html = f"<table>{''.join(tag_html)}</table>"
+            tag_md = f"""
+            <details>
+            <summary>Embedded metadata tags</summary>
+            {tag_html}
+            </details>
             """
+        else:
+            tag_md = "Embedded metadata tags: None"
+
+        self.section_1_label = pn.pane.Markdown(
+            f"""
             # 4D STEM coordinate system calibration
 
+            **Dataset**: {html.escape(str(self.calibrated_dataset.dataset))}
+
+            {tag_md}
+
             This tool helps to check and adjust the geometry of a 4D STEM
-            experiment. A nominal value for the scan rotation as well as the
-            detector pixel pitch should be known.
+            experiment.
 
-            ## Descan error, convergence semi-angle and effective camera length
+            ## De-scan error, convergence semi-angle and effective camera length
 
-            First, confirm or calibrate the shift of the beam center as a
-            function of scan position (descan error).
+            <details>
+            <summary>Instructions</summary>
+
+            Fisrt, enter the nominal values for the scan rotation as well as the
+            detector pixel pitch in the corresponding input fields.
+
+            Second, confirm or calibrate the shift of the beam center as a
+            function of scan position (de-scan error).
 
             1. Change the selected scan position on the left
             1. Observe if the cursor on the right stays at the beam center.
             1. Observe if the plot "Corrected point analysis" shows a bright
                field image of the specimen.
             1. Observe if the plots "Frame corrected for descan error" and "Sum
-               of frames corrected for descan error" show the primary beam
+               of frames corrected for de-scan error" show the primary beam
                exactly at the cursor position.
             1. If the positions don't match or the plot is distorted, move the
                cursor to the beam center and record the position. Do this for at
                least three different scan positions.
             1. Press the button "Apply correction from table" to re-calibrate
-               the descan error.
-            1. Observe if the descan error is calibrated correctly now by
+               the de-scan error.
+            1. Observe if the de-scan error is calibrated correctly now by
                repeating the first three steps.
 
             In case the frames show diffraction rings or spots and a list of
@@ -1102,6 +1154,8 @@ class CoordinateCorrectionLayout:
 
             Finally, adjust the convergence semi-angle so that the innermost
             glyph matches the size of the diffraction disk.
+
+            </details>
             """,
             max_width=500,
         )
@@ -1110,6 +1164,25 @@ class CoordinateCorrectionLayout:
             self.detector_pitch_input,
             self.cl_input,
             self.semiconv_input,
+        )
+        self.scan_step_label = pn.pane.Markdown(
+            """
+            ## Scan step calibration
+
+            <details>
+
+            <summary>Instructions</summary>
+
+            Move the yellow line handles in the plot "Corrected point analysis"
+            so that the line spans a feature of known physical size. Check the
+            size in the "Scale bar" input field and adjust if necessary. Note
+            that for defocused data the scale is only correct if the de-scan
+            error was compensated correctly.
+
+            The scale bar angle value is for information only.
+
+            </details>
+            """
         )
         inputs_2 = pn.layout.Row(
             self.scalebar_input,
@@ -1121,17 +1194,14 @@ class CoordinateCorrectionLayout:
             self.corr_pick_fig.layout,
             self.corr_sum_fig.layout,
         )
+
         self.section_2_label = pn.pane.Markdown(
             """
-            ## Scan step
-
-            Move the yellow line handles in the plot "Corrected point analysis"
-            so that the line spans a feature of known physical size. Check the
-            size in the "Scale bar" input field and adjust if necessary. Note
-            that for defocused data the scale is only correct if the descan
-            error was compensated correctly.
-
             ## Detector rotation, overfocus and handedness
+
+            <details>
+
+            <summary>Instructions</summary>
 
             These parameters can only be calibrated in a dataset that was
             recorded with a strong defocus so that the detector shows a shadow
@@ -1140,7 +1210,8 @@ class CoordinateCorrectionLayout:
             1. Move the green cursor in the plot "Corrected point analysis" to a
                prominent feature.
             1. Select a scan position where this feature is also visible on a
-               detector frame.
+               detector frame. Selecting the position of the green cursor will
+               show the feature at the beam center.
             1. Observe if the green cursor in the second plot "Picked detector
                frame" points to the same feature.
             1. Observe if the plot "Frames back-projected to scan coordinate
@@ -1150,10 +1221,12 @@ class CoordinateCorrectionLayout:
                green cursor in the second plot "Picked detector frame" to the
                feature and record the position. Do this for at least three
                different features or scan positions.
-            1. Press the button "Derive coordinate system from table from table"
-               to re-calibrate the descan error.
-            1. Observe if the descan error is calibrated correctly now by
+            1. Press the button "Derive coordinate system from table" to
+               re-calibrate the coordinate system.
+            1. Observe if the coordinate system is calibrated correctly now by
                repeating the first four steps.
+
+            </details>
             """,
             max_width=500,
         )
@@ -1166,7 +1239,7 @@ class CoordinateCorrectionLayout:
             self.correlate_button,
         )
         self.descan_label = pn.pane.Markdown(
-            "### Descan correction table",
+            "### De-scan correction table",
         )
         descan_section = pn.layout.Column(
             self.descan_label, self.descan_fixpoint_table, descan_buttons
@@ -1197,6 +1270,7 @@ class CoordinateCorrectionLayout:
             descan_section,
             self.section_2_label,
             corrected_figs,
+            self.scan_step_label,
             inputs_2,
             raw_figs_2,
             coord_section,
