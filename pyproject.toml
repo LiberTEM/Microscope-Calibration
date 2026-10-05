@@ -16,7 +16,7 @@ dependencies = [
     "jax",
     "jax-dataclasses",
     # FIXME change to release TemGymCore when possible
-    "temgym-core@git+https://github.com/uellue/TemGymCore.git@fixes",
+    "temgym-core@git+https://github.com/TemGym/TemGymCore.git",
     "sympy",
     "wrapt",
     "frozendict",
@@ -62,7 +62,8 @@ diffraction = [
 ]
 gui = [
     "libertem-blobfinder",
-    "libertem-ui@git+https://github.com/matbryan52/LiberTEM-panel-ui@examples-mods",
+    # FIXME change to release LiberTEM-panel-ui when possible
+    "libertem-ui@git+https://github.com/matbryan52/LiberTEM-panel-ui",
     "ipywidgets", "pandas", "panel", "bokeh", "sparse"
     # Also requires diffraction, TODO how to handle?
 ]
