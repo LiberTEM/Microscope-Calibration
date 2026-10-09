@@ -1,0 +1,86 @@
+name: Release
+
+on:
+  release:
+    types: [released]        # stable releases only (not drafts or pre-releases)
+
+permissions: {}              # deny by default; each job opts in below
+
+jobs:
+  build:
+    name: Build and verify distributions
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0               # hatch-vcs needs the tags
+          persist-credentials: false
+
+      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+        with:
+          enable-cache: false          # no cache in a publishing workflow
+
+      - name: Build sdist and wheel
+        run: uv build                  # builds the wheel from the sdist
+
+      - name: Check package metadata
+        run: uvx twine check --strict dist/*
+
+      - name: Smoke-test wheel and compare version with tag
+        env:
+          TAG: ${{ github.event.release.tag_name }}
+        run: |
+          VERSION=$(uv run --isolated --no-project --with dist/*.whl \
+            python -c "import importlib.metadata as m, microscope_calibration; print(m.version('microscope-calibration'))")
+          echo "Built version: $VERSION / release tag: $TAG"
+          test "v$VERSION" = "$TAG"    # assumes tags look like v0.1.0
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: dist
+          path: dist/
+          if-no-files-found: error
+
+  publish-pypi:
+    name: Publish to PyPI
+    needs: build
+    # FIXME Disabled until the git URL dependencies of the gui and diffraction extras
+    # (libertem-ui, diffsims) are released, since PyPI rejects direct URL dependencies.
+    # Also requires a PyPI trusted-publisher entry for this repository and workflow.
+    if: false
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    environment:
+      name: pypi                       # must match the PyPI trusted-publisher entry
+      url: https://pypi.org/project/microscope-calibration/
+    permissions:
+      id-token: write                  # OIDC for Trusted Publishing; nothing else
+    steps:
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: dist
+          path: dist/
+      - uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33 # v1.14.2
+        # attestations (PEP 740) are generated automatically with Trusted Publishing
+
+  attach-to-release:
+    name: Attach distributions to the GitHub release
+    # FIXME change to `needs: publish-pypi` once PyPI publishing is enabled
+    needs: build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: dist
+          path: dist/
+      - name: Upload assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.event.release.tag_name }}
+        run: gh release upload "$TAG" dist/* --repo "$GITHUB_REPOSITORY"

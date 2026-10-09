@@ -3,11 +3,15 @@
 
 version: 2
 updates:
-  - package-ecosystem: "github-actions"
-    directory: "/" # Location of package manifests
+  - package-ecosystem: github-actions
+    directory: /
     schedule:
-      interval: "weekly"
-  - package-ecosystem: "pip"
-    directory: "/packaging/"
+      interval: weekly
+    cooldown:
+      default-days: 7      # don't adopt brand-new releases immediately
+  - package-ecosystem: pip
+    directory: /packaging/
     schedule:
-      interval: "monthly"
+      interval: monthly
+    cooldown:
+      default-days: 7

@@ -16,19 +16,23 @@ authors:
     affiliation: "Ernst Ruska-Centre for Microscopy and Spectroscopy with Electrons, Forschungszentrum Jülich, 52425 Jülich, Germany"
   - family-names: Landers
     given-names: David
+    email: davidlandersresearch@gmail.com
     orcid: "https://orcid.org/0000-0002-3295-9473"
     affiliation: "Univ. Grenoble Alpes, CEA, IRIG, MEM, LEMMA, 17 avenue des Martyrs, Grenoble, 38000, France"
-  - family-names: Clausen
-    given-names: Alexander
-    orcid: "https://orcid.org/0000-0002-9555-7455"
-    affiliation: "Ernst Ruska-Centre for Microscopy and Spectroscopy with Electrons, Forschungszentrum Jülich, 52425 Jülich, Germany"
-  - family-names: Bryan
-    given-names: Matthew
-    orcid: "https://orcid.org/0000-0001-9134-384X"
-    affiliation: "CEA LETI, France"
   - family-names: Usoltceva
     given-names: Margarita
+    email: margousol@gmail.com
     affiliation: "Bonn University, Germany"
+  - family-names: Bryan
+    given-names: Matthew
+    email: matthewbryan52@gmail.com
+    orcid: "https://orcid.org/0000-0001-9134-384X"
+    affiliation: "CEA LETI, France"
+  - family-names: Clausen
+    given-names: Alexander
+    email: a.clausen@fz-juelich.de
+    orcid: "https://orcid.org/0000-0002-9555-7455"
+    affiliation: "Ernst Ruska-Centre for Microscopy and Spectroscopy with Electrons, Forschungszentrum Jülich, 52425 Jülich, Germany"
 repository-code: "https://github.com/LiberTEM/Microscope-Calibration"
 url: "https://github.com/LiberTEM/Microscope-Calibration"
 license: GPL-3.0-only   # must match the license in pyproject.toml

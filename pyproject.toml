@@ -1,14 +1,39 @@
 [build-system]
-requires = ["setuptools"]
-build-backend = "setuptools.build_meta"
+requires = ["hatchling", "hatch-vcs"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = [
+  "src/microscope_calibration",
+]
+only-packages = true
+
+[tool.hatch.build.targets.sdist]
+include = [
+  "src/microscope_calibration",
+  "tests",
+  "CITATION.cff",
+  "pytest.ini",
+  "setup.cfg",
+]
+
+# Version is derived from git tags like v0.1.0
+[tool.hatch.version]
+source = "vcs"
+
+# FIXME remove when the git URL dependencies in the extras are released
+[tool.hatch.metadata]
+allow-direct-references = true
 
 [project]
 name = "microscope-calibration"
 description = "Tools to calibrate a microscope"
-license = {file = "LICENSE"}
+readme = "README.md"
+license = "GPL-3.0-only"
+license-files = ["LICENSE"]
 keywords = ["microscopy", "LiberTEM", "TEM", "STEM"]
 requires-python = ">=3.14"
-dynamic = ["version", "readme"]
+dynamic = ["version"]
 # Stripped down to only support model.py
 # TODO strategy on how to integrate with other SW without pulling in
 # all scientific Python packages
@@ -28,6 +53,10 @@ classifiers = [
 ]
 authors = [
     {name="Dieter Weber", email="d.weber@fz-juelich.de"},
+    {name="David Landers", email="davidlandersresearch@gmail.com"},
+    {name="Margarita Usoltceva", email="margousol@gmail.com"},
+    {name="Matthew Bryan", email="matthewbryan52@gmail.com"},
+    {name="Alexander Clausen", email="a.clausen@fz-juelich.de"},
 ]
 
 [project.urls]
@@ -68,10 +97,6 @@ gui = [
     "pint", "ncempy",
     # Also requires diffraction, TODO how to handle?
 ]
-
-[tool.setuptools.dynamic]
-version = {attr = "microscope_calibration.__version__"}
-readme = {file = ["README.md"], content-type="text/markdown"}
 
 [tool.ruff]
 
