@@ -1,0 +1,74 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it using the metadata from this file."
+type: software
+title: "Microscope-Calibration"
+abstract: >-
+  Tools to calibrate a (scanning) transmission electron microscope from data,
+  with a focus on 4D STEM. Recovers the geometric calibration of a 4D STEM
+  experiment, including scan and detector rotation, handedness, camera length,
+  scan pixel pitch, overfocus and descan error, using a differentiable digital
+  twin of the microscope built on TemGymCore and JAX.
+authors:
+  - family-names: Weber
+    given-names: Dieter
+    email: d.weber@fz-juelich.de
+    orcid: "https://orcid.org/0000-0001-6635-9567"
+    affiliation: "Ernst Ruska-Centre for Microscopy and Spectroscopy with Electrons, Forschungszentrum Jülich, 52425 Jülich, Germany"
+  - family-names: Landers
+    given-names: David
+    orcid: "https://orcid.org/0000-0002-3295-9473"
+    affiliation: "Univ. Grenoble Alpes, CEA, IRIG, MEM, LEMMA, 17 avenue des Martyrs, Grenoble, 38000, France"
+  - family-names: Clausen
+    given-names: Alexander
+    orcid: "https://orcid.org/0000-0002-9555-7455"
+    affiliation: "Ernst Ruska-Centre for Microscopy and Spectroscopy with Electrons, Forschungszentrum Jülich, 52425 Jülich, Germany"
+  - family-names: Bryan
+    given-names: Matthew
+    orcid: "https://orcid.org/0000-0001-9134-384X"
+    affiliation: "CEA LETI, France"
+  - family-names: Usoltceva
+    given-names: Margarita
+    affiliation: "Bonn University, Germany"
+repository-code: "https://github.com/LiberTEM/Microscope-Calibration"
+url: "https://github.com/LiberTEM/Microscope-Calibration"
+license: GPL-3.0-only   # must match the license in pyproject.toml
+keywords:
+  - electron microscopy
+  - 4D STEM
+  - calibration
+  - digital twin
+  - ray tracing
+  - differentiable programming
+  - JAX
+  - LiberTEM
+references:
+  - type: article
+    authors:
+      - family-names: Weber
+        given-names: Dieter
+      - family-names: Landers
+        given-names: David
+      - family-names: Huang
+        given-names: Chen
+      - family-names: Liberti
+        given-names: Emanuela
+      - family-names: Poghosyan
+        given-names: Emiliya
+      - family-names: Bryan
+        given-names: Matthew
+      - family-names: Clausen
+        given-names: Alexander
+      - family-names: Stroppa
+        given-names: Daniel G.
+      - family-names: Kirkland
+        given-names: Angus I.
+      - family-names: Müller
+        given-names: Elisabeth
+      - family-names: Stewart
+        given-names: Andrew
+      - family-names: Dunin-Borkowski
+        given-names: Rafal E.
+    title: "Calibrating coordinate system alignment in a scanning transmission electron microscope using a digital twin"
+    year: 2024
+    doi: "10.48550/arXiv.2403.08538"
+    url: "https://arxiv.org/abs/2403.08538"
