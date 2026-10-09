@@ -15,7 +15,6 @@ dynamic = ["version", "readme"]
 dependencies = [
     "jax",
     "jax-dataclasses",
-    # FIXME change to release TemGymCore when possible
     "temgym-core",
     "sympy",
     "wrapt",
@@ -64,7 +63,9 @@ gui = [
     "libertem-blobfinder",
     # FIXME change to release LiberTEM-panel-ui when possible
     "libertem-ui@git+https://github.com/LiberTEM/LiberTEM-panel-ui",
-    "ipywidgets", "pandas", "panel", "bokeh", "sparse"
+    "ipywidgets", "pandas", "panel", "bokeh", "sparse",
+    # for util.jeol_dm4
+    "pint", "ncempy",
     # Also requires diffraction, TODO how to handle?
 ]
 
