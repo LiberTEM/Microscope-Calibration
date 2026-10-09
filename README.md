@@ -69,7 +69,8 @@ pre-commit run --all-files
 ## Citation
 
 If you use this software, please cite it via its Zenodo record (DOI to be added on first
-release) and the preprint https://arxiv.org/abs/2403.08538.
+release) and the preprint https://arxiv.org/abs/2403.08538. Citation metadata is available in
+[CITATION.cff](CITATION.cff).
 
 <!-- TODO add Zenodo concept DOI and badge after the first release -->
 
