@@ -16,7 +16,7 @@ dependencies = [
     "jax",
     "jax-dataclasses",
     # FIXME change to release TemGymCore when possible
-    "temgym-core@git+https://github.com/TemGym/TemGymCore.git",
+    "temgym-core",
     "sympy",
     "wrapt",
     "frozendict",
