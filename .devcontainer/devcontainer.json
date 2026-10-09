@@ -1,0 +1,16 @@
+{
+  "name": "Python (Miniforge)",
+  "build": {
+    "dockerfile": "Dockerfile"
+  },
+  "mounts": [
+    "source=miniforge-${devcontainerId},target=/home/vscode/miniforge3,type=volume"
+  ],
+  "remoteEnv": {
+    "PATH": "/home/vscode/miniforge3/bin:${containerEnv:PATH}"
+  },
+  "remoteUser": "vscode",
+  "features": {
+    "ghcr.io/anthropics/devcontainer-features/claude-code:1.0": {}
+  }
+}
