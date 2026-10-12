@@ -1126,6 +1126,23 @@ def test_adjust_flip_factor_jit(random_model, flip_factor):
     assert_allclose(jax.jit(f)(flip_factor), f(flip_factor), rtol=1e-12, atol=1e-12)
 
 
+def test_derive_flip_y(random_model):
+    assert random_model.derive(flip_y=True).flip_factor == -1.0
+    assert random_model.derive(flip_y=False).flip_factor == 1.0
+    with pytest.raises(ValueError, match="flip_y or flip_factor"):
+        random_model.derive(flip_y=True, flip_factor=-1.0)
+
+
+def test_normalize_types(random_model):
+    model = random_model.derive(
+        overfocus=jnp.float64(0.5),
+        scan_center=PixelYX(y=np.float32(1.0), x=sym.Float(2.0)),
+    ).normalize_types()
+    leaves = jax.tree.leaves(model)
+    assert len(leaves) == 24
+    assert all(type(leaf) is float for leaf in leaves)
+
+
 def test_invert_focus(random_model):
     model = random_model
     trace = lambdify_trace_for(np)
