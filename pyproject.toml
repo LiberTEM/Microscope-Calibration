@@ -101,7 +101,7 @@ gui = [
 [tool.ruff]
 
 line-length = 100
-extend-exclude = ["prototypes"]
+extend-exclude = ["prototypes", "src/microscope_calibration/common/_generated.py"]
 force-exclude = true
 
 [tool.ruff.lint]

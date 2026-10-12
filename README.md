@@ -66,6 +66,30 @@ pytest tests/
 pre-commit run --all-files
 ```
 
+### Generated code
+
+Some functions are derived symbolically from `Model4DSTEM.trace()` with SymPy, for example how
+the descan error has to change in `Model4DSTEM.adjust_scan_pixel_pitch()` to keep its effect in
+pixel coordinates constant. This keeps `trace()` the single source of truth for the model.
+Since the derivation takes a few seconds per function, the result is rendered as plain Python
+code into `src/microscope_calibration/common/_generated.py` and committed to the repository.
+Don't edit that file by hand.
+
+The functions to generate are listed in `GENERATED_FUNCTIONS` in
+`src/microscope_calibration/common/model.py`. After changing the model or that list,
+regenerate the file and commit the result:
+
+```bash
+python -m microscope_calibration.common.generate
+```
+
+`tests/test_codegen.py` checks that the committed code is up to date by repeating the
+derivation and comparing the results symbolically:
+
+```bash
+pytest tests/test_codegen.py
+```
+
 ## Citation
 
 If you use this software, please cite it via its Zenodo record (DOI to be added on first
