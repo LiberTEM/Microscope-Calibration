@@ -64,10 +64,14 @@ def test_events(kwargs):
     layout.move_feature_select_to(MockEvent(y=4, x=5))
 
     layout.descan_add_row()
+    # Replaces the previous row at the same scan position
     layout.descan_add_row()
     layout.move_scan_to(MockEvent(y=0, x=1))
     layout.move_rings_to(MockEvent(y=3, x=4))
     layout.descan_add_row()
+    layout.move_scan_to(MockEvent(y=3, x=0))
+    layout.descan_add_row()
+    assert len(layout.descan_fixpoint_table.value) == 3
     layout.descan_move_to_row(0)
     layout.perform_descan_update()
     layout.center_correlation_regression()
