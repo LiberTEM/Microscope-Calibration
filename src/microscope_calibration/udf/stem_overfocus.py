@@ -69,10 +69,11 @@ class BaseCorrectionUDF(UDF):
             "corr_mat": _correction_matrix(model),
         }
 
-    def _get_fov(self):
-        fov_size_y = int(self.meta.dataset_shape.nav[0])
-        fov_size_x = int(self.meta.dataset_shape.nav[1])
-        return fov_size_y, fov_size_x
+    def _get_fov(self) -> tuple[int, int]:
+        nav_shape = tuple(self.meta.dataset_shape.nav)
+        if len(nav_shape) != 2:
+            raise ValueError(f"Only 2D scans are supported, got navigation shape {nav_shape}.")
+        return nav_shape
 
     @property
     def has_correction(self):
@@ -88,11 +89,9 @@ class OverfocusUDF(BaseCorrectionUDF):
         fov = self._get_fov()
         dtype = np.result_type(self.meta.input_dtype, np.float32)
         return {
-            "backprojected_sum": self.buffer(
-                kind="single", dtype=dtype, extra_shape=fov, where="device"
-            ),
-            "corrected_point": self.buffer(kind="nav", dtype=dtype, where="device"),
-            "corrected_sum": self.buffer(kind="sig", dtype=dtype, where="device"),
+            "backprojected_sum": self.buffer(kind="single", dtype=dtype, extra_shape=fov),
+            "corrected_point": self.buffer(kind="nav", dtype=dtype),
+            "corrected_sum": self.buffer(kind="sig", dtype=dtype),
         }
 
     def process_frame(self, frame):
@@ -147,11 +146,9 @@ class OverfocusUDF(BaseCorrectionUDF):
 # not run into inheritance complications
 class CorrectedPickUDF(BaseCorrectionUDF):
     def get_preferred_input_dtype(self):
-        ""
         return self.USE_NATIVE_DTYPE
 
     def get_result_buffers(self):
-        ""
         dtype = self.meta.input_dtype
         sigshape = tuple(self.meta.dataset_shape.sig)
         backprojection_fov = self._get_fov()
@@ -165,11 +162,13 @@ class CorrectedPickUDF(BaseCorrectionUDF):
             log.warning(
                 "CorrectedPickUDF is loading %s bytes per buffer, exceeding warning limit %s. "
                 "Consider using or implementing an UDF to process data on the worker "
-                "nodes instead." % (loaded_size, warn_limit)
+                "nodes instead.",
+                loaded_size,
+                warn_limit,
             )
         # We are using a "single" buffer since we mostly load single frames. A
         # "sig" buffer would work as well, but would require a transpose to
-        # accomodate multiple frames in the last and not first dimension.
+        # accommodate multiple frames in the last and not first dimension.
         # A "nav" buffer would allocate a NaN-filled buffer for the whole dataset.
         return {
             "corrected": self.buffer(kind="single", extra_shape=(navsize,) + sigshape, dtype=dtype),
@@ -179,7 +178,6 @@ class CorrectedPickUDF(BaseCorrectionUDF):
         }
 
     def process_frame(self, frame):
-        ""
         scan_y, scan_x = self.meta.coordinates[0]
         overfocus_model: Model4DSTEM = self.params.overfocus_model["model"]
         # We work in flattened nav space with ROI applied
@@ -203,7 +201,6 @@ class CorrectedPickUDF(BaseCorrectionUDF):
             )
 
     def merge(self, dest, src):
-        ""
         # We receive full-size buffers from each node that
         # contributes at least one frame and rely on the rest being filled
         # with zeros correctly.
@@ -211,13 +208,11 @@ class CorrectedPickUDF(BaseCorrectionUDF):
         dest.backprojected[:] += src.backprojected
 
     def merge_all(self, ordered_results):
-        ""
         res = {}
         for attr in ("corrected", "backprojected"):
             chunks = [getattr(b, attr) for b in ordered_results.values()]
             # We receive full-size buffers from each node that
             # contributes at least one frame and rely on the rest being filled
             # with zeros correctly.
-            ssum = np.stack(chunks, axis=0).sum(axis=0)
-            res[attr] = ssum
+            res[attr] = sum(chunks[1:], start=chunks[0].copy())
         return res

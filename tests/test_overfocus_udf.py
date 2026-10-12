@@ -199,3 +199,12 @@ def test_cached_matrices_read_only():
     for mat in (_backward_matrix(model), _correction_matrix(model)):
         with pytest.raises(ValueError, match="read-only"):
             mat[0, 0] = 1.0
+
+
+@pytest.mark.parametrize("udf_class", [OverfocusUDF, CorrectedPickUDF])
+def test_udf_requires_2d_scan(udf_class):
+    ctx = Context.make_with("inline")
+    ds = ctx.load("memory", data=np.zeros((2, 3, 4, 5, 6)), sig_dims=2)
+    model = Model4DSTEM.default(dataset_shape=(3, 4, 5, 6)).derive(overfocus=0.1)
+    with pytest.raises(ValueError, match="Only 2D scans"):
+        ctx.run_udf(dataset=ds, udf=udf_class(overfocus_model={"model": model}))
