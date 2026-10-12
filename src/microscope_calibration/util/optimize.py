@@ -312,9 +312,34 @@ CoMRegression = np.ndarray[tuple[3, 2], np.floating]
 CoMRegressions = dict[float, CoMRegression]
 
 
+def _regression_residuals(model: Model4DSTEM, reg: CoMRegression) -> list:
+    """
+    Deviation of the central ray on the detector from a CoM regression, in
+    pixels, at the corners of a scan pixel
+    """
+    (dy, dx), (dydy, dxdy), (dydx, dxdx) = reg
+    distances = []
+    for scan_y in (0.0, 1.0):
+        for scan_x in (0.0, 1.0):
+            det_y = model.detector_center.y + (dy + dydy * scan_y + dydx * scan_x)
+            det_x = model.detector_center.x + (dx + dxdy * scan_y + dxdx * scan_x)
+            res = trace(
+                model,
+                scan_pos=PixelYX(y=scan_y, x=scan_x),
+                source_dx=0.0,
+                source_dy=0.0,
+            )
+            distances.extend(
+                (
+                    det_y - res["detector"].sampling["detector_px"].y,
+                    det_x - res["detector"].sampling["detector_px"].x,
+                )
+            )
+    return distances
+
+
 class _DEFullArgs(NamedTuple):
-    # Aligned with the CoM regression coordinate system.
-    # Currently only tested for no scan rotation and no flip_y
+    # Aligned with the CoM regression coordinate system
     aligned_model: Model4DSTEM
     regressions: CoMRegressions
 
@@ -328,28 +353,7 @@ def _de_full_loss(y, args: _DEFullArgs):
             camera_length=cl,
             descan_error=de,
         )
-        for scan_y in (0.0, 1.0):
-            for scan_x in (0.0, 1.0):
-                dy = reg[0, 0]
-                dx = reg[0, 1]
-                dydy = reg[1, 0]
-                dxdy = reg[1, 1]
-                dydx = reg[2, 0]
-                dxdx = reg[2, 1]
-                det_y = opt_model.detector_center.y + (dy + dydy * scan_y + dydx * scan_x)
-                det_x = opt_model.detector_center.x + (dx + dxdy * scan_y + dxdx * scan_x)
-                res = trace(
-                    opt_model,
-                    scan_pos=PixelYX(y=scan_y, x=scan_x),
-                    source_dx=0.0,
-                    source_dy=0.0,
-                )
-                distances.extend(
-                    (
-                        det_y - res["detector"].sampling["detector_px"].y,
-                        det_x - res["detector"].sampling["detector_px"].x,
-                    )
-                )
+        distances.extend(_regression_residuals(opt_model, reg))
     return jnp.array(distances)
 
 
@@ -391,20 +395,7 @@ class _NormArgs(NamedTuple):
 
 
 def _zero_const(de: DescanError) -> DescanError:
-    return DescanError(
-        pxo_pxi=de.pxo_pxi,
-        pxo_pyi=de.pxo_pyi,
-        pyo_pxi=de.pyo_pxi,
-        pyo_pyi=de.pyo_pyi,
-        sxo_pxi=de.sxo_pxi,
-        sxo_pyi=de.sxo_pyi,
-        syo_pxi=de.syo_pxi,
-        syo_pyi=de.syo_pyi,
-        offpxi=0.0,
-        offpyi=0.0,
-        offsxi=0.0,
-        offsyi=0.0,
-    )
+    return de._replace(offpxi=0.0, offpyi=0.0, offsxi=0.0, offsyi=0.0)
 
 
 @jax.jit
@@ -473,26 +464,23 @@ def normalize_descan_error(ref_model: Model4DSTEM):
 
 
 class _DETiltArgs(NamedTuple):
-    # Aligned with the CoM regression coordinate system.
-    # Currently only tested for no scan rotation and no flip_y
+    # Aligned with the CoM regression coordinate system
     aligned_model: Model4DSTEM
     regression: CoMRegression
 
 
 def _tilt_descan(de: DescanError, y) -> DescanError:
-    return DescanError(
-        pxo_pxi=de.pxo_pxi,
-        pxo_pyi=de.pxo_pyi,
-        pyo_pxi=de.pyo_pxi,
-        pyo_pyi=de.pyo_pyi,
-        sxo_pxi=y[0],
-        sxo_pyi=y[1],
-        syo_pxi=y[2],
-        syo_pyi=y[3],
-        offpxi=de.offpxi,
-        offpyi=de.offpyi,
-        offsxi=y[4],
-        offsyi=y[5],
+    """
+    Replace the tilt components of :code:`de` with :code:`y`
+    """
+    sxo_pxi, sxo_pyi, syo_pxi, syo_pyi, offsxi, offsyi = y
+    return de._replace(
+        sxo_pxi=sxo_pxi,
+        sxo_pyi=sxo_pyi,
+        syo_pxi=syo_pxi,
+        syo_pyi=syo_pyi,
+        offsxi=offsxi,
+        offsyi=offsyi,
     )
 
 
@@ -502,31 +490,7 @@ def _de_tilt_loss(y, args: _DETiltArgs):
         descan_error=_tilt_descan(de=args.aligned_model.descan_error, y=y)
     )
 
-    distances = []
-    reg = args.regression
-    for scan_y in (0.0, 1.0):
-        for scan_x in (0.0, 1.0):
-            dy = reg[0, 0]
-            dx = reg[0, 1]
-            dydy = reg[1, 0]
-            dxdy = reg[1, 1]
-            dydx = reg[2, 0]
-            dxdx = reg[2, 1]
-            det_y = opt_model.detector_center.y + (dy + dydy * scan_y + dydx * scan_x)
-            det_x = opt_model.detector_center.x + (dx + dxdy * scan_y + dxdx * scan_x)
-            res = trace(
-                opt_model,
-                scan_pos=PixelYX(y=scan_y, x=scan_x),
-                source_dx=0.0,
-                source_dy=0.0,
-            )
-            distances.extend(
-                (
-                    det_y - res["detector"].sampling["detector_px"].y,
-                    det_x - res["detector"].sampling["detector_px"].x,
-                )
-            )
-    return jnp.array(distances)
+    return jnp.array(_regression_residuals(opt_model, args.regression))
 
 
 def solve_tilt_descan_error(ref_model: Model4DSTEM, regression: CoMRegression):
@@ -548,16 +512,13 @@ def solve_tilt_descan_error(ref_model: Model4DSTEM, regression: CoMRegression):
         )
     )
     args = _DETiltArgs(
-        aligned_model=aligned_model,
+        aligned_model=aligned_model.normalize_types(),
         regression=regression,
     )
 
     # Start with a small epsilon to prevent NaN results of yet unknown origin
     # for some parameter combinations
     start = jnp.full(shape=(6,), fill_value=1e-6)
-    args = _DETiltArgs(
-        aligned_model=args.aligned_model.normalize_types(), regression=args.regression
-    )
     opt_res, residual = _least_squares(fn=_de_tilt_loss, args=args, y0=start, max_steps=10000)
 
     # Bring descan error back to original coordinate system
