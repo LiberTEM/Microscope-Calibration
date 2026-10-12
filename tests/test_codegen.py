@@ -7,7 +7,7 @@ from numpy.testing import assert_allclose
 from temgym_core import PixelYX
 
 from microscope_calibration.common import _generated
-from microscope_calibration.common.model import GENERATED_FUNCTIONS
+from microscope_calibration.common.generate import GENERATED_FUNCTIONS
 from microscope_calibration.util.codegen import leaves, render_module
 
 
@@ -21,7 +21,7 @@ def test_generated_up_to_date(name):
     result = getattr(_generated, name)(**args)
     assert type(result) is type(expected), msg
     for res, exp in zip(leaves(result), leaves(expected), strict=True):
-        assert sym.simplify(res - exp) == 0, msg
+        assert sym.simplify(sym.sympify(res) - exp) == 0, msg
 
 
 def test_no_stale_generated_functions():
