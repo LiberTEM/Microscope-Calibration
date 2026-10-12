@@ -60,6 +60,26 @@ def check_float64():
         )
 
 
+def _least_squares(fn, args, y0, tol: float = 1e-12, **kwargs):
+    """
+    Minimize the sum of squares of :code:`fn(y, args)` starting from :code:`y0`
+
+    Raises :class:`RuntimeError` if JAX doesn't use float64, see
+    :func:`check_float64`. Additional :code:`kwargs` are passed to
+    :func:`optimistix.least_squares`.
+
+    Returns
+    -------
+    solution, residual
+        Optimization result and :code:`fn(y, args)` for it
+    """
+    check_float64()
+    opt_res = optimistix.least_squares(
+        fn=fn, args=args, solver=optimistix.BFGS(atol=tol, rtol=tol), y0=y0, **kwargs
+    )
+    return opt_res, fn(opt_res.value, args)
+
+
 def make_overfocus_loss_function(
     model: Model4DSTEM,
     ctx: Context,
@@ -228,12 +248,9 @@ def solve_camera_length(ref_model: Model4DSTEM, twotheta: float, radius_px: floa
     model, residual
         Fitted model and the residual of the radius in pixels
     """
-    check_float64()
     args = _CLArgs(ref_model=ref_model, twotheta=twotheta, radius_px=radius_px)
     start = jnp.array((ref_model.camera_length,))
-    opt_res = optimistix.least_squares(
-        fn=_cl_loss, args=args, solver=optimistix.BFGS(atol=1e-12, rtol=1e-12), y0=start
-    )
+    opt_res, _ = _least_squares(fn=_cl_loss, args=args, y0=start)
     # The loss function has minima at camera_length and -camera_length.
     # we take the positive side since a negative camera length doesn't make sense
     # for a classical TEM, only for reflection.
@@ -266,7 +283,6 @@ def solve_scan_pixel_pitch(
     point_2: PixelYX,
     physical_distance: float,
 ):
-    check_float64()
     args = _SPPArgs(
         ref_model=ref_model,
         point_1=point_1,
@@ -274,13 +290,7 @@ def solve_scan_pixel_pitch(
         physical_distance=physical_distance,
     )
     start = jnp.array((ref_model.scan_pixel_pitch,))
-    opt_res = optimistix.least_squares(
-        fn=_spp_loss,
-        args=args,
-        solver=optimistix.BFGS(atol=1e-12, rtol=1e-12),
-        y0=start,
-    )
-    residual = _spp_loss(opt_res.value, args)
+    opt_res, residual = _least_squares(fn=_spp_loss, args=args, y0=start)
     # The loss function has minima at scan_pixel_pitch and -scan_pixel_pitch. we
     # take the positive side since the inversion can be better expressed with a
     # scan rotation.
@@ -344,7 +354,6 @@ def _de_full_loss(y, args: _DEFullArgs):
 
 
 def solve_full_descan_error(ref_model: Model4DSTEM, regressions: CoMRegressions):
-    check_float64()
     # Caveat: scan and detector center of ref_model and of regressions should
     # match.
 
@@ -363,13 +372,7 @@ def solve_full_descan_error(ref_model: Model4DSTEM, regressions: CoMRegressions)
     # Start with a small epsilon to prevent NaN results of yet unknown origin
     # for some parameter combinations
     start = jnp.full(shape=(len(DescanError()),), fill_value=1e-6)
-    opt_res = optimistix.least_squares(
-        fn=_de_full_loss,
-        args=args,
-        solver=optimistix.BFGS(atol=1e-12, rtol=1e-12),
-        y0=start,
-    )
-    residual = _de_full_loss(opt_res.value, args)
+    opt_res, residual = _least_squares(fn=_de_full_loss, args=args, y0=start)
 
     # Bring descan error back to original coordinate system
     res_model = (
@@ -448,7 +451,6 @@ def _norm_loss(y, args: _NormArgs):
 
 
 def normalize_descan_error(ref_model: Model4DSTEM):
-    check_float64()
     args = _NormArgs(
         ref_model=ref_model,
     )
@@ -460,13 +462,7 @@ def normalize_descan_error(ref_model: Model4DSTEM):
             ref_model.detector_center.x,
         )
     )
-    opt_res = optimistix.least_squares(
-        fn=_norm_loss,
-        args=args,
-        solver=optimistix.BFGS(atol=1e-12, rtol=1e-12),
-        y0=start,
-    )
-    residual = _norm_loss(opt_res.value, args)
+    opt_res, residual = _least_squares(fn=_norm_loss, args=args, y0=start)
     scy, scx, dcy, dcx = opt_res.value
     res_model = ref_model.derive(
         scan_center=PixelYX(y=scy, x=scx),
@@ -534,7 +530,6 @@ def _de_tilt_loss(y, args: _DETiltArgs):
 
 
 def solve_tilt_descan_error(ref_model: Model4DSTEM, regression: CoMRegression):
-    check_float64()
     # Caveat: scan and detector center of ref_model and of regressions should
     # match.
 
@@ -563,14 +558,7 @@ def solve_tilt_descan_error(ref_model: Model4DSTEM, regression: CoMRegression):
     args = _DETiltArgs(
         aligned_model=args.aligned_model.normalize_types(), regression=args.regression
     )
-    opt_res = optimistix.least_squares(
-        fn=_de_tilt_loss,
-        args=args,
-        solver=optimistix.BFGS(atol=1e-12, rtol=1e-12),
-        y0=start,
-        max_steps=10000,
-    )
-    residual = _de_tilt_loss(opt_res.value, args)
+    opt_res, residual = _least_squares(fn=_de_tilt_loss, args=args, y0=start, max_steps=10000)
 
     # Bring descan error back to original coordinate system
     res_model = (
@@ -612,7 +600,6 @@ def _de_tilt_point_loss(y, args: _DETiltPointArgs):
 
 
 def solve_tilt_descan_error_points(ref_model: Model4DSTEM, points: jnp.ndarray):
-    check_float64()
     points = jnp.asarray(points, dtype=jnp.float64)
     args = _DETiltPointArgs(
         model=ref_model,
@@ -622,16 +609,15 @@ def solve_tilt_descan_error_points(ref_model: Model4DSTEM, points: jnp.ndarray):
     # Start with a small epsilon to prevent NaN results of yet unknown origin
     # for some parameter combinations
     start = jnp.full(shape=(6,), fill_value=1e-6)
-    opt_res = optimistix.least_squares(
+    opt_res, residual = _least_squares(
         fn=_de_tilt_point_loss,
         args=args,
-        # FIXME Doesn't reach 1e-12 like the others, for unknown reasons
-        solver=optimistix.BFGS(atol=1e-11, rtol=1e-11),
         y0=start,
+        # FIXME Doesn't reach 1e-12 like the others, for unknown reasons
+        tol=1e-11,
         # FIXME needs more steps than others, for unknown reasons
         max_steps=10000,
     )
-    residual = _de_tilt_point_loss(opt_res.value, args)
     # Write the new tilts and offsets into the previous descan error
     new_descan = _tilt_descan(ref_model.descan_error, opt_res.value)
     res_model = ref_model.derive(descan_error=new_descan).normalize_types()
@@ -723,22 +709,19 @@ def solve_coords_points(ref_model: Model4DSTEM, points: jnp.ndarray):
     model, residual
         Fitted model and the residual of the fitted points in pixels
     """
-    check_float64()
     points = jnp.asarray(points, dtype=jnp.float64)
     start = jnp.array([ref_model.detector_rotation, ref_model.overfocus] + [0.0, 0.0] * len(points))
     results = []
     for flip_factor in (1.0, -1.0):
         args = _CoordPointArgs(model=ref_model, points=points, flip_factor=flip_factor)
-        opt_res = optimistix.least_squares(
+        opt_res, residual = _least_squares(
             fn=_coords_point_loss,
             args=args,
-            solver=optimistix.BFGS(atol=1e-12, rtol=1e-12),
             y0=start,
             max_steps=10000,
             # Can fail to converge for the wrong flip factor
             throw=False,
         )
-        residual = _coords_point_loss(opt_res.value, args)
         results.append((float(jnp.sum(residual**2)), flip_factor, opt_res, residual))
     _, flip_factor, opt_res, residual = min(results, key=lambda r: r[0])
     if not bool(opt_res.result == optimistix.RESULTS.successful):
@@ -777,7 +760,6 @@ class SlopeYX(NamedTuple):
 
 
 def solve_hit_specimen(model: Model4DSTEM, scan_pos: PixelYX, specimen_px: PixelYX):
-    check_float64()
     args = _HitSpecimenArgs(
         model=model,
         scan_pos=scan_pos,
@@ -785,14 +767,7 @@ def solve_hit_specimen(model: Model4DSTEM, scan_pos: PixelYX, specimen_px: Pixel
     )
 
     start = jnp.array([0.0, 0.0])
-    opt_res = optimistix.least_squares(
-        fn=_hit_specimen_loss,
-        args=args,
-        solver=optimistix.BFGS(atol=1e-12, rtol=1e-12),
-        y0=start,
-        max_steps=10000,
-    )
-    residual = _hit_specimen_loss(opt_res.value, args)
+    opt_res, residual = _least_squares(fn=_hit_specimen_loss, args=args, y0=start, max_steps=10000)
     # Write the new values into the previous parameters
     dy, dx = opt_res.value
 
