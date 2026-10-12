@@ -647,23 +647,18 @@ def test_tilt_descan_error_points(
         )
         detector_center = res["detector"].sampling["detector_px"]
         points.append((scan_y, scan_x, detector_center.y, detector_center.x))
-    opt_res, residual = solve_tilt_descan_error_points(
-        ref_model=model.derive(
-            # Blank out the tilt parts of the descan error
-            descan_error=_tilt_descan(de=model.descan_error, y=np.zeros(6)),
-        ),
-        points=points,
+    ref_model = model.derive(
+        # Blank out the tilt parts of the descan error
+        descan_error=_tilt_descan(de=model.descan_error, y=np.zeros(6)),
     )
-    default_attrs = ("pxo_pxi", "pxo_pyi", "pyo_pxi", "pyo_pyi", "offpxi", "offpyi")
-    opt_attrs = ("sxo_pxi", "syo_pyi", "syo_pxi", "sxo_pyi")
-    if works:
-        attrs = default_attrs + opt_attrs
-        # For some reason less accurate than in other tests
-        assert_allclose(residual, 0.0, atol=1e-8)
-    else:
-        attrs = default_attrs
-    for key in attrs:
-        print(key)
+    if not works:
+        with pytest.raises(ValueError, match="at least 3 points"):
+            solve_tilt_descan_error_points(ref_model=ref_model, points=points)
+        return
+    opt_res, residual = solve_tilt_descan_error_points(ref_model=ref_model, points=points)
+    # For some reason less accurate than in other tests
+    assert_allclose(residual, 0.0, atol=1e-8)
+    for key in model.descan_error._fields:
         assert_allclose(
             getattr(model.descan_error, key),
             getattr(opt_res.descan_error, key),
@@ -672,6 +667,12 @@ def test_tilt_descan_error_points(
         )
         assert isinstance(getattr(model.descan_error, key), float)
         assert isinstance(getattr(opt_res.descan_error, key), float)
+
+
+def test_coords_points_no_points():
+    model = Model4DSTEM.default(dataset_shape=(8, 8, 8, 8)).derive(overfocus=0.01)
+    with pytest.raises(ValueError, match="at least one point"):
+        solve_coords_points(ref_model=model, points=[])
 
 
 def test_check_float64():

@@ -561,7 +561,10 @@ def _de_tilt_point_loss(y, args: _DETiltPointArgs):
 
 
 def solve_tilt_descan_error_points(ref_model: Model4DSTEM, points: jnp.ndarray):
-    points = jnp.asarray(points, dtype=jnp.float64)
+    points = jnp.asarray(points, dtype=jnp.float64).reshape((-1, 4))
+    # Six unknowns, two equations per point
+    if len(points) < 3:
+        raise ValueError(f"Need at least 3 points to fit the descan error, got {len(points)}.")
     args = _DETiltPointArgs(
         model=ref_model,
         points=points,
@@ -670,7 +673,9 @@ def solve_coords_points(ref_model: Model4DSTEM, points: jnp.ndarray):
     model, residual
         Fitted model and the residual of the fitted points in pixels
     """
-    points = jnp.asarray(points, dtype=jnp.float64)
+    points = jnp.asarray(points, dtype=jnp.float64).reshape((-1, 6))
+    if len(points) < 1:
+        raise ValueError("Need at least one point.")
     start = jnp.array([ref_model.detector_rotation, ref_model.overfocus] + [0.0, 0.0] * len(points))
     results = []
     for flip_factor in (1.0, -1.0):
