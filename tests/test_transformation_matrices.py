@@ -11,14 +11,18 @@ from microscope_calibration.common.model import (
 from microscope_calibration.common.stem_overfocus import (
     FittingError,
     get_backward_transformation_matrix,
+    get_detector_correction_matrix,
+    ray_transfer_matrix,
 )
 from microscope_calibration.udf.stem_overfocus import BaseCorrectionUDF
+from microscope_calibration.util.stem_overfocus_sim import get_forward_transformation_matrix
 from microscope_calibration.util.sympy import lambdify
 
-# The transformation matrices are derived symbolically from
-# Model4DSTEM.trace(). The function below is the previous implementation that
-# fitted the matrix to sample rays. It serves as a reference to confirm that
-# the symbolic derivation gives the same result.
+# The transformation matrices are calculated from the ray transfer matrix,
+# which is derived symbolically from Model4DSTEM.trace(). The functions below
+# are the previous implementations that fitted the matrices to sample rays.
+# They serve as a reference to confirm that the new calculation gives the
+# same results.
 
 # scan position y/x, source tilt y/x
 TEST_PARAMETERS = np.array(
@@ -79,6 +83,75 @@ def reference_get_backward_transformation_matrix(rec_model: Model4DSTEM, specime
     return _lstsq(get_sample)
 
 
+def reference_get_detector_correction_matrix(rec_model: Model4DSTEM, ref_model: Model4DSTEM):
+    @lambdify(modules=np)
+    def get_sample(scan_pos_x, scan_pos_y, source_dy, source_dx):
+        scan_pos = PixelYX(x=scan_pos_x, y=scan_pos_y)
+        res = rec_model.trace(
+            scan_pos=scan_pos,
+            source_dy=source_dy,
+            source_dx=source_dx,
+        )
+
+        ref_res = ref_model.trace(
+            scan_pos=scan_pos,
+            source_dy=source_dy,
+            source_dx=source_dx,
+        )
+
+        input_sample = (
+            scan_pos.y,
+            scan_pos.x,
+            ref_res["detector"].sampling["detector_px"].y,
+            ref_res["detector"].sampling["detector_px"].x,
+            1.0,
+        )
+        output_sample = (
+            res["detector"].sampling["detector_px"].y,
+            res["detector"].sampling["detector_px"].x,
+            source_dy,
+            source_dx,
+            1.0,
+        )
+        return (input_sample, output_sample)
+
+    return _lstsq(get_sample)
+
+
+def reference_get_forward_transformation_matrix(sim_model: Model4DSTEM, specimen_to_image=None):
+    @lambdify(modules=np)
+    def get_sample(scan_pos_x, scan_pos_y, source_dy, source_dx):
+        scan_pos = PixelYX(x=scan_pos_x, y=scan_pos_y)
+        res = sim_model.trace(scan_pos=scan_pos, source_dy=source_dy, source_dx=source_dx)
+        if specimen_to_image is None:
+            spec_px = res["specimen"].sampling["scan_px"]
+        else:
+            spec_px = specimen_to_image(CoordXY(x=res["specimen"].ray.x, y=res["specimen"].ray.y))
+        input_sample = (
+            scan_pos.y,
+            scan_pos.x,
+            res["detector"].sampling["detector_px"].y,
+            res["detector"].sampling["detector_px"].x,
+            1.0,
+        )
+        output_sample = (
+            spec_px.y,
+            spec_px.x,
+            source_dy,
+            source_dx,
+            1.0,
+        )
+        return (input_sample, output_sample)
+
+    return _lstsq(get_sample)
+
+
+def assert_matrix_close(mat, ref):
+    assert mat.dtype == np.float64
+    assert mat.shape == (5, 5)
+    assert_allclose(mat, ref, rtol=1e-9, atol=1e-9 * np.max(np.abs(ref)))
+
+
 def affine_mapping(coords: CoordXY) -> PixelYX:
     # Arbitrary rotation, anisotropic scaling, shear and offset
     return PixelYX(
@@ -102,9 +175,68 @@ def test_backward_matrix_reference(random_model, specimen_to_image, repeat):
     ref = reference_get_backward_transformation_matrix(
         rec_model=random_model, specimen_to_image=specimen_to_image
     )
-    assert mat.dtype == np.float64
-    assert mat.shape == (5, 5)
-    assert_allclose(mat, ref, rtol=1e-9, atol=1e-9 * np.max(np.abs(ref)))
+    assert_matrix_close(mat, ref)
+
+
+@pytest.mark.parametrize("specimen_to_image", (None, affine_mapping))
+@pytest.mark.parametrize("repeat", range(5))
+def test_forward_matrix_reference(random_model, specimen_to_image, repeat):
+    mat = get_forward_transformation_matrix(
+        sim_model=random_model, specimen_to_image=specimen_to_image
+    )
+    ref = reference_get_forward_transformation_matrix(
+        sim_model=random_model, specimen_to_image=specimen_to_image
+    )
+    assert_matrix_close(mat, ref)
+
+
+@pytest.mark.parametrize("repeat", range(5))
+def test_detector_correction_matrix_reference(random_model, repeat):
+    ref_model = Model4DSTEM(
+        overfocus=random_model.overfocus,
+        scan_pixel_pitch=np.random.uniform(0.01, 2),
+        scan_center=PixelYX(y=np.random.uniform(-10, 10), x=np.random.uniform(-10, 10)),
+        scan_rotation=np.random.uniform(-np.pi, np.pi),
+        camera_length=np.random.uniform(0.1, 2),
+        detector_pixel_pitch=np.random.uniform(0.01, 2),
+        detector_center=PixelYX(y=np.random.uniform(-10, 10), x=np.random.uniform(-10, 10)),
+        semiconv=random_model.semiconv,
+        flip_factor=np.random.choice([-1.0, 1.0]),
+        descan_error=DescanError(*np.random.uniform(-1, 1, size=12)),
+        detector_rotation=np.random.uniform(-np.pi, np.pi),
+    )
+    mat = get_detector_correction_matrix(rec_model=random_model, ref_model=ref_model)
+    ref = reference_get_detector_correction_matrix(rec_model=random_model, ref_model=ref_model)
+    assert_matrix_close(mat, ref)
+
+
+def test_detector_correction_matrix_default_reference(random_model):
+    mat = get_detector_correction_matrix(rec_model=random_model)
+    ref_model = random_model.derive(
+        scan_rotation=0.0,
+        flip_factor=1.0,
+        descan_error=DescanError(),
+        detector_rotation=random_model.scan_rotation,
+    )
+    ref = reference_get_detector_correction_matrix(rec_model=random_model, ref_model=ref_model)
+    assert_matrix_close(mat, ref)
+
+
+def test_ray_transfer_matrix(random_model):
+    transfer = ray_transfer_matrix(random_model, specimen_to_image=affine_mapping)
+    for scan_y, scan_x, tilt_y, tilt_x in TEST_PARAMETERS:
+        res = random_model.trace(
+            scan_pos=PixelYX(y=scan_y, x=scan_x), source_dy=tilt_y, source_dx=tilt_x
+        )
+        spec = affine_mapping(CoordXY(x=res["specimen"].ray.x, y=res["specimen"].ray.y))
+        det = res["detector"].sampling["detector_px"]
+        expected = np.array((spec.y, spec.x, det.y, det.x, 1.0), dtype=np.float64)
+        assert_allclose(
+            np.array((scan_y, scan_x, tilt_y, tilt_x, 1.0)) @ transfer,
+            expected,
+            rtol=1e-9,
+            atol=1e-9 * np.max(np.abs(expected)),
+        )
 
 
 @pytest.mark.parametrize("overfocus", (0.0, 1e-12, -1e-12))
@@ -142,3 +274,21 @@ def test_udf_no_backprojection_in_focus(overfocus):
     # RuntimeError instead.
     BaseCorrectionUDF._back_mat.cache_clear()
     assert BaseCorrectionUDF._back_mat(rec_model=default_model(overfocus=overfocus)) is None
+
+
+@pytest.mark.parametrize("delta", (0.0, 1e-12))
+def test_detector_matrices_singular_crossover(delta):
+    # The detector in the crossover at the source: the detector position
+    # doesn't depend on the tilt
+    model = default_model(overfocus=0.1)
+    model = model.derive(camera_length=-model.overfocus + delta)
+    with pytest.raises(FittingError):
+        get_forward_transformation_matrix(sim_model=model)
+    with pytest.raises(FittingError):
+        get_detector_correction_matrix(rec_model=model)
+
+
+def test_zero_pixel_pitch():
+    model = default_model(overfocus=0.1, detector_pixel_pitch=0.0)
+    with pytest.raises(FittingError):
+        get_backward_transformation_matrix(rec_model=model)

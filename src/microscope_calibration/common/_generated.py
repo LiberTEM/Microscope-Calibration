@@ -8,137 +8,6 @@ from sympy import cos, sin
 from temgym_core.components import DescanError
 
 
-def backward_matrix(model):
-    model_overfocus = model.overfocus
-    model_scan_pixel_pitch = model.scan_pixel_pitch
-    model_scan_center_y = model.scan_center.y
-    model_scan_center_x = model.scan_center.x
-    model_scan_rotation = model.scan_rotation
-    model_camera_length = model.camera_length
-    model_detector_pixel_pitch = model.detector_pixel_pitch
-    model_detector_center_y = model.detector_center.y
-    model_detector_center_x = model.detector_center.x
-    model_flip_factor = model.flip_factor
-    model_descan_error_pxo_pxi = model.descan_error.pxo_pxi
-    model_descan_error_pxo_pyi = model.descan_error.pxo_pyi
-    model_descan_error_pyo_pxi = model.descan_error.pyo_pxi
-    model_descan_error_pyo_pyi = model.descan_error.pyo_pyi
-    model_descan_error_sxo_pxi = model.descan_error.sxo_pxi
-    model_descan_error_sxo_pyi = model.descan_error.sxo_pyi
-    model_descan_error_syo_pxi = model.descan_error.syo_pxi
-    model_descan_error_syo_pyi = model.descan_error.syo_pyi
-    model_descan_error_offpxi = model.descan_error.offpxi
-    model_descan_error_offpyi = model.descan_error.offpyi
-    model_descan_error_offsxi = model.descan_error.offsxi
-    model_descan_error_offsyi = model.descan_error.offsyi
-    model_detector_rotation = model.detector_rotation
-    _cse0 = sin(model_detector_rotation)
-    _cse1 = 1/model_detector_pixel_pitch
-    _cse2 = _cse0*_cse1
-    _cse3 = _cse2*model_flip_factor
-    _cse4 = sin(model_scan_rotation)
-    _cse5 = _cse4*model_scan_pixel_pitch
-    _cse6 = _cse3*_cse5
-    _cse7 = cos(model_detector_rotation)
-    _cse8 = _cse1*_cse7
-    _cse9 = _cse8*model_flip_factor
-    _cse10 = cos(model_scan_rotation)
-    _cse11 = _cse10*model_scan_pixel_pitch
-    _cse12 = _cse11*_cse9
-    _cse13 = _cse11*_cse3
-    _cse14 = _cse13*model_descan_error_pxo_pyi
-    _cse15 = _cse5*_cse9
-    _cse16 = _cse15*model_descan_error_pyo_pxi
-    _cse17 = model_camera_length*model_descan_error_sxo_pyi
-    _cse18 = _cse13*_cse17
-    _cse19 = _cse15*model_camera_length*model_descan_error_syo_pxi
-    _cse20 = 1/model_overfocus
-    _cse21 = _cse20*model_scan_pixel_pitch
-    _cse22 = _cse21*_cse4
-    _cse23 = _cse22*model_camera_length
-    _cse24 = _cse10*_cse21
-    _cse25 = _cse2*model_scan_pixel_pitch
-    _cse26 = _cse10*_cse25
-    _cse27 = _cse8*model_scan_pixel_pitch
-    _cse28 = _cse27*_cse4
-    _cse29 = _cse28*model_descan_error_pxo_pxi
-    _cse30 = _cse25*_cse4
-    _cse31 = _cse30*model_descan_error_pyo_pxi
-    _cse32 = _cse28*model_camera_length
-    _cse33 = _cse30*model_camera_length
-    _cse34 = _cse33*model_descan_error_syo_pxi
-    _cse35 = _cse2*model_camera_length
-    _cse36 = -_cse24
-    _cse37 = _cse13*model_descan_error_pxo_pxi
-    _cse38 = _cse6*model_descan_error_pxo_pyi
-    _cse39 = model_camera_length*model_descan_error_sxo_pxi
-    _cse40 = _cse17*_cse6
-    _cse41 = _cse10*_cse27
-    _cse42 = _cse41*model_descan_error_pxo_pxi
-    _cse43 = _cse28*model_descan_error_pxo_pyi
-    _cse44 = _cse26*model_descan_error_pyo_pxi
-    _cse45 = _cse30*model_descan_error_pyo_pyi
-    _cse46 = _cse41*model_camera_length
-    _cse47 = _cse32*model_descan_error_sxo_pyi
-    _cse48 = _cse26*model_camera_length*model_descan_error_syo_pxi
-    _cse49 = _cse8*model_camera_length
-    _cse50 = _cse20*model_camera_length
-    _cse51 = model_camera_length*model_descan_error_offsyi
-    _cse52 = model_camera_length*model_descan_error_offsxi
-    _cse53 = _cse15*model_scan_center_x
-    _cse54 = _cse6*model_scan_center_y
-    _cse55 = _cse12*model_scan_center_y
-    _cse56 = _cse13*model_scan_center_x
-    _cse57 = model_camera_length*model_descan_error_syo_pyi
-    _cse58 = _cse22*model_scan_center_x
-    _cse59 = _cse9*model_camera_length
-    _cse60 = _cse22*model_scan_center_y
-    _cse61 = _cse3*model_camera_length
-    _cse62 = _cse24*model_scan_center_y
-    _cse63 = _cse24*model_scan_center_x
-    _cse64 = _cse30*model_scan_center_x
-    _cse65 = _cse41*model_scan_center_x
-    _cse66 = _cse26*model_scan_center_y
-    _cse67 = _cse28*model_scan_center_y
-    return (
-        (
-            _cse0*_cse1*_cse4*model_camera_length*model_descan_error_sxo_pxi*model_flip_factor*model_scan_pixel_pitch + _cse0*_cse1*_cse4*model_descan_error_pxo_pxi*model_flip_factor*model_scan_pixel_pitch + _cse1*_cse10*_cse7*model_camera_length*model_descan_error_syo_pyi*model_flip_factor*model_scan_pixel_pitch + _cse1*_cse10*_cse7*model_descan_error_pyo_pyi*model_flip_factor*model_scan_pixel_pitch - _cse12 - _cse14 - _cse16 - _cse18 - _cse19 - _cse23*_cse3 - _cse24*_cse9*model_camera_length - _cse6,
-            _cse0*_cse1*_cse10*model_camera_length*model_descan_error_syo_pyi*model_scan_pixel_pitch + _cse0*_cse1*_cse10*model_descan_error_pyo_pyi*model_scan_pixel_pitch + _cse1*_cse10*_cse7*model_camera_length*model_descan_error_sxo_pyi*model_scan_pixel_pitch + _cse1*_cse10*_cse7*model_descan_error_pxo_pyi*model_scan_pixel_pitch + _cse1*_cse20*_cse4*_cse7*model_camera_length*model_scan_pixel_pitch + _cse1*_cse4*_cse7*model_scan_pixel_pitch - _cse24*_cse35 - _cse26 - _cse29 - _cse31 - _cse32*model_descan_error_sxo_pxi - _cse34,
-            _cse36,
-            _cse22,
-            0,
-        ),
-        (
-            _cse0*_cse1*_cse10*_cse20*model_camera_length*model_flip_factor*model_scan_pixel_pitch + _cse0*_cse1*_cse10*model_flip_factor*model_scan_pixel_pitch + _cse1*_cse10*_cse7*model_camera_length*model_descan_error_syo_pxi*model_flip_factor*model_scan_pixel_pitch + _cse1*_cse10*_cse7*model_descan_error_pyo_pxi*model_flip_factor*model_scan_pixel_pitch + _cse1*_cse4*_cse7*model_camera_length*model_descan_error_syo_pyi*model_flip_factor*model_scan_pixel_pitch + _cse1*_cse4*_cse7*model_descan_error_pyo_pyi*model_flip_factor*model_scan_pixel_pitch - _cse13*_cse39 - _cse15 - _cse23*_cse9 - _cse37 - _cse38 - _cse40,
-            -_cse22*_cse35 - _cse24*_cse49 - _cse30 + _cse33*model_descan_error_syo_pyi - _cse41 + _cse42 + _cse43 + _cse44 + _cse45 + _cse46*model_descan_error_sxo_pxi + _cse47 + _cse48,
-            -_cse22,
-            _cse36,
-            0,
-        ),
-        (
-            _cse50*_cse9 + _cse9,
-            _cse2*_cse50 + _cse2,
-            _cse20,
-            0,
-            0,
-        ),
-        (
-            -_cse3*_cse50 - _cse3,
-            _cse50*_cse8 + _cse8,
-            0,
-            _cse20,
-            0,
-        ),
-        (
-            -_cse12*model_camera_length*model_descan_error_syo_pxi*model_scan_center_x - _cse12*model_descan_error_pyo_pxi*model_scan_center_x - _cse12*model_descan_error_pyo_pyi*model_scan_center_y + _cse14*model_scan_center_y - _cse15*model_descan_error_pyo_pyi*model_scan_center_x + _cse16*model_scan_center_y + _cse18*model_scan_center_y + _cse19*model_scan_center_y - _cse3*_cse52 - _cse3*model_descan_error_offpxi + _cse37*model_scan_center_x + _cse38*model_scan_center_x - _cse39*_cse54 + _cse39*_cse56 + _cse40*model_scan_center_x + _cse51*_cse9 - _cse53*_cse57 + _cse53 + _cse54 - _cse55*_cse57 + _cse55 - _cse56 + _cse58*_cse59 + _cse59*_cse62 - _cse6*model_descan_error_pxo_pxi*model_scan_center_y + _cse60*_cse61 - _cse61*_cse63 + _cse9*model_descan_error_offpyi + model_detector_center_y,
-            _cse2*_cse51 + _cse2*model_descan_error_offpyi - _cse26*model_descan_error_pyo_pyi*model_scan_center_y + _cse29*model_scan_center_y + _cse31*model_scan_center_y + _cse34*model_scan_center_y + _cse35*_cse58 + _cse35*_cse62 - _cse39*_cse65 + _cse39*_cse67 - _cse41*model_descan_error_pxo_pyi*model_scan_center_y - _cse42*model_scan_center_x - _cse43*model_scan_center_x - _cse44*model_scan_center_x - _cse45*model_scan_center_x - _cse46*model_descan_error_sxo_pyi*model_scan_center_y - _cse47*model_scan_center_x - _cse48*model_scan_center_x - _cse49*_cse60 + _cse49*_cse63 + _cse52*_cse8 - _cse57*_cse64 - _cse57*_cse66 + _cse64 + _cse65 + _cse66 - _cse67 + _cse8*model_descan_error_offpxi + model_detector_center_x,
-            _cse58 + _cse62,
-            -_cse60 + _cse63,
-            1,
-        ),
-    )
-
-
 def descan_compensation_camera_length(model, value):
     model_camera_length = model.camera_length
     model_descan_error_pxo_pxi = model.descan_error.pxo_pxi
@@ -446,4 +315,104 @@ def descan_compensation_scan_rotation(model, value):
         offpyi=model_descan_error_offpyi,
         offsxi=model_descan_error_offsxi,
         offsyi=model_descan_error_offsyi,
+    )
+
+
+def ray_transfer_matrix(model):
+    model_overfocus = model.overfocus
+    model_scan_pixel_pitch = model.scan_pixel_pitch
+    model_scan_center_y = model.scan_center.y
+    model_scan_center_x = model.scan_center.x
+    model_scan_rotation = model.scan_rotation
+    model_camera_length = model.camera_length
+    model_detector_pixel_pitch = model.detector_pixel_pitch
+    model_detector_center_y = model.detector_center.y
+    model_detector_center_x = model.detector_center.x
+    model_flip_factor = model.flip_factor
+    model_descan_error_pxo_pxi = model.descan_error.pxo_pxi
+    model_descan_error_pxo_pyi = model.descan_error.pxo_pyi
+    model_descan_error_pyo_pxi = model.descan_error.pyo_pxi
+    model_descan_error_pyo_pyi = model.descan_error.pyo_pyi
+    model_descan_error_sxo_pxi = model.descan_error.sxo_pxi
+    model_descan_error_sxo_pyi = model.descan_error.sxo_pyi
+    model_descan_error_syo_pxi = model.descan_error.syo_pxi
+    model_descan_error_syo_pyi = model.descan_error.syo_pyi
+    model_descan_error_offpxi = model.descan_error.offpxi
+    model_descan_error_offpyi = model.descan_error.offpyi
+    model_descan_error_offsxi = model.descan_error.offsxi
+    model_descan_error_offsyi = model.descan_error.offsyi
+    model_detector_rotation = model.detector_rotation
+    _cse0 = cos(model_scan_rotation)
+    _cse1 = _cse0*model_scan_pixel_pitch
+    _cse2 = sin(model_scan_rotation)
+    _cse3 = _cse2*model_scan_pixel_pitch
+    _cse4 = 1/model_detector_pixel_pitch
+    _cse5 = sin(model_detector_rotation)
+    _cse6 = _cse4*_cse5
+    _cse7 = _cse6*model_flip_factor
+    _cse8 = _cse7*model_descan_error_pxo_pxi
+    _cse9 = cos(model_detector_rotation)
+    _cse10 = _cse4*_cse9
+    _cse11 = _cse10*model_flip_factor
+    _cse12 = _cse7*model_descan_error_pxo_pyi
+    _cse13 = _cse6*model_camera_length
+    _cse14 = _cse13*model_flip_factor
+    _cse15 = _cse14*model_descan_error_sxo_pxi
+    _cse16 = _cse10*model_camera_length
+    _cse17 = _cse16*model_flip_factor
+    _cse18 = _cse14*model_descan_error_sxo_pyi
+    _cse19 = _cse10*_cse3
+    _cse20 = _cse3*_cse6
+    _cse21 = _cse16*_cse3
+    _cse22 = _cse13*_cse3
+    _cse23 = _cse10*model_overfocus
+    _cse24 = _cse6*model_overfocus
+    _cse25 = _cse3*model_scan_center_x
+    _cse26 = _cse1*model_scan_center_y
+    _cse27 = _cse1*model_scan_center_x
+    _cse28 = _cse3*model_scan_center_y
+    _cse29 = _cse11*model_descan_error_pyo_pxi
+    _cse30 = _cse11*model_descan_error_pyo_pyi
+    _cse31 = _cse17*model_descan_error_syo_pxi
+    _cse32 = _cse17*model_descan_error_syo_pyi
+    _cse33 = _cse10*model_descan_error_pxo_pyi
+    _cse34 = _cse6*model_descan_error_pyo_pyi
+    _cse35 = _cse16*model_descan_error_sxo_pyi
+    _cse36 = _cse13*model_descan_error_syo_pyi
+    return (
+        (
+            _cse1,
+            -_cse3,
+            _cse1*_cse11*model_descan_error_pyo_pyi - _cse1*_cse12 + _cse1*_cse17*model_descan_error_syo_pyi - _cse1*_cse18 - _cse11*_cse3*model_descan_error_pyo_pxi + _cse15*_cse3 - _cse17*_cse3*model_descan_error_syo_pxi + _cse3*_cse8,
+            _cse0*_cse4*_cse5*model_camera_length*model_descan_error_syo_pyi*model_scan_pixel_pitch + _cse0*_cse4*_cse5*model_descan_error_pyo_pyi*model_scan_pixel_pitch + _cse0*_cse4*_cse9*model_camera_length*model_descan_error_sxo_pyi*model_scan_pixel_pitch + _cse0*_cse4*_cse9*model_descan_error_pxo_pyi*model_scan_pixel_pitch - _cse19*model_descan_error_pxo_pxi - _cse20*model_descan_error_pyo_pxi - _cse21*model_descan_error_sxo_pxi - _cse22*model_descan_error_syo_pxi,
+            0,
+        ),
+        (
+            _cse3,
+            _cse1,
+            _cse0*_cse4*_cse9*model_camera_length*model_descan_error_syo_pxi*model_flip_factor*model_scan_pixel_pitch + _cse0*_cse4*_cse9*model_descan_error_pyo_pxi*model_flip_factor*model_scan_pixel_pitch - _cse1*_cse15 - _cse1*_cse8 - _cse12*_cse3 - _cse18*_cse3 + _cse2*_cse4*_cse9*model_camera_length*model_descan_error_syo_pyi*model_flip_factor*model_scan_pixel_pitch + _cse2*_cse4*_cse9*model_descan_error_pyo_pyi*model_flip_factor*model_scan_pixel_pitch,
+            _cse1*_cse10*model_descan_error_pxo_pxi + _cse1*_cse13*model_descan_error_syo_pxi + _cse1*_cse16*model_descan_error_sxo_pxi + _cse1*_cse6*model_descan_error_pyo_pxi + _cse19*model_descan_error_pxo_pyi + _cse20*model_descan_error_pyo_pyi + _cse21*model_descan_error_sxo_pyi + _cse22*model_descan_error_syo_pyi,
+            0,
+        ),
+        (
+            model_overfocus,
+            0,
+            _cse17 + _cse23*model_flip_factor,
+            _cse13 + _cse24,
+            0,
+        ),
+        (
+            0,
+            model_overfocus,
+            -_cse14 - _cse24*model_flip_factor,
+            _cse16 + _cse23,
+            0,
+        ),
+        (
+            -_cse25 - _cse26,
+            _cse2*model_scan_center_y*model_scan_pixel_pitch - _cse27,
+            _cse11*model_descan_error_offpyi + _cse12*_cse25 + _cse12*_cse26 - _cse14*model_descan_error_offsxi + _cse15*_cse27 - _cse15*_cse28 + _cse17*model_descan_error_offsyi + _cse18*_cse25 + _cse18*_cse26 - _cse25*_cse30 - _cse25*_cse32 - _cse26*_cse30 - _cse26*_cse32 - _cse27*_cse29 - _cse27*_cse31 + _cse27*_cse8 + _cse28*_cse29 + _cse28*_cse31 - _cse28*_cse8 - _cse7*model_descan_error_offpxi + model_detector_center_y,
+            -_cse10*_cse27*model_descan_error_pxo_pxi - _cse13*_cse27*model_descan_error_syo_pxi - _cse16*_cse27*model_descan_error_sxo_pxi + _cse2*_cse4*_cse5*model_camera_length*model_descan_error_syo_pxi*model_scan_center_y*model_scan_pixel_pitch + _cse2*_cse4*_cse5*model_descan_error_pyo_pxi*model_scan_center_y*model_scan_pixel_pitch + _cse2*_cse4*_cse9*model_camera_length*model_descan_error_sxo_pxi*model_scan_center_y*model_scan_pixel_pitch + _cse2*_cse4*_cse9*model_descan_error_pxo_pxi*model_scan_center_y*model_scan_pixel_pitch - _cse25*_cse33 - _cse25*_cse34 - _cse25*_cse35 - _cse25*_cse36 - _cse26*_cse33 - _cse26*_cse34 - _cse26*_cse35 - _cse26*_cse36 - _cse27*_cse6*model_descan_error_pyo_pxi + _cse4*_cse5*model_camera_length*model_descan_error_offsyi + _cse4*_cse5*model_descan_error_offpyi + _cse4*_cse9*model_camera_length*model_descan_error_offsxi + _cse4*_cse9*model_descan_error_offpxi + model_detector_center_x,
+            1,
+        ),
     )

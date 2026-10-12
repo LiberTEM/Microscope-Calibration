@@ -6,9 +6,12 @@ jax.config.update("jax_enable_x64", True)  # noqa fmt: skip
 import numba
 import numpy as np
 
-from microscope_calibration.common.model import CoordXY, Model4DSTEM, PixelYX
-from microscope_calibration.common.stem_overfocus import CoordMappingT, _do_lstsq
-from microscope_calibration.util.sympy import lambdify
+from microscope_calibration.common.model import Model4DSTEM
+from microscope_calibration.common.stem_overfocus import (
+    CoordMappingT,
+    _eliminate_tilt,
+    ray_transfer_matrix,
+)
 # ruff: enable[E402]
 
 
@@ -59,7 +62,9 @@ def smiley(size):
 
 
 def get_forward_transformation_matrix(
-    sim_model: Model4DSTEM, specimen_to_image: CoordMappingT | None = None
+    sim_model: Model4DSTEM,
+    specimen_to_image: CoordMappingT | None = None,
+    min_footprint_px: float = 1e-6,
 ):
     """
     Calculate a transformation matrix that maps from scan position in scan pixel
@@ -76,69 +81,36 @@ def get_forward_transformation_matrix(
     from an object. The tilt can be used to determine if the beam passes through
     through the microscope or if it is blocked by the beam-shaping aperture.
 
-    It may be possible to derive this matrix from partial derivatives of the
-    model. However, this is postponed for now since this matrix mixes input and
-    output values with respect of the model, so one may have to work with a
-    combination of forward and inverse derivatives.
+    The matrix is calculated from the
+    :func:`~microscope_calibration.common.stem_overfocus.ray_transfer_matrix`
+    of :code:`sim_model` by eliminating the source tilt.
 
-    For the time being this method traces a number of sample rays and deduces the
-    mapping matrix from these samples.
+    Parameters
+    ----------
+    sim_model
+        Model of the simulation
+    specimen_to_image
+        Affine mapping from physical specimen coordinates to specimen pixel
+        coordinates. It is evaluated with SymPy symbols to determine its
+        coefficients. By default, scan pixel coordinates of :code:`sim_model`.
+    min_footprint_px
+        Minimum smallest semi-axis of the beam's footprint in the detector
+        plane in pixels, given the semi-convergence angle. Below that, the
+        transformation is considered (close to) singular, e.g. with the
+        detector in a crossover.
+
+    Raises
+    ------
+    FittingError
+        If the transformation is singular or close to singular.
     """
-
-    # scan position y/x, source tilt y/x
-    test_parameters = np.array(
-        (
-            [0.0, 0.0, 0.0, 0.0],
-            [100.0, 100.0, 0.0, 0.0],
-            [-100.0, 100.0, 0.0, 0.0],
-            [10.0, 0.0, 0.0, 0.0],
-            [0.0, 10.0, 0.0, 0.0],
-            [0.0, 0.0, 0.1, 0.0],
-            [0.0, 0.0, 0.0, 0.1],
-            [1.0, 1.0, 1.0, 1.0],
-            [1.0, 2.0, 3.0, 4.0],
-        )
+    transfer = ray_transfer_matrix(sim_model, specimen_to_image=specimen_to_image)
+    return _eliminate_tilt(
+        plane=transfer[:, 2:4],
+        output=transfer[:, 0:2],
+        semiconv=float(sim_model.semiconv),
+        min_footprint_px=min_footprint_px,
     )
-
-    input_samples = []
-    output_samples = []
-
-    @lambdify(modules=np)
-    def get_sample(scan_pos_x, scan_pos_y, source_dy, source_dx):
-        scan_pos = PixelYX(x=scan_pos_x, y=scan_pos_y)
-        res = sim_model.trace(scan_pos=scan_pos, source_dy=source_dy, source_dx=source_dx)
-        if specimen_to_image is None:
-            spec_px = res["specimen"].sampling["scan_px"]
-        else:
-            spec_px = specimen_to_image(CoordXY(x=res["specimen"].ray.x, y=res["specimen"].ray.y))
-        input_sample = (
-            scan_pos.y,
-            scan_pos.x,
-            res["detector"].sampling["detector_px"].y,
-            res["detector"].sampling["detector_px"].x,
-            1.0,
-        )
-        output_sample = (
-            spec_px.y,
-            spec_px.x,
-            source_dy,
-            source_dx,
-            1.0,
-        )
-        return (input_sample, output_sample)
-
-    for test_param_raw in test_parameters:
-        # We are paranoid and confirm that the model is linear
-        for factor in (1.0, 2.0):
-            test_param = test_param_raw * factor
-            input_sample, output_sample = get_sample(*test_param)
-            output_samples.append(output_sample)
-            input_samples.append(input_sample)
-
-    output_samples = np.array(output_samples)
-    input_samples = np.array(input_samples)
-
-    return _do_lstsq(input_samples, output_samples)
 
 
 @numba.njit(cache=True)

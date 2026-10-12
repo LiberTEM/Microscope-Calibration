@@ -70,13 +70,16 @@ pre-commit run --all-files
 
 Some functions are derived symbolically from `Model4DSTEM.trace()` with SymPy, for example how
 the descan error has to change in the `Model4DSTEM.adjust_*()` methods to keep its effect in
-pixel coordinates constant. This keeps `trace()` the single source of truth for the model.
+pixel coordinates constant, and the ray transfer matrix that the transformation matrices for
+projection and detector correction are calculated from. This keeps `trace()` the single source
+of truth for the model.
 Since the derivation takes a few seconds per function, the result is rendered as plain Python
 code into `src/microscope_calibration/common/_generated.py` and committed to the repository.
 Don't edit that file by hand.
 
-The functions to generate are listed in `GENERATED_FUNCTIONS` in
-`src/microscope_calibration/common/model.py`. After changing the model or that list,
+The functions to generate are registered in `GENERATED_FUNCTIONS` of the modules that use
+them, e.g. `src/microscope_calibration/common/model.py`, and collected in
+`src/microscope_calibration/common/generate.py`. After changing the model or a registry,
 regenerate the file and commit the result:
 
 ```bash
@@ -89,6 +92,16 @@ derivation and comparing the results symbolically:
 ```bash
 pytest tests/test_codegen.py
 ```
+
+### JAX and float64
+
+JAX uses float32 by default. Its precision is not sufficient for electron optics, which
+combines lengths in the picometer range, such as the electron wavelength, with lengths in the
+meter range, such as the camera length. This package activates float64 on import with
+`jax.config.update("jax_enable_x64", True)`. If you use JAX yourself, activate float64 the same
+way before any other JAX code runs, and don't deactivate it. The solvers in
+`microscope_calibration.util.optimize` check this and raise an error otherwise. You can check
+it yourself with `microscope_calibration.util.optimize.check_float64()`.
 
 ## Citation
 
