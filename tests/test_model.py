@@ -1143,6 +1143,18 @@ def test_normalize_types(random_model):
     assert all(type(leaf) is float for leaf in leaves)
 
 
+def test_trace_homogeneous(random_model):
+    # With _one as homogeneous coordinate, all constant offsets scale with it
+    scan_y, scan_x, dy, dx, one = sym.symbols("scan_y scan_x dy dx one")
+    res = random_model.trace(
+        scan_pos=PixelYX(y=scan_y, x=scan_x), source_dy=dy, source_dx=dx, _one=one
+    )
+    zero = {scan_y: 0, scan_x: 0, dy: 0, dx: 0, one: 0}
+    for px in (res["specimen"].sampling["scan_px"], res["detector"].sampling["detector_px"]):
+        for coord in px:
+            assert sym.expand(coord).subs(zero) == 0
+
+
 def test_invert_focus(random_model):
     model = random_model
     trace = lambdify_trace_for(np)

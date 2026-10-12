@@ -354,6 +354,7 @@ class Model4DSTEM:
         components = self._components(
             scan_pos=scan_pos,
             specimen=specimen,
+            _one=_one,
         )
         source = components["source"]
         ray = Ray(
