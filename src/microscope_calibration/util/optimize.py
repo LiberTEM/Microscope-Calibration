@@ -72,10 +72,11 @@ def make_overfocus_loss_function(
     """
     Build a parameter mapping and loss function to optimize
 
-    This maps the :code:`scan_rotation` and :code:`overfocus` parameters
+    This maps the :code:`detector_rotation` and :code:`overfocus` parameters
     for :class:`OverfocusUDF` in such a way that the starting value is at
-    0 and a sensible interval for optimization is :code`[-10, 10]` based
-    on the starting parameters passed as an argument.
+    0 and a sensible interval for optimization is :code:`[-10, 10]` based
+    on the starting parameters passed as an argument: The detector rotation
+    changes by +-10 deg, and the overfocus by +-25 % of its starting value.
 
     It also constructs a loss function that updates the parameters of
     the :class:`OverfocusUDF` passed as parameter :code:`overfocus_udf`,
@@ -85,7 +86,7 @@ def make_overfocus_loss_function(
     Parameters
     ----------
     model
-        Starting value for optimization
+        Starting value for optimization. Its overfocus must not be zero.
     ctx
         Run UDF using this Context
     dataset
@@ -117,8 +118,10 @@ def make_overfocus_loss_function(
         Function that can be called with :func:`scipy.optimize.minimize`. Starting value is
         [0, 0], sensible range is ([-10, 10], [-10, 10]).
     """
+    if model.overfocus == 0:
+        raise ValueError("The overfocus of the starting model must not be zero.")
     # Rotate and scale the angle so that the optimizer works between +-10,
-    # corresponding to +- 5 deg
+    # corresponding to +- 10 deg
     rotation_diff = model.detector_rotation * 180 / np.pi
     rotation_scale = 1
     # Values to shift and scale the overfocus so that the optimizer works between +-10
@@ -136,7 +139,7 @@ def make_overfocus_loss_function(
         ----------
 
         args
-            (scan_rotation, overfocused) mapped to +- 10
+            (detector_rotation, overfocus) mapped to +-10
         """
         transformed_rotation, transformed_overfocus = args
         rotation = transformed_rotation / rotation_scale + rotation_diff
@@ -158,7 +161,7 @@ def make_overfocus_loss_function(
         ----------
 
         args
-            (scan_rotation, overfocused) mapped to +-10 range
+            (detector_rotation, overfocus) mapped to +-10
         """
         model = make_new_model(args)
         # Hack to make parameter update work
