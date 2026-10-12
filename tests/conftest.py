@@ -1,7 +1,15 @@
+import zlib
+
 import numpy as np
 import pytest
 
 from microscope_calibration.common.model import DescanError, Model4DSTEM, PixelYX
+
+
+@pytest.fixture(autouse=True)
+def _seed_random(request):
+    # Reproducible random test inputs with a different seed for each test
+    np.random.seed(zlib.crc32(request.node.nodeid.encode()))
 
 
 @pytest.fixture

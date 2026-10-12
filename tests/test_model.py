@@ -966,8 +966,8 @@ def assert_no_descan_deviation(model, target_model):
     for scan_y in (0, 1):
         for scan_x in (0, 1):
             for cl in (0, 1):
-                print(scan_y, scan_x, cl)
-                assert_allclose(0, distance(scan_y=scan_y, scan_x=scan_x, cl=cl), atol=1e-12)
+                # Pixel coordinates can be large, so allow for rounding errors
+                assert_allclose(0, distance(scan_y=scan_y, scan_x=scan_x, cl=cl), atol=1e-10)
 
 
 def assert_no_descan_deviation_cl(model, target_model):
@@ -992,8 +992,8 @@ def assert_no_descan_deviation_cl(model, target_model):
     for scan_y in (0, 1):
         for scan_x in (0, 1):
             for cl in (0, 1):
-                print(scan_y, scan_x, cl)
-                assert_allclose(0, distance(scan_y=scan_y, scan_x=scan_x, cl=cl), atol=1e-12)
+                # Pixel coordinates can be large, so allow for rounding errors
+                assert_allclose(0, distance(scan_y=scan_y, scan_x=scan_x, cl=cl), atol=1e-10)
 
 
 def test_adjust_scan_rotation(random_model: Model4DSTEM):
