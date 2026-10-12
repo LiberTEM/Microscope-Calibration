@@ -1155,6 +1155,33 @@ def test_trace_homogeneous(random_model):
             assert sym.expand(coord).subs(zero) == 0
 
 
+@pytest.mark.parametrize(
+    "changes, exception, match",
+    [
+        ({"overfocus": sym.Symbol("x")}, TypeError, "overfocus = x"),
+        ({"scan_center": PixelYX(y=0.0, x=1 + sym.I)}, TypeError, "scan_center.x"),
+        ({"semiconv": np.array([1.0, 2.0])}, TypeError, "semiconv"),
+        ({"camera_length": "1.5"}, TypeError, "camera_length is a string"),
+        ({"descan_error": DescanError(offpxi=sym.zoo)}, TypeError, "descan_error.offpxi"),
+    ],
+)
+def test_normalize_types_invalid(random_model, changes, exception, match):
+    with pytest.raises(exception, match=match):
+        random_model.derive(**changes).normalize_types()
+
+
+def test_normalize_types_non_finite(random_model):
+    model = random_model.derive(
+        detector_rotation=np.nan,
+        scan_rotation=sym.oo,
+        descan_error=DescanError(sxo_pyi=-np.inf),
+    ).normalize_types()
+    assert np.isnan(model.detector_rotation)
+    assert model.scan_rotation == np.inf
+    assert model.descan_error.sxo_pyi == -np.inf
+    assert all(type(leaf) is float for leaf in jax.tree.leaves(model))
+
+
 def test_invert_focus(random_model):
     model = random_model
     trace = lambdify_trace_for(np)

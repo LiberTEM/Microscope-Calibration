@@ -33,6 +33,27 @@ def equals(ray1: Ray, ray2: Ray) -> bool:
     return True
 
 
+def _to_float(name: str, value) -> float:
+    if isinstance(value, (str, bytes)):
+        raise TypeError(f"{name} is a string: {value!r}")
+    try:
+        return float(value)
+    except TypeError as e:
+        raise TypeError(f"Can't convert {name} = {value!r} to float: {e}") from e
+
+
+def _to_float_tree(name: str, value):
+    """
+    Convert :code:`value` or the leaves of a NamedTuple like :class:`PixelYX`
+    to :code:`float`, see :meth:`Model4DSTEM.normalize_types`
+    """
+    if isinstance(value, tuple) and hasattr(value, "_fields"):
+        return type(value)(
+            **{key: _to_float_tree(f"{name}.{key}", getattr(value, key)) for key in value._fields}
+        )
+    return _to_float(name, value)
+
+
 # Simple transformation function similar to propagation by components
 def scale(c: CoordXY | PixelYX, factor: float) -> CoordXY:
     return CoordXY(
@@ -241,8 +262,23 @@ class Model4DSTEM:
         """
         Copy of this model with all parameters converted to :code:`float`,
         e.g. from SymPy numbers or JAX and NumPy scalars
+
+        Fields that subclasses add are kept as they are.
+
+        Raises
+        ------
+        TypeError
+            If a parameter can't be converted to :code:`float`, e.g. a SymPy
+            expression with free symbols, a complex number, an array or a
+            string. NaN and infinity are kept.
         """
-        return jax.tree.map(float, self)
+        return dataclasses.replace(
+            self,
+            **{
+                field.name: _to_float_tree(field.name, getattr(self, field.name))
+                for field in dataclasses.fields(Model4DSTEM)
+            },
+        )
 
     def scan_to_real(self, pixels: PixelYX, _one: float = 1.0) -> CoordXY:
         return rotate(
