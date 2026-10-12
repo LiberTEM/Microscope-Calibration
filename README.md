@@ -69,7 +69,7 @@ pre-commit run --all-files
 ### Generated code
 
 Some functions are derived symbolically from `Model4DSTEM.trace()` with SymPy, for example how
-the descan error has to change in `Model4DSTEM.adjust_scan_pixel_pitch()` to keep its effect in
+the descan error has to change in the `Model4DSTEM.adjust_*()` methods to keep its effect in
 pixel coordinates constant. This keeps `trace()` the single source of truth for the model.
 Since the derivation takes a few seconds per function, the result is rendered as plain Python
 code into `src/microscope_calibration/common/_generated.py` and committed to the repository.

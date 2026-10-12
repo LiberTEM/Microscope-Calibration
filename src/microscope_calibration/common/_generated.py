@@ -4,7 +4,200 @@
 # microscope_calibration.common.model.GENERATED_FUNCTIONS.
 # tests/test_codegen.py verifies that this file is up to date.
 
+from sympy import cos, sin
 from temgym_core.components import DescanError
+
+
+def descan_compensation_camera_length(model, value):
+    model_camera_length = model.camera_length
+    model_descan_error_pxo_pxi = model.descan_error.pxo_pxi
+    model_descan_error_pxo_pyi = model.descan_error.pxo_pyi
+    model_descan_error_pyo_pxi = model.descan_error.pyo_pxi
+    model_descan_error_pyo_pyi = model.descan_error.pyo_pyi
+    model_descan_error_sxo_pxi = model.descan_error.sxo_pxi
+    model_descan_error_sxo_pyi = model.descan_error.sxo_pyi
+    model_descan_error_syo_pxi = model.descan_error.syo_pxi
+    model_descan_error_syo_pyi = model.descan_error.syo_pyi
+    model_descan_error_offpxi = model.descan_error.offpxi
+    model_descan_error_offpyi = model.descan_error.offpyi
+    model_descan_error_offsxi = model.descan_error.offsxi
+    model_descan_error_offsyi = model.descan_error.offsyi
+    return DescanError(
+        pxo_pxi=model_descan_error_pxo_pxi,
+        pxo_pyi=model_descan_error_pxo_pyi,
+        pyo_pxi=model_descan_error_pyo_pxi,
+        pyo_pyi=model_descan_error_pyo_pyi,
+        sxo_pxi=model_camera_length*model_descan_error_sxo_pxi/value,
+        sxo_pyi=model_camera_length*model_descan_error_sxo_pyi/value,
+        syo_pxi=model_camera_length*model_descan_error_syo_pxi/value,
+        syo_pyi=model_camera_length*model_descan_error_syo_pyi/value,
+        offpxi=model_descan_error_offpxi,
+        offpyi=model_descan_error_offpyi,
+        offsxi=model_camera_length*model_descan_error_offsxi/value,
+        offsyi=model_camera_length*model_descan_error_offsyi/value,
+    )
+
+
+def descan_compensation_detector_center(model, value):
+    model_detector_pixel_pitch = model.detector_pixel_pitch
+    model_detector_center_y = model.detector_center.y
+    model_detector_center_x = model.detector_center.x
+    model_flip_factor = model.flip_factor
+    model_descan_error_pxo_pxi = model.descan_error.pxo_pxi
+    model_descan_error_pxo_pyi = model.descan_error.pxo_pyi
+    model_descan_error_pyo_pxi = model.descan_error.pyo_pxi
+    model_descan_error_pyo_pyi = model.descan_error.pyo_pyi
+    model_descan_error_sxo_pxi = model.descan_error.sxo_pxi
+    model_descan_error_sxo_pyi = model.descan_error.sxo_pyi
+    model_descan_error_syo_pxi = model.descan_error.syo_pxi
+    model_descan_error_syo_pyi = model.descan_error.syo_pyi
+    model_descan_error_offpxi = model.descan_error.offpxi
+    model_descan_error_offpyi = model.descan_error.offpyi
+    model_descan_error_offsxi = model.descan_error.offsxi
+    model_descan_error_offsyi = model.descan_error.offsyi
+    model_detector_rotation = model.detector_rotation
+    value_y = value.y
+    value_x = value.x
+    return DescanError(
+        pxo_pxi=model_descan_error_pxo_pxi,
+        pxo_pyi=model_descan_error_pxo_pyi,
+        pyo_pxi=model_descan_error_pyo_pxi,
+        pyo_pyi=model_descan_error_pyo_pyi,
+        sxo_pxi=model_descan_error_sxo_pxi,
+        sxo_pyi=model_descan_error_sxo_pyi,
+        syo_pxi=model_descan_error_syo_pxi,
+        syo_pyi=model_descan_error_syo_pyi,
+        offpxi=model_descan_error_offpxi + model_detector_center_x*model_detector_pixel_pitch*cos(model_detector_rotation) - model_detector_center_y*model_detector_pixel_pitch*sin(model_detector_rotation)/model_flip_factor - model_detector_pixel_pitch*value_x*cos(model_detector_rotation) + model_detector_pixel_pitch*value_y*sin(model_detector_rotation)/model_flip_factor,
+        offpyi=model_descan_error_offpyi + model_detector_center_x*model_detector_pixel_pitch*sin(model_detector_rotation) + model_detector_center_y*model_detector_pixel_pitch*cos(model_detector_rotation)/model_flip_factor - model_detector_pixel_pitch*value_x*sin(model_detector_rotation) - model_detector_pixel_pitch*value_y*cos(model_detector_rotation)/model_flip_factor,
+        offsxi=model_descan_error_offsxi,
+        offsyi=model_descan_error_offsyi,
+    )
+
+
+def descan_compensation_detector_pixel_pitch(model, value):
+    model_detector_pixel_pitch = model.detector_pixel_pitch
+    model_descan_error_pxo_pxi = model.descan_error.pxo_pxi
+    model_descan_error_pxo_pyi = model.descan_error.pxo_pyi
+    model_descan_error_pyo_pxi = model.descan_error.pyo_pxi
+    model_descan_error_pyo_pyi = model.descan_error.pyo_pyi
+    model_descan_error_sxo_pxi = model.descan_error.sxo_pxi
+    model_descan_error_sxo_pyi = model.descan_error.sxo_pyi
+    model_descan_error_syo_pxi = model.descan_error.syo_pxi
+    model_descan_error_syo_pyi = model.descan_error.syo_pyi
+    model_descan_error_offpxi = model.descan_error.offpxi
+    model_descan_error_offpyi = model.descan_error.offpyi
+    model_descan_error_offsxi = model.descan_error.offsxi
+    model_descan_error_offsyi = model.descan_error.offsyi
+    return DescanError(
+        pxo_pxi=model_descan_error_pxo_pxi*value/model_detector_pixel_pitch,
+        pxo_pyi=model_descan_error_pxo_pyi*value/model_detector_pixel_pitch,
+        pyo_pxi=model_descan_error_pyo_pxi*value/model_detector_pixel_pitch,
+        pyo_pyi=model_descan_error_pyo_pyi*value/model_detector_pixel_pitch,
+        sxo_pxi=model_descan_error_sxo_pxi*value/model_detector_pixel_pitch,
+        sxo_pyi=model_descan_error_sxo_pyi*value/model_detector_pixel_pitch,
+        syo_pxi=model_descan_error_syo_pxi*value/model_detector_pixel_pitch,
+        syo_pyi=model_descan_error_syo_pyi*value/model_detector_pixel_pitch,
+        offpxi=model_descan_error_offpxi*value/model_detector_pixel_pitch,
+        offpyi=model_descan_error_offpyi*value/model_detector_pixel_pitch,
+        offsxi=model_descan_error_offsxi*value/model_detector_pixel_pitch,
+        offsyi=model_descan_error_offsyi*value/model_detector_pixel_pitch,
+    )
+
+
+def descan_compensation_detector_rotation(model, value):
+    model_descan_error_pxo_pxi = model.descan_error.pxo_pxi
+    model_descan_error_pxo_pyi = model.descan_error.pxo_pyi
+    model_descan_error_pyo_pxi = model.descan_error.pyo_pxi
+    model_descan_error_pyo_pyi = model.descan_error.pyo_pyi
+    model_descan_error_sxo_pxi = model.descan_error.sxo_pxi
+    model_descan_error_sxo_pyi = model.descan_error.sxo_pyi
+    model_descan_error_syo_pxi = model.descan_error.syo_pxi
+    model_descan_error_syo_pyi = model.descan_error.syo_pyi
+    model_descan_error_offpxi = model.descan_error.offpxi
+    model_descan_error_offpyi = model.descan_error.offpyi
+    model_descan_error_offsxi = model.descan_error.offsxi
+    model_descan_error_offsyi = model.descan_error.offsyi
+    model_detector_rotation = model.detector_rotation
+    return DescanError(
+        pxo_pxi=model_descan_error_pxo_pxi*cos(model_detector_rotation - value) + model_descan_error_pyo_pxi*sin(model_detector_rotation - value),
+        pxo_pyi=model_descan_error_pxo_pyi*cos(model_detector_rotation - value) + model_descan_error_pyo_pyi*sin(model_detector_rotation - value),
+        pyo_pxi=-model_descan_error_pxo_pxi*sin(model_detector_rotation - value) + model_descan_error_pyo_pxi*cos(model_detector_rotation - value),
+        pyo_pyi=-model_descan_error_pxo_pyi*sin(model_detector_rotation - value) + model_descan_error_pyo_pyi*cos(model_detector_rotation - value),
+        sxo_pxi=model_descan_error_sxo_pxi*cos(model_detector_rotation - value) + model_descan_error_syo_pxi*sin(model_detector_rotation - value),
+        sxo_pyi=model_descan_error_sxo_pyi*cos(model_detector_rotation - value) + model_descan_error_syo_pyi*sin(model_detector_rotation - value),
+        syo_pxi=-model_descan_error_sxo_pxi*sin(model_detector_rotation - value) + model_descan_error_syo_pxi*cos(model_detector_rotation - value),
+        syo_pyi=-model_descan_error_sxo_pyi*sin(model_detector_rotation - value) + model_descan_error_syo_pyi*cos(model_detector_rotation - value),
+        offpxi=model_descan_error_offpxi*cos(model_detector_rotation - value) + model_descan_error_offpyi*sin(model_detector_rotation - value),
+        offpyi=-model_descan_error_offpxi*sin(model_detector_rotation - value) + model_descan_error_offpyi*cos(model_detector_rotation - value),
+        offsxi=model_descan_error_offsxi*cos(model_detector_rotation - value) + model_descan_error_offsyi*sin(model_detector_rotation - value),
+        offsyi=-model_descan_error_offsxi*sin(model_detector_rotation - value) + model_descan_error_offsyi*cos(model_detector_rotation - value),
+    )
+
+
+def descan_compensation_flip_factor(model, value):
+    model_flip_factor = model.flip_factor
+    model_descan_error_pxo_pxi = model.descan_error.pxo_pxi
+    model_descan_error_pxo_pyi = model.descan_error.pxo_pyi
+    model_descan_error_pyo_pxi = model.descan_error.pyo_pxi
+    model_descan_error_pyo_pyi = model.descan_error.pyo_pyi
+    model_descan_error_sxo_pxi = model.descan_error.sxo_pxi
+    model_descan_error_sxo_pyi = model.descan_error.sxo_pyi
+    model_descan_error_syo_pxi = model.descan_error.syo_pxi
+    model_descan_error_syo_pyi = model.descan_error.syo_pyi
+    model_descan_error_offpxi = model.descan_error.offpxi
+    model_descan_error_offpyi = model.descan_error.offpyi
+    model_descan_error_offsxi = model.descan_error.offsxi
+    model_descan_error_offsyi = model.descan_error.offsyi
+    model_detector_rotation = model.detector_rotation
+    return DescanError(
+        pxo_pxi=model_descan_error_pxo_pxi*model_flip_factor*sin(model_detector_rotation)**2/value + model_descan_error_pxo_pxi*cos(model_detector_rotation)**2 - 1/2*model_descan_error_pyo_pxi*model_flip_factor*sin(2*model_detector_rotation)/value + (1/2)*model_descan_error_pyo_pxi*sin(2*model_detector_rotation),
+        pxo_pyi=model_descan_error_pxo_pyi*model_flip_factor*sin(model_detector_rotation)**2/value + model_descan_error_pxo_pyi*cos(model_detector_rotation)**2 - 1/2*model_descan_error_pyo_pyi*model_flip_factor*sin(2*model_detector_rotation)/value + (1/2)*model_descan_error_pyo_pyi*sin(2*model_detector_rotation),
+        pyo_pxi=-1/2*model_descan_error_pxo_pxi*model_flip_factor*sin(2*model_detector_rotation)/value + (1/2)*model_descan_error_pxo_pxi*sin(2*model_detector_rotation) + model_descan_error_pyo_pxi*model_flip_factor*cos(model_detector_rotation)**2/value + model_descan_error_pyo_pxi*sin(model_detector_rotation)**2,
+        pyo_pyi=-1/2*model_descan_error_pxo_pyi*model_flip_factor*sin(2*model_detector_rotation)/value + (1/2)*model_descan_error_pxo_pyi*sin(2*model_detector_rotation) + model_descan_error_pyo_pyi*model_flip_factor*cos(model_detector_rotation)**2/value + model_descan_error_pyo_pyi*sin(model_detector_rotation)**2,
+        sxo_pxi=model_descan_error_sxo_pxi*model_flip_factor*sin(model_detector_rotation)**2/value + model_descan_error_sxo_pxi*cos(model_detector_rotation)**2 - 1/2*model_descan_error_syo_pxi*model_flip_factor*sin(2*model_detector_rotation)/value + (1/2)*model_descan_error_syo_pxi*sin(2*model_detector_rotation),
+        sxo_pyi=model_descan_error_sxo_pyi*model_flip_factor*sin(model_detector_rotation)**2/value + model_descan_error_sxo_pyi*cos(model_detector_rotation)**2 - 1/2*model_descan_error_syo_pyi*model_flip_factor*sin(2*model_detector_rotation)/value + (1/2)*model_descan_error_syo_pyi*sin(2*model_detector_rotation),
+        syo_pxi=-1/2*model_descan_error_sxo_pxi*model_flip_factor*sin(2*model_detector_rotation)/value + (1/2)*model_descan_error_sxo_pxi*sin(2*model_detector_rotation) + model_descan_error_syo_pxi*model_flip_factor*cos(model_detector_rotation)**2/value + model_descan_error_syo_pxi*sin(model_detector_rotation)**2,
+        syo_pyi=-1/2*model_descan_error_sxo_pyi*model_flip_factor*sin(2*model_detector_rotation)/value + (1/2)*model_descan_error_sxo_pyi*sin(2*model_detector_rotation) + model_descan_error_syo_pyi*model_flip_factor*cos(model_detector_rotation)**2/value + model_descan_error_syo_pyi*sin(model_detector_rotation)**2,
+        offpxi=model_descan_error_offpxi*model_flip_factor*sin(model_detector_rotation)**2/value + model_descan_error_offpxi*cos(model_detector_rotation)**2 - 1/2*model_descan_error_offpyi*model_flip_factor*sin(2*model_detector_rotation)/value + (1/2)*model_descan_error_offpyi*sin(2*model_detector_rotation),
+        offpyi=-1/2*model_descan_error_offpxi*model_flip_factor*sin(2*model_detector_rotation)/value + (1/2)*model_descan_error_offpxi*sin(2*model_detector_rotation) + model_descan_error_offpyi*model_flip_factor*cos(model_detector_rotation)**2/value + model_descan_error_offpyi*sin(model_detector_rotation)**2,
+        offsxi=model_descan_error_offsxi*model_flip_factor*sin(model_detector_rotation)**2/value + model_descan_error_offsxi*cos(model_detector_rotation)**2 - 1/2*model_descan_error_offsyi*model_flip_factor*sin(2*model_detector_rotation)/value + (1/2)*model_descan_error_offsyi*sin(2*model_detector_rotation),
+        offsyi=-1/2*model_descan_error_offsxi*model_flip_factor*sin(2*model_detector_rotation)/value + (1/2)*model_descan_error_offsxi*sin(2*model_detector_rotation) + model_descan_error_offsyi*model_flip_factor*cos(model_detector_rotation)**2/value + model_descan_error_offsyi*sin(model_detector_rotation)**2,
+    )
+
+
+def descan_compensation_scan_center(model, value):
+    model_scan_pixel_pitch = model.scan_pixel_pitch
+    model_scan_center_y = model.scan_center.y
+    model_scan_center_x = model.scan_center.x
+    model_scan_rotation = model.scan_rotation
+    model_descan_error_pxo_pxi = model.descan_error.pxo_pxi
+    model_descan_error_pxo_pyi = model.descan_error.pxo_pyi
+    model_descan_error_pyo_pxi = model.descan_error.pyo_pxi
+    model_descan_error_pyo_pyi = model.descan_error.pyo_pyi
+    model_descan_error_sxo_pxi = model.descan_error.sxo_pxi
+    model_descan_error_sxo_pyi = model.descan_error.sxo_pyi
+    model_descan_error_syo_pxi = model.descan_error.syo_pxi
+    model_descan_error_syo_pyi = model.descan_error.syo_pyi
+    model_descan_error_offpxi = model.descan_error.offpxi
+    model_descan_error_offpyi = model.descan_error.offpyi
+    model_descan_error_offsxi = model.descan_error.offsxi
+    model_descan_error_offsyi = model.descan_error.offsyi
+    value_y = value.y
+    value_x = value.x
+    return DescanError(
+        pxo_pxi=model_descan_error_pxo_pxi,
+        pxo_pyi=model_descan_error_pxo_pyi,
+        pyo_pxi=model_descan_error_pyo_pxi,
+        pyo_pyi=model_descan_error_pyo_pyi,
+        sxo_pxi=model_descan_error_sxo_pxi,
+        sxo_pyi=model_descan_error_sxo_pyi,
+        syo_pxi=model_descan_error_syo_pxi,
+        syo_pyi=model_descan_error_syo_pyi,
+        offpxi=model_descan_error_offpxi - model_descan_error_pxo_pxi*model_scan_center_x*model_scan_pixel_pitch*cos(model_scan_rotation) + model_descan_error_pxo_pxi*model_scan_center_y*model_scan_pixel_pitch*sin(model_scan_rotation) + model_descan_error_pxo_pxi*model_scan_pixel_pitch*value_x*cos(model_scan_rotation) - model_descan_error_pxo_pxi*model_scan_pixel_pitch*value_y*sin(model_scan_rotation) - model_descan_error_pxo_pyi*model_scan_center_x*model_scan_pixel_pitch*sin(model_scan_rotation) - model_descan_error_pxo_pyi*model_scan_center_y*model_scan_pixel_pitch*cos(model_scan_rotation) + model_descan_error_pxo_pyi*model_scan_pixel_pitch*value_x*sin(model_scan_rotation) + model_descan_error_pxo_pyi*model_scan_pixel_pitch*value_y*cos(model_scan_rotation),
+        offpyi=model_descan_error_offpyi - model_descan_error_pyo_pxi*model_scan_center_x*model_scan_pixel_pitch*cos(model_scan_rotation) + model_descan_error_pyo_pxi*model_scan_center_y*model_scan_pixel_pitch*sin(model_scan_rotation) + model_descan_error_pyo_pxi*model_scan_pixel_pitch*value_x*cos(model_scan_rotation) - model_descan_error_pyo_pxi*model_scan_pixel_pitch*value_y*sin(model_scan_rotation) - model_descan_error_pyo_pyi*model_scan_center_x*model_scan_pixel_pitch*sin(model_scan_rotation) - model_descan_error_pyo_pyi*model_scan_center_y*model_scan_pixel_pitch*cos(model_scan_rotation) + model_descan_error_pyo_pyi*model_scan_pixel_pitch*value_x*sin(model_scan_rotation) + model_descan_error_pyo_pyi*model_scan_pixel_pitch*value_y*cos(model_scan_rotation),
+        offsxi=model_descan_error_offsxi - model_descan_error_sxo_pxi*model_scan_center_x*model_scan_pixel_pitch*cos(model_scan_rotation) + model_descan_error_sxo_pxi*model_scan_center_y*model_scan_pixel_pitch*sin(model_scan_rotation) + model_descan_error_sxo_pxi*model_scan_pixel_pitch*value_x*cos(model_scan_rotation) - model_descan_error_sxo_pxi*model_scan_pixel_pitch*value_y*sin(model_scan_rotation) - model_descan_error_sxo_pyi*model_scan_center_x*model_scan_pixel_pitch*sin(model_scan_rotation) - model_descan_error_sxo_pyi*model_scan_center_y*model_scan_pixel_pitch*cos(model_scan_rotation) + model_descan_error_sxo_pyi*model_scan_pixel_pitch*value_x*sin(model_scan_rotation) + model_descan_error_sxo_pyi*model_scan_pixel_pitch*value_y*cos(model_scan_rotation),
+        offsyi=model_descan_error_offsyi - model_descan_error_syo_pxi*model_scan_center_x*model_scan_pixel_pitch*cos(model_scan_rotation) + model_descan_error_syo_pxi*model_scan_center_y*model_scan_pixel_pitch*sin(model_scan_rotation) + model_descan_error_syo_pxi*model_scan_pixel_pitch*value_x*cos(model_scan_rotation) - model_descan_error_syo_pxi*model_scan_pixel_pitch*value_y*sin(model_scan_rotation) - model_descan_error_syo_pyi*model_scan_center_x*model_scan_pixel_pitch*sin(model_scan_rotation) - model_descan_error_syo_pyi*model_scan_center_y*model_scan_pixel_pitch*cos(model_scan_rotation) + model_descan_error_syo_pyi*model_scan_pixel_pitch*value_x*sin(model_scan_rotation) + model_descan_error_syo_pyi*model_scan_pixel_pitch*value_y*cos(model_scan_rotation),
+    )
 
 
 def descan_compensation_scan_pixel_pitch(model, value):
@@ -30,6 +223,36 @@ def descan_compensation_scan_pixel_pitch(model, value):
         sxo_pyi=model_descan_error_sxo_pyi*model_scan_pixel_pitch/value,
         syo_pxi=model_descan_error_syo_pxi*model_scan_pixel_pitch/value,
         syo_pyi=model_descan_error_syo_pyi*model_scan_pixel_pitch/value,
+        offpxi=model_descan_error_offpxi,
+        offpyi=model_descan_error_offpyi,
+        offsxi=model_descan_error_offsxi,
+        offsyi=model_descan_error_offsyi,
+    )
+
+
+def descan_compensation_scan_rotation(model, value):
+    model_scan_rotation = model.scan_rotation
+    model_descan_error_pxo_pxi = model.descan_error.pxo_pxi
+    model_descan_error_pxo_pyi = model.descan_error.pxo_pyi
+    model_descan_error_pyo_pxi = model.descan_error.pyo_pxi
+    model_descan_error_pyo_pyi = model.descan_error.pyo_pyi
+    model_descan_error_sxo_pxi = model.descan_error.sxo_pxi
+    model_descan_error_sxo_pyi = model.descan_error.sxo_pyi
+    model_descan_error_syo_pxi = model.descan_error.syo_pxi
+    model_descan_error_syo_pyi = model.descan_error.syo_pyi
+    model_descan_error_offpxi = model.descan_error.offpxi
+    model_descan_error_offpyi = model.descan_error.offpyi
+    model_descan_error_offsxi = model.descan_error.offsxi
+    model_descan_error_offsyi = model.descan_error.offsyi
+    return DescanError(
+        pxo_pxi=model_descan_error_pxo_pxi*cos(model_scan_rotation - value) + model_descan_error_pxo_pyi*sin(model_scan_rotation - value),
+        pxo_pyi=-model_descan_error_pxo_pxi*sin(model_scan_rotation - value) + model_descan_error_pxo_pyi*cos(model_scan_rotation - value),
+        pyo_pxi=model_descan_error_pyo_pxi*cos(model_scan_rotation - value) + model_descan_error_pyo_pyi*sin(model_scan_rotation - value),
+        pyo_pyi=-model_descan_error_pyo_pxi*sin(model_scan_rotation - value) + model_descan_error_pyo_pyi*cos(model_scan_rotation - value),
+        sxo_pxi=model_descan_error_sxo_pxi*cos(model_scan_rotation - value) + model_descan_error_sxo_pyi*sin(model_scan_rotation - value),
+        sxo_pyi=-model_descan_error_sxo_pxi*sin(model_scan_rotation - value) + model_descan_error_sxo_pyi*cos(model_scan_rotation - value),
+        syo_pxi=model_descan_error_syo_pxi*cos(model_scan_rotation - value) + model_descan_error_syo_pyi*sin(model_scan_rotation - value),
+        syo_pyi=-model_descan_error_syo_pxi*sin(model_scan_rotation - value) + model_descan_error_syo_pyi*cos(model_scan_rotation - value),
         offpxi=model_descan_error_offpxi,
         offpyi=model_descan_error_offpyi,
         offsxi=model_descan_error_offsxi,
