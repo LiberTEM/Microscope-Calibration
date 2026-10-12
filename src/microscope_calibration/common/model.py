@@ -422,6 +422,24 @@ class Model4DSTEM:
         assert len(run_result) == 0
         return result
 
+    def _adjust_compensating_descan_error(self, param: str, value) -> Model4DSTEM:
+        """
+        Set :code:`param` to :code:`value` and compensate the effect on the
+        central ray in pixel coordinates with the descan error.
+
+        The compensation is derived symbolically from :meth:`trace`, see
+        :func:`_derive_descan_compensation` and :data:`GENERATED_FUNCTIONS`.
+        """
+        # Imported here so that the generator can run even if
+        # _generated.py is missing or outdated
+        from microscope_calibration.common import _generated
+
+        compensate = getattr(_generated, f"descan_compensation_{param}")
+        return self.derive(
+            **{param: value},
+            descan_error=compensate(model=self, value=value),
+        )
+
     def adjust_scan_rotation(self, scan_rotation: float) -> Model4DSTEM:
         """
         Adjust the scan rotation while keeping the effective descan error
@@ -429,35 +447,7 @@ class Model4DSTEM:
 
         This allows first compensating descan error and then adjusting other parameters.
         """
-        de = self.descan_error
-        angle = scan_rotation - self.scan_rotation
-        # Rotate the input direction
-
-        def trans(c: CoordXY):
-            return rotate(c=c, radians=angle)
-
-        pxo_pyx = trans(CoordXY(y=de.pxo_pyi, x=de.pxo_pxi))
-        pyo_pyx = trans(CoordXY(y=de.pyo_pyi, x=de.pyo_pxi))
-        sxo_pyx = trans(CoordXY(y=de.sxo_pyi, x=de.sxo_pxi))
-        syo_pyx = trans(CoordXY(y=de.syo_pyi, x=de.syo_pxi))
-        new_de = DescanError(
-            pxo_pyi=pxo_pyx.y,
-            pyo_pyi=pyo_pyx.y,
-            pxo_pxi=pxo_pyx.x,
-            pyo_pxi=pyo_pyx.x,
-            sxo_pyi=sxo_pyx.y,
-            syo_pyi=syo_pyx.y,
-            sxo_pxi=sxo_pyx.x,
-            syo_pxi=syo_pyx.x,
-            offpxi=de.offpxi,
-            offpyi=de.offpyi,
-            offsxi=de.offsxi,
-            offsyi=de.offsyi,
-        )
-        return self.derive(
-            scan_rotation=scan_rotation,
-            descan_error=new_de,
-        )
+        return self._adjust_compensating_descan_error("scan_rotation", scan_rotation)
 
     def adjust_scan_pixel_pitch(self, scan_pixel_pitch: float) -> Model4DSTEM:
         """
@@ -466,204 +456,68 @@ class Model4DSTEM:
 
         This allows first compensating descan error and then adjusting other parameters.
         """
-        # Imported here so that the generator can run even if
-        # _generated.py is missing or outdated
-        from microscope_calibration.common import _generated
-
-        return self.derive(
-            scan_pixel_pitch=scan_pixel_pitch,
-            descan_error=_generated.descan_compensation_scan_pixel_pitch(
-                model=self, value=scan_pixel_pitch
-            ),
-        )
+        return self._adjust_compensating_descan_error("scan_pixel_pitch", scan_pixel_pitch)
 
     def adjust_scan_center(self, scan_center: PixelYX) -> Model4DSTEM:
-        # Compensate effect of different scan centers with
-        # constant offsets of the descanner. We simply measure how much these offsets should be
-        # by comparing rays along the optical axis
-        res1 = self.trace(scan_pos=self.scan_center, source_dx=0.0, source_dy=0.0)
-        res2 = self.trace(scan_pos=scan_center, source_dx=0.0, source_dy=0.0)
+        """
+        Adjust the scan center while keeping the effective descan error
+        compensation the same.
 
-        de = self.descan_error
-        offpxi = de.offpxi + res2["descanner"].ray.x - res1["descanner"].ray.x
-        offpyi = de.offpyi + res2["descanner"].ray.y - res1["descanner"].ray.y
-        offsxi = de.offsxi + res2["descanner"].ray.dx - res1["descanner"].ray.dx
-        offsyi = de.offsyi + res2["descanner"].ray.dy - res1["descanner"].ray.dy
-
-        new_de = DescanError(
-            pxo_pyi=de.pxo_pyi,
-            pyo_pyi=de.pyo_pyi,
-            pxo_pxi=de.pxo_pxi,
-            pyo_pxi=de.pyo_pxi,
-            sxo_pyi=de.sxo_pyi,
-            syo_pyi=de.syo_pyi,
-            sxo_pxi=de.sxo_pxi,
-            syo_pxi=de.syo_pxi,
-            offpxi=offpxi,
-            offpyi=offpyi,
-            offsxi=offsxi,
-            offsyi=offsyi,
-        )
-        return self.derive(
-            scan_center=scan_center,
-            descan_error=new_de,
-        )
+        This allows first compensating descan error and then adjusting other parameters.
+        """
+        return self._adjust_compensating_descan_error("scan_center", scan_center)
 
     def adjust_detector_rotation(self, detector_rotation: float) -> Model4DSTEM:
-        de = self.descan_error
-        angle = detector_rotation - self.detector_rotation
-        # rotate the output direction
+        """
+        Adjust the detector rotation while keeping the effective descan error
+        compensation the same.
 
-        def trans(c: CoordXY):
-            return rotate(c=c, radians=angle)
-
-        pxy_pyi = trans(CoordXY(y=de.pyo_pyi, x=de.pxo_pyi))
-        pxy_pxi = trans(CoordXY(y=de.pyo_pxi, x=de.pxo_pxi))
-        sxy_pyi = trans(CoordXY(y=de.syo_pyi, x=de.sxo_pyi))
-        sxy_pxi = trans(CoordXY(y=de.syo_pxi, x=de.sxo_pxi))
-        offp = trans(CoordXY(y=de.offpyi, x=de.offpxi))
-        offs = trans(CoordXY(y=de.offsyi, x=de.offsxi))
-        new_de = DescanError(
-            pxo_pyi=pxy_pyi.x,
-            pyo_pyi=pxy_pyi.y,
-            pxo_pxi=pxy_pxi.x,
-            pyo_pxi=pxy_pxi.y,
-            sxo_pyi=sxy_pyi.x,
-            syo_pyi=sxy_pyi.y,
-            sxo_pxi=sxy_pxi.x,
-            syo_pxi=sxy_pxi.y,
-            offpxi=offp.x,
-            offpyi=offp.y,
-            offsxi=offs.x,
-            offsyi=offs.y,
-        )
-
-        return self.derive(
-            detector_rotation=detector_rotation,
-            descan_error=new_de,
-        )
+        This allows first compensating descan error and then adjusting other parameters.
+        """
+        return self._adjust_compensating_descan_error("detector_rotation", detector_rotation)
 
     def adjust_flip_factor(self, flip_factor: float) -> Model4DSTEM:
-        # Some import gymnastic to keep the naming clean
-        from .model import flip_y
+        """
+        Adjust the flip factor while keeping the effective descan error
+        compensation the same.
 
-        de = self.descan_error
-        angle = self.detector_rotation
-
+        This allows first compensating descan error and then adjusting other parameters.
+        Returns this model unchanged if the flip factor is the same.
+        """
         if flip_factor != self.flip_factor:
-            # Rotate into detector directions, flip, then rotate back
-            def trans(c: CoordXY):
-                return rotate(
-                    flip_y(
-                        c=rotate(c=c, radians=-angle),
-                        flip_factor=flip_factor / self.flip_factor,
-                    ),
-                    radians=angle,
-                )
-
-            # transform the output direction
-            pxy_pyi = trans(CoordXY(y=de.pyo_pyi, x=de.pxo_pyi))
-            pxy_pxi = trans(CoordXY(y=de.pyo_pxi, x=de.pxo_pxi))
-            sxy_pyi = trans(CoordXY(y=de.syo_pyi, x=de.sxo_pyi))
-            sxy_pxi = trans(CoordXY(y=de.syo_pxi, x=de.sxo_pxi))
-            offp = trans(CoordXY(y=de.offpyi, x=de.offpxi))
-            offs = trans(CoordXY(y=de.offsyi, x=de.offsxi))
-            new_de = DescanError(
-                pxo_pyi=pxy_pyi.x,
-                pyo_pyi=pxy_pyi.y,
-                pxo_pxi=pxy_pxi.x,
-                pyo_pxi=pxy_pxi.y,
-                sxo_pyi=sxy_pyi.x,
-                syo_pyi=sxy_pyi.y,
-                sxo_pxi=sxy_pxi.x,
-                syo_pxi=sxy_pxi.y,
-                offpxi=offp.x,
-                offpyi=offp.y,
-                offsxi=offs.x,
-                offsyi=offs.y,
-            )
-            return self.derive(
-                flip_factor=flip_factor,
-                descan_error=new_de,
-            )
+            return self._adjust_compensating_descan_error("flip_factor", flip_factor)
         else:
             return self
 
     def adjust_detector_center(self, detector_center: PixelYX) -> Model4DSTEM:
-        de = self.descan_error
-        zero = PixelYX(0, 0)
-        other = self.derive(
-            detector_center=detector_center,
-        )
+        """
+        Adjust the detector center while keeping the effective descan error
+        compensation the same.
 
-        physical_1 = self.detector_to_real(zero)
-        physical_2 = other.detector_to_real(zero)
-        offpyi = de.offpyi + physical_2.y - physical_1.y
-        offpxi = de.offpxi + physical_2.x - physical_1.x
-        new_de = DescanError(
-            pxo_pyi=de.pxo_pyi,
-            pyo_pyi=de.pyo_pyi,
-            pxo_pxi=de.pxo_pxi,
-            pyo_pxi=de.pyo_pxi,
-            sxo_pyi=de.sxo_pyi,
-            syo_pyi=de.syo_pyi,
-            sxo_pxi=de.sxo_pxi,
-            syo_pxi=de.syo_pxi,
-            offpxi=offpxi,
-            offpyi=offpyi,
-            offsxi=de.offsxi,
-            offsyi=de.offsyi,
-        )
-        return self.derive(
-            detector_center=detector_center,
-            descan_error=new_de,
-        )
+        This allows first compensating descan error and then adjusting other parameters.
+        """
+        return self._adjust_compensating_descan_error("detector_center", detector_center)
 
     def adjust_detector_pixel_pitch(self, detector_pixel_pitch: float) -> Model4DSTEM:
-        de = self.descan_error
-        ratio = detector_pixel_pitch / self.detector_pixel_pitch
+        """
+        Adjust the detector pixel pitch while keeping the effective descan error
+        compensation the same.
 
-        new_de = DescanError(
-            pxo_pyi=de.pxo_pyi * ratio,
-            pyo_pyi=de.pyo_pyi * ratio,
-            pxo_pxi=de.pxo_pxi * ratio,
-            pyo_pxi=de.pyo_pxi * ratio,
-            sxo_pyi=de.sxo_pyi * ratio,
-            syo_pyi=de.syo_pyi * ratio,
-            sxo_pxi=de.sxo_pxi * ratio,
-            syo_pxi=de.syo_pxi * ratio,
-            offpxi=de.offpxi * ratio,
-            offpyi=de.offpyi * ratio,
-            offsxi=de.offsxi * ratio,
-            offsyi=de.offsyi * ratio,
-        )
-        return self.derive(
-            detector_pixel_pitch=detector_pixel_pitch,
-            descan_error=new_de,
-        )
+        This allows first compensating descan error and then adjusting other parameters.
+        """
+        return self._adjust_compensating_descan_error("detector_pixel_pitch", detector_pixel_pitch)
 
     def adjust_camera_length(self, camera_length: float) -> Model4DSTEM:
-        de = self.descan_error
-        ratio = self.camera_length / camera_length
+        """
+        Adjust the camera length while keeping the effective descan error
+        compensation the same.
 
-        new_de = DescanError(
-            pxo_pyi=de.pxo_pyi,
-            pyo_pyi=de.pyo_pyi,
-            pxo_pxi=de.pxo_pxi,
-            pyo_pxi=de.pyo_pxi,
-            sxo_pyi=de.sxo_pyi * ratio,
-            syo_pyi=de.syo_pyi * ratio,
-            sxo_pxi=de.sxo_pxi * ratio,
-            syo_pxi=de.syo_pxi * ratio,
-            offpxi=de.offpxi,
-            offpyi=de.offpyi,
-            offsxi=de.offsxi * ratio,
-            offsyi=de.offsyi * ratio,
-        )
-        return self.derive(
-            camera_length=camera_length,
-            descan_error=new_de,
-        )
+        This allows first compensating descan error and then adjusting other parameters.
+
+        The pixel coordinates are the same as before for all camera lengths
+        scaled by the ratio of new and old camera length.
+        """
+        return self._adjust_compensating_descan_error("camera_length", camera_length)
 
     def invert_focus(self) -> Self:
         return (
@@ -690,6 +544,11 @@ def _derive_descan_compensation(param: str):
     variables, i.e. all its coefficients must be zero, which yields enough
     equations to solve for all components of the new descan error.
 
+    For :code:`param == "camera_length"`, the camera length itself can't be a
+    free variable. Instead, the pixel coordinates have to be the same for all
+    camera lengths scaled by the same factor, i.e. for old and new camera length
+    multiplied with a free variable.
+
     Non-zero source tilts can't be included since the descan error only depends
     on the scan position, i.e. it can't compensate tilt-dependent changes.
 
@@ -714,8 +573,17 @@ def _derive_descan_compensation(param: str):
 
     scan_y, scan_x = sym.symbols("scan_y scan_x")
     scan_pos = PixelYX(y=scan_y, x=scan_x)
-    res_old = old.trace(scan_pos=scan_pos, source_dx=0.0, source_dy=0.0)
-    res_new = new.trace(scan_pos=scan_pos, source_dx=0.0, source_dy=0.0)
+    if param == "camera_length":
+        cl_scale = sym.Symbol("cl_scale")
+        free_variable = cl_scale
+        old_traced = old.derive(camera_length=cl_scale * old.camera_length)
+        new_traced = new.derive(camera_length=cl_scale * new.camera_length)
+    else:
+        free_variable = old.camera_length
+        old_traced = old
+        new_traced = new
+    res_old = old_traced.trace(scan_pos=scan_pos, source_dx=0.0, source_dy=0.0)
+    res_new = new_traced.trace(scan_pos=scan_pos, source_dx=0.0, source_dy=0.0)
 
     unknowns = set(new_de)
     equations = []
@@ -723,7 +591,7 @@ def _derive_descan_compensation(param: str):
         px_old = res_old[plane].sampling[key]
         px_new = res_new[plane].sampling[key]
         for diff in (px_old.y - px_new.y, px_old.x - px_new.x):
-            poly = sym.Poly(sym.expand(diff), scan_y, scan_x, old.camera_length)
+            poly = sym.Poly(sym.expand(diff), scan_y, scan_x, free_variable)
             for coeff in poly.coeffs():
                 if coeff.free_symbols & unknowns:
                     equations.append(coeff)
@@ -750,9 +618,17 @@ def _derive_descan_compensation(param: str):
 # `python -m microscope_calibration.common.generate` after changing the model.
 # tests/test_codegen.py verifies that _generated.py is up to date.
 GENERATED_FUNCTIONS = {
-    "descan_compensation_scan_pixel_pitch": partial(
-        _derive_descan_compensation, "scan_pixel_pitch"
-    ),
+    f"descan_compensation_{param}": partial(_derive_descan_compensation, param)
+    for param in (
+        "scan_pixel_pitch",
+        "scan_rotation",
+        "scan_center",
+        "detector_rotation",
+        "flip_factor",
+        "detector_center",
+        "detector_pixel_pitch",
+        "camera_length",
+    )
 }
 
 
