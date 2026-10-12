@@ -93,6 +93,11 @@ derivation and comparing the results symbolically:
 pytest tests/test_codegen.py
 ```
 
+The generated code is only valid for `Model4DSTEM` itself. Subclasses derive these functions
+from their own `trace()` at runtime instead, with a `RuntimeDerivationWarning`. Please read the
+docstring of `Model4DSTEM` before subclassing it. It explains the requirements and how a
+subclass can use the existing generated code or its own.
+
 ### JAX and float64
 
 JAX uses float32 by default. Its precision is not sufficient for electron optics, which
