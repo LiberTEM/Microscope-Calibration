@@ -227,7 +227,9 @@ def _cl_loss(y, args: _CLArgs):
     return jnp.array((radius - args.radius_px,))
 
 
-def solve_camera_length(ref_model: Model4DSTEM, twotheta: float, radius_px: float):
+def solve_camera_length(
+    ref_model: Model4DSTEM, twotheta: float, radius_px: float
+) -> tuple[Model4DSTEM, jax.Array]:
     """
     Fit the camera length to the radius of a diffraction ring
 
@@ -282,7 +284,24 @@ def solve_scan_pixel_pitch(
     point_1: PixelYX,
     point_2: PixelYX,
     physical_distance: float,
-):
+) -> tuple[Model4DSTEM, jax.Array]:
+    """
+    Fit the scan pixel pitch to the known distance between two scan positions
+
+    Parameters
+    ----------
+    ref_model
+        Starting value. The other parameters are kept.
+    point_1, point_2
+        Scan positions in pixels
+    physical_distance
+        Distance between the two scan positions on the specimen in m
+
+    Returns
+    -------
+    model, residual
+        Fitted model and the residuals of the fit in m
+    """
     args = _SPPArgs(
         ref_model=ref_model,
         point_1=point_1,
@@ -357,7 +376,26 @@ def _de_full_loss(y, args: _DEFullArgs):
     return jnp.array(distances)
 
 
-def solve_full_descan_error(ref_model: Model4DSTEM, regressions: CoMRegressions):
+def solve_full_descan_error(
+    ref_model: Model4DSTEM, regressions: CoMRegressions
+) -> tuple[Model4DSTEM, jax.Array]:
+    """
+    Fit all components of the descan error to CoM regressions
+
+    Parameters
+    ----------
+    ref_model
+        Model with the same scan and detector center as the regressions. The
+        other parameters are kept.
+    regressions
+        CoM regressions of the central beam in detector pixels for at least
+        two different camera lengths, see :data:`CoMRegressions`
+
+    Returns
+    -------
+    model, residual
+        Fitted model and the residuals of the fit in detector pixels
+    """
     # Caveat: scan and detector center of ref_model and of regressions should
     # match.
 
@@ -441,7 +479,19 @@ def _norm_loss(y, args: _NormArgs):
     return jnp.array(distances)
 
 
-def normalize_descan_error(ref_model: Model4DSTEM):
+def normalize_descan_error(ref_model: Model4DSTEM) -> tuple[Model4DSTEM, jax.Array]:
+    """
+    Express the constant offsets of the descan error as scan and detector center
+
+    The descan error is overparameterized: Its constant offsets have the same
+    effect on the central beam as shifts of the scan and detector center.
+    This returns an equivalent model with the constant offsets set to zero.
+
+    Returns
+    -------
+    model, residual
+        Fitted model and the residuals of the fit in detector pixels
+    """
     args = _NormArgs(
         ref_model=ref_model,
     )
@@ -493,7 +543,29 @@ def _de_tilt_loss(y, args: _DETiltArgs):
     return jnp.array(_regression_residuals(opt_model, args.regression))
 
 
-def solve_tilt_descan_error(ref_model: Model4DSTEM, regression: CoMRegression):
+def solve_tilt_descan_error(
+    ref_model: Model4DSTEM, regression: CoMRegression
+) -> tuple[Model4DSTEM, jax.Array]:
+    """
+    Fit the tilt components of the descan error to a CoM regression
+
+    This allows a preliminary calibration of the descan error for a single
+    camera length. The position components of the descan error are kept.
+
+    Parameters
+    ----------
+    ref_model
+        Model with the same scan and detector center as the regression. The
+        other parameters are kept.
+    regression
+        CoM regression of the central beam in detector pixels, see
+        :data:`CoMRegression`
+
+    Returns
+    -------
+    model, residual
+        Fitted model and the residuals of the fit in detector pixels
+    """
     # Caveat: scan and detector center of ref_model and of regressions should
     # match.
 
@@ -536,7 +608,7 @@ def solve_tilt_descan_error(ref_model: Model4DSTEM, regression: CoMRegression):
 class _DETiltPointArgs(NamedTuple):
     model: Model4DSTEM
     # [(scan_y, scan_x, detector_cy, detector_cx) * n]
-    points: jnp.ndarray
+    points: jax.Array
 
 
 @jax.jit
@@ -560,7 +632,28 @@ def _de_tilt_point_loss(y, args: _DETiltPointArgs):
     return jnp.array(distances)
 
 
-def solve_tilt_descan_error_points(ref_model: Model4DSTEM, points: jnp.ndarray):
+def solve_tilt_descan_error_points(
+    ref_model: Model4DSTEM, points: jax.Array
+) -> tuple[Model4DSTEM, jax.Array]:
+    """
+    Fit the tilt components of the descan error to central beam positions
+
+    Like :func:`solve_tilt_descan_error`, but with the position of the
+    central beam at individual scan positions instead of a regression.
+
+    Parameters
+    ----------
+    ref_model
+        Starting value. The other parameters are kept.
+    points
+        Array with at least three rows :code:`(scan_y, scan_x, detector_y,
+        detector_x)` in pixels
+
+    Returns
+    -------
+    model, residual
+        Fitted model and the residuals of the fit in detector pixels
+    """
     points = jnp.asarray(points, dtype=jnp.float64).reshape((-1, 4))
     # Six unknowns, two equations per point
     if len(points) < 3:
@@ -651,7 +744,7 @@ def _coords_point_loss(y, args: _CoordPointArgs):
     return jnp.concatenate((jnp.array(detector_distances), jnp.array(specimen_distances)))
 
 
-def solve_coords_points(ref_model: Model4DSTEM, points: jnp.ndarray):
+def solve_coords_points(ref_model: Model4DSTEM, points: jax.Array) -> tuple[Model4DSTEM, jax.Array]:
     """
     Fit overfocus, detector rotation and flip factor to matched points
 
@@ -717,7 +810,7 @@ def _hit_specimen_loss(y, args: _HitSpecimenArgs):
 
     res = trace(opt_model, scan_pos=args.scan_pos, source_dx=dx, source_dy=dy)
     specimen_px = res["specimen"].sampling["scan_px"]
-    return jnp.array((specimen_px.x - args.specimen_px.x, specimen_px.y - args.specimen_px.y))
+    return jnp.array((specimen_px.y - args.specimen_px.y, specimen_px.x - args.specimen_px.x))
 
 
 class SlopeYX(NamedTuple):
@@ -725,7 +818,26 @@ class SlopeYX(NamedTuple):
     dx: float
 
 
-def solve_hit_specimen(model: Model4DSTEM, scan_pos: PixelYX, specimen_px: PixelYX):
+def solve_hit_specimen(
+    model: Model4DSTEM, scan_pos: PixelYX, specimen_px: PixelYX
+) -> tuple[SlopeYX, jax.Array]:
+    """
+    Find the source tilt of the ray that passes the specimen at a given point
+
+    Parameters
+    ----------
+    model
+        Model to trace
+    scan_pos
+        Scan position in pixels
+    specimen_px
+        Point on the specimen in scan pixel coordinates
+
+    Returns
+    -------
+    slope, residual
+        Source tilt and the residual on the specimen in scan pixels
+    """
     args = _HitSpecimenArgs(
         model=model,
         scan_pos=scan_pos,
@@ -734,7 +846,5 @@ def solve_hit_specimen(model: Model4DSTEM, scan_pos: PixelYX, specimen_px: Pixel
 
     start = jnp.array([0.0, 0.0])
     opt_res, residual = _least_squares(fn=_hit_specimen_loss, args=args, y0=start, max_steps=10000)
-    # Write the new values into the previous parameters
     dy, dx = opt_res.value
-
-    return SlopeYX(dy=dy, dx=dx), residual
+    return SlopeYX(dy=float(dy), dx=float(dx)), residual
