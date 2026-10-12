@@ -53,6 +53,12 @@ class UndecoratedModel(Model4DSTEM):
     pass
 
 
+@jdc.pytree_dataclass
+class LabeledModel(CompatibleModel):
+    # Static field that doesn't affect trace()
+    label: jdc.Static[str] = "unlabeled"
+
+
 def make_model(model_type=Model4DSTEM) -> Model4DSTEM:
     return model_type(
         overfocus=0.7,
@@ -113,6 +119,13 @@ def test_derive_keeps_class():
     model = make_model(ShiftedDetectorModel)
     assert type(model.derive(overfocus=0.1)) is ShiftedDetectorModel
     assert type(model.normalize_types()) is ShiftedDetectorModel
+
+
+def test_derive_keeps_extra_fields():
+    model = LabeledModel(**vars(make_model()), label="sample A")
+    assert model.derive(overfocus=0.1).label == "sample A"
+    assert model.normalize_types().label == "sample A"
+    assert model.adjust_scan_rotation(0.1).label == "sample A"
 
 
 def test_ray_transfer_runtime_derivation():

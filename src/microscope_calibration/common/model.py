@@ -136,9 +136,8 @@ class Model4DSTEM:
     Subclasses have to be decorated with
     :func:`jax_dataclasses.pytree_dataclass` like :class:`Model4DSTEM` so that
     JAX and :func:`~microscope_calibration.util.sympy.lambdify` see their
-    parameters. They can't add fields: the symbolic derivation only creates
-    symbols for the fields of :class:`Model4DSTEM`, and :meth:`derive` only
-    passes them on.
+    parameters. They can't add fields that affect :meth:`trace`: the symbolic
+    derivation only creates symbols for the fields of :class:`Model4DSTEM`.
     """
 
     overfocus: float  # m
@@ -205,6 +204,7 @@ class Model4DSTEM:
 
     def derive(
         self,
+        *,
         overfocus: float | None = None,  # m
         scan_pixel_pitch: float | None = None,  # m
         scan_center: PixelYX | None = None,
@@ -217,70 +217,32 @@ class Model4DSTEM:
         flip_y: bool | None = None,
         flip_factor: float | None = None,
         descan_error: DescanError | None = None,
-    ) -> Model4DSTEM:
-        if flip_factor is not None:
-            assert flip_y is None
+    ) -> Self:
+        """
+        Copy of this model with the given parameters changed
+
+        Unlike the :code:`adjust_*()` methods, this doesn't compensate the
+        effect of the change with the descan error. :code:`flip_y` is an
+        alternative to :code:`flip_factor`.
+        """
+        changes = {
+            name: value
+            for name, value in locals().items()
+            if name not in ("self", "flip_y") and value is not None
+        }
         if flip_y is not None:
-            flip_factor = -1.0 if flip_y else 1.0
+            if flip_factor is not None:
+                raise ValueError("Specify either flip_y or flip_factor, not both.")
+            changes["flip_factor"] = -1.0 if flip_y else 1.0
+        # Keeps the class and any other fields of subclasses
+        return dataclasses.replace(self, **changes)
 
-        # Keep the class of subclasses
-        return type(self)(
-            overfocus=overfocus if overfocus is not None else self.overfocus,
-            scan_pixel_pitch=(
-                scan_pixel_pitch if scan_pixel_pitch is not None else self.scan_pixel_pitch
-            ),
-            scan_center=scan_center if scan_center is not None else self.scan_center,
-            scan_rotation=scan_rotation if scan_rotation is not None else self.scan_rotation,
-            camera_length=camera_length if camera_length is not None else self.camera_length,
-            detector_pixel_pitch=(
-                detector_pixel_pitch
-                if detector_pixel_pitch is not None
-                else self.detector_pixel_pitch
-            ),
-            detector_center=(
-                detector_center if detector_center is not None else self.detector_center
-            ),
-            detector_rotation=(
-                detector_rotation if detector_rotation is not None else self.detector_rotation
-            ),
-            semiconv=semiconv if semiconv is not None else self.semiconv,
-            flip_factor=flip_factor if flip_factor is not None else self.flip_factor,
-            descan_error=descan_error if descan_error is not None else self.descan_error,
-        )
-
-    def normalize_types(self) -> Model4DSTEM:
-        return self.derive(
-            overfocus=float(self.overfocus),
-            scan_pixel_pitch=float(self.scan_pixel_pitch),
-            scan_center=PixelYX(
-                y=float(self.scan_center.y),
-                x=float(self.scan_center.x),
-            ),
-            scan_rotation=float(self.scan_rotation),
-            camera_length=float(self.camera_length),
-            detector_pixel_pitch=float(self.detector_pixel_pitch),
-            detector_center=PixelYX(
-                y=float(self.detector_center.y),
-                x=float(self.detector_center.x),
-            ),
-            detector_rotation=float(self.detector_rotation),
-            semiconv=float(self.semiconv),
-            flip_factor=float(self.flip_factor),
-            descan_error=DescanError(
-                pxo_pyi=float(self.descan_error.pxo_pyi),
-                pyo_pyi=float(self.descan_error.pyo_pyi),
-                pxo_pxi=float(self.descan_error.pxo_pxi),
-                pyo_pxi=float(self.descan_error.pyo_pxi),
-                sxo_pyi=float(self.descan_error.sxo_pyi),
-                syo_pyi=float(self.descan_error.syo_pyi),
-                sxo_pxi=float(self.descan_error.sxo_pxi),
-                syo_pxi=float(self.descan_error.syo_pxi),
-                offpxi=float(self.descan_error.offpxi),
-                offpyi=float(self.descan_error.offpyi),
-                offsxi=float(self.descan_error.offsxi),
-                offsyi=float(self.descan_error.offsyi),
-            ),
-        )
+    def normalize_types(self) -> Self:
+        """
+        Copy of this model with all parameters converted to :code:`float`,
+        e.g. from SymPy numbers or JAX and NumPy scalars
+        """
+        return jax.tree.map(float, self)
 
     def scan_to_real(self, pixels: PixelYX, _one: float = 1.0) -> CoordXY:
         return rotate(
