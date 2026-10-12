@@ -609,6 +609,7 @@ def _de_tilt_point_loss(y, args: _DETiltPointArgs):
 
 def solve_tilt_descan_error_points(ref_model: Model4DSTEM, points: jnp.ndarray):
     check_float64()
+    points = jnp.asarray(points, dtype=jnp.float64)
     args = _DETiltPointArgs(
         model=ref_model,
         points=points,
@@ -699,6 +700,7 @@ def _coords_point_loss(y, args: _CoordPointArgs):
 
 def solve_coords_points(ref_model: Model4DSTEM, points: jnp.ndarray):
     check_float64()
+    points = jnp.asarray(points, dtype=jnp.float64)
     args = _CoordPointArgs(
         model=ref_model,
         points=points,

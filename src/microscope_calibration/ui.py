@@ -964,7 +964,7 @@ class CoordinateCorrectionLayout:
         }
 
     def perform_descan_update(self):
-        points = self.descan_fixpoint_table.value.reset_index().to_numpy().astype(np.float32)
+        points = self.descan_fixpoint_table.value.reset_index().to_numpy(dtype=np.float64)
         if len(points):
             new_model, residual = solve_tilt_descan_error_points(
                 ref_model=self.model, points=jnp.array(points)
@@ -972,7 +972,7 @@ class CoordinateCorrectionLayout:
             self.update_with_force(self.model_model, self.model_update(new_model))
 
     def perform_coord_update(self):
-        points = self.coord_fixpoint_table.value.reset_index().to_numpy().astype(np.float32)
+        points = self.coord_fixpoint_table.value.reset_index().to_numpy(dtype=np.float64)
         if len(points):
             new_model, residual = solve_coords_points(
                 ref_model=self.model, points=jnp.array(points)
