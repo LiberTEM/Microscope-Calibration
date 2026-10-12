@@ -1081,6 +1081,43 @@ def test_adjust_camera_length(random_model):
     assert modified.camera_length == camera_length
 
 
+ADJUST_VALUES = {
+    "scan_rotation": 0.3,
+    "scan_pixel_pitch": 0.7,
+    "scan_center": PixelYX(y=1.0, x=-2.0),
+    "detector_rotation": -0.4,
+    "flip_factor": -1.0,
+    "detector_center": PixelYX(y=-3.0, x=4.0),
+    "detector_pixel_pitch": 0.6,
+    "camera_length": 1.3,
+}
+
+
+@pytest.mark.parametrize("param", sorted(ADJUST_VALUES))
+def test_adjust_keeps_float_types(random_model, param):
+    adjusted = getattr(random_model, f"adjust_{param}")(ADJUST_VALUES[param])
+    for leaf in jax.tree.leaves(adjusted):
+        assert not isinstance(leaf, sym.Basic), leaf
+
+
+def test_invert_focus_keeps_float_types(random_model):
+    for leaf in jax.tree.leaves(random_model.invert_focus()):
+        assert not isinstance(leaf, sym.Basic), leaf
+
+
+@pytest.mark.parametrize(
+    "param", ["scan_rotation", "scan_pixel_pitch", "detector_rotation", "camera_length"]
+)
+def test_adjust_grad(random_model, param):
+    def f(value):
+        return sum(getattr(random_model, f"adjust_{param}")(value).descan_error)
+
+    value = ADJUST_VALUES[param]
+    eps = 1e-6
+    expected = (f(value + eps) - f(value - eps)) / (2 * eps)
+    assert_allclose(jax.grad(f)(value), expected, rtol=1e-5, atol=1e-8)
+
+
 def test_invert_focus(random_model):
     model = random_model
     trace = lambdify_trace_for(np)

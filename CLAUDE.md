@@ -80,6 +80,8 @@ Key layers, bottom-up:
    `wrapt`) that recurses into nested dataclasses/pytrees (`PixelYX`, `Model4DSTEM`,
    `DescanError`) so a symbolic trace can be turned into a numeric function. Touch with care;
    the three-backend contract depends on it.
+   `util/backend.py` provides math functions such as `cos`/`sin` that dispatch on the argument
+   type; use them instead of `sympy`/`numpy`/`jax.numpy` functions in model code.
 
 3. **`common/stem_overfocus.py`** — pixel-to-pixel transformation matrices (backward
    projection, detector correction) calculated from the generated `ray_transfer_matrix()`;
