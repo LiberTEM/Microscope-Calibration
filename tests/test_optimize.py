@@ -17,6 +17,7 @@ from microscope_calibration.util.optimize import (
     solve_camera_length,
     solve_coords_points,
     solve_full_descan_error,
+    solve_hit_specimen,
     solve_scan_pixel_pitch,
     solve_tilt_descan_error,
     solve_tilt_descan_error_points,
@@ -726,3 +727,15 @@ def test_coords_points(flip_factor, ref_flip_factor):
     assert_allclose(res_model.overfocus, true_model.overfocus, rtol=1e-6)
     assert_allclose(res_model.detector_rotation, true_model.detector_rotation, atol=1e-6)
     assert_allclose(res_model.descan_error, true_model.descan_error, atol=1e-9)
+
+
+def test_hit_specimen(random_model):
+    scan_pos = PixelYX(y=3.0, x=-2.0)
+    dy, dx = 1e-3, -2e-3
+    res = trace(random_model, scan_pos=scan_pos, source_dy=dy, source_dx=dx)
+    specimen_px = res["specimen"].sampling["scan_px"]
+    slope, residual = solve_hit_specimen(
+        model=random_model, scan_pos=scan_pos, specimen_px=specimen_px
+    )
+    assert_allclose(residual, 0.0, atol=1e-9)
+    assert_allclose((slope.dy, slope.dx), (dy, dx), rtol=1e-6)
