@@ -1,5 +1,6 @@
 from typing import NamedTuple, Self
 from collections import OrderedDict
+from functools import partial
 
 import jax
 
@@ -15,7 +16,7 @@ from temgym_core.ray import Ray
 from temgym_core.run import run_iter
 from temgym_core.source import PointSource, Source
 
-from microscope_calibration.util.sympy import lambdify
+from microscope_calibration.util.sympy import lambdify, symbol_maker
 # ruff: enable[E402]
 
 
@@ -465,26 +466,15 @@ class Model4DSTEM:
 
         This allows first compensating descan error and then adjusting other parameters.
         """
-        de = self.descan_error
-        ratio = self.scan_pixel_pitch / scan_pixel_pitch
+        # Imported here so that the generator can run even if
+        # _generated.py is missing or outdated
+        from microscope_calibration.common import _generated
 
-        new_de = DescanError(
-            pxo_pyi=de.pxo_pyi * ratio,
-            pyo_pyi=de.pyo_pyi * ratio,
-            pxo_pxi=de.pxo_pxi * ratio,
-            pyo_pxi=de.pyo_pxi * ratio,
-            sxo_pyi=de.sxo_pyi * ratio,
-            syo_pyi=de.syo_pyi * ratio,
-            sxo_pxi=de.sxo_pxi * ratio,
-            syo_pxi=de.syo_pxi * ratio,
-            offpxi=de.offpxi,
-            offpyi=de.offpyi,
-            offsxi=de.offsxi,
-            offsyi=de.offsyi,
-        )
         return self.derive(
             scan_pixel_pitch=scan_pixel_pitch,
-            descan_error=new_de,
+            descan_error=_generated.descan_compensation_scan_pixel_pitch(
+                model=self, value=scan_pixel_pitch
+            ),
         )
 
     def adjust_scan_center(self, scan_center: PixelYX) -> Model4DSTEM:
@@ -681,6 +671,89 @@ class Model4DSTEM:
             .adjust_detector_rotation(detector_rotation=self.detector_rotation + sym.pi)
             .adjust_camera_length(camera_length=self.camera_length + 2 * self.overfocus)
         )
+
+
+def _derive_descan_compensation(param: str):
+    """
+    Derive how the descan error has to change so that a change of model
+    parameter :code:`param` leaves the central ray unchanged in pixel coordinates.
+
+    The derivation only uses :meth:`Model4DSTEM.trace`, which is the single
+    source of truth for the model, and makes no further assumptions about the
+    mathematical relations between parameters:
+
+    The central ray (zero source tilt) is traced symbolically through a model
+    with the old parameters and through a model with the new value of
+    :code:`param` and an unknown new descan error. The difference of the
+    resulting specimen and detector pixel coordinates is a polynomial in scan
+    position and camera length. It must vanish for all values of these
+    variables, i.e. all its coefficients must be zero, which yields enough
+    equations to solve for all components of the new descan error.
+
+    Non-zero source tilts can't be included since the descan error only depends
+    on the scan position, i.e. it can't compensate tilt-dependent changes.
+
+    This approach was developed by Margarita Usoltceva
+    (https://github.com/Margus2004) in
+    https://github.com/Margus2004/Microscope-Calibration/tree/sympy
+
+    Returns
+    -------
+    args, output
+        Symbolic arguments :code:`{"model": Model4DSTEM, "value": ...}` and the
+        new descan error as a function of them, see
+        :func:`microscope_calibration.util.codegen.render_function`
+    """
+    recurse_for = (PixelYX, DescanError)
+    old = symbol_maker(Model4DSTEM, postfix="old", recurse_for=recurse_for)
+    value = symbol_maker(
+        Model4DSTEM.__annotations__[param], postfix=f"{param}_new", recurse_for=recurse_for
+    )
+    new_de = symbol_maker(DescanError, postfix="new")
+    new = old.derive(**{param: value}, descan_error=new_de)
+
+    scan_y, scan_x = sym.symbols("scan_y scan_x")
+    scan_pos = PixelYX(y=scan_y, x=scan_x)
+    res_old = old.trace(scan_pos=scan_pos, source_dx=0.0, source_dy=0.0)
+    res_new = new.trace(scan_pos=scan_pos, source_dx=0.0, source_dy=0.0)
+
+    unknowns = set(new_de)
+    equations = []
+    for plane, key in (("specimen", "scan_px"), ("detector", "detector_px")):
+        px_old = res_old[plane].sampling[key]
+        px_new = res_new[plane].sampling[key]
+        for diff in (px_old.y - px_new.y, px_old.x - px_new.x):
+            poly = sym.Poly(sym.expand(diff), scan_y, scan_x, old.camera_length)
+            for coeff in poly.coeffs():
+                if coeff.free_symbols & unknowns:
+                    equations.append(coeff)
+                # Coefficients without unknowns must vanish identically, e.g.
+                # sin**2 + cos**2 - 1. Otherwise the change of param can't be
+                # compensated by the descan error.
+                elif not coeff.equals(0):
+                    raise ValueError(
+                        f"Change of {param} can't be compensated by the descan error: {coeff} != 0"
+                    )
+
+    solutions = sym.solve(equations, list(new_de), dict=True)
+    if len(solutions) != 1 or set(solutions[0].keys()) != set(new_de):
+        raise ValueError(
+            f"Could not derive a unique descan error compensation for {param}: {solutions}"
+        )
+    (solution,) = solutions
+    solved_de = DescanError(*(sym.trigsimp(solution[s]) for s in new_de))
+    return {"model": old, "value": value}, solved_de
+
+
+# Functions that are derived symbolically from Model4DSTEM.trace() and rendered
+# into _generated.py to avoid the runtime cost of the derivation. Regenerate with
+# `python -m microscope_calibration.common.generate` after changing the model.
+# tests/test_codegen.py verifies that _generated.py is up to date.
+GENERATED_FUNCTIONS = {
+    "descan_compensation_scan_pixel_pitch": partial(
+        _derive_descan_compensation, "scan_pixel_pitch"
+    ),
+}
 
 
 def lambdify_trace_for(modules):

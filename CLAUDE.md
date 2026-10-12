@@ -30,6 +30,10 @@ pytest tests/test_model.py::test_name
 # so the `with_numba` marker selects the few that must run interpreted for coverage.
 NUMBA_DISABLE_JIT=1 pytest -m with_numba tests/
 
+# Regenerate common/_generated.py after changing Model4DSTEM or GENERATED_FUNCTIONS,
+# then commit it. tests/test_codegen.py fails if it is outdated.
+python -m microscope_calibration.common.generate
+
 # Lint / format (also wired into pre-commit)
 ruff check src/ tests/
 ruff format src/ tests/
@@ -116,6 +120,11 @@ Key layers, bottom-up:
   you see `try/except TracerBoolConversionError` and `_one`/`flip_factor` style tricks
   (constants threaded through so operations stay differentiable instead of using Python
   conditionals). Preserve that pattern.
+- `trace()` is the single source of truth. Relations derived from it (e.g. the descan error
+  compensation in `adjust_*()`) are derived symbolically, not hard-coded: register a
+  derivation returning symbolic `(args, output)` in `GENERATED_FUNCTIONS` (`common/model.py`),
+  run the generator, and call the function from `common/_generated.py`. The renderer is the
+  model-agnostic `util/codegen.py`. Never edit `_generated.py` by hand.
 - Respect the `PixelYX` vs `CoordXY` distinction; mixing axis order is the most likely source
   of silent geometric bugs.
 - JAX x64 is enabled at import time (`jax.config.update("jax_enable_x64", True)`) in every

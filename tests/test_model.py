@@ -2,7 +2,7 @@ import pytest
 from numpy.testing import assert_allclose, assert_equal
 
 from microscope_calibration.common.model import Model4DSTEM, lambdify_trace_for
-from microscope_calibration.util.sympy import lambdify
+from microscope_calibration.util.sympy import lambdify, symbol_maker
 
 import jax
 import jax.numpy as jnp
@@ -1014,6 +1014,36 @@ def test_adjust_scan_pixel_pitch(random_model):
     print(random_model, scan_pixel_pitch, modified)
     assert_no_descan_deviation(random_model, modified)
     assert modified.scan_pixel_pitch == scan_pixel_pitch
+
+
+def test_adjust_scan_pixel_pitch_symbolic():
+    # The compensation is derived from trace(). Confirm that it reduces to
+    # the known analytical formula.
+    model = symbol_maker(Model4DSTEM, postfix="old", recurse_for=(PixelYX, DescanError))
+    scan_pixel_pitch = sym.Symbol("scan_pixel_pitch_new")
+    modified = model.adjust_scan_pixel_pitch(scan_pixel_pitch=scan_pixel_pitch)
+    ratio = model.scan_pixel_pitch / scan_pixel_pitch
+    de = model.descan_error
+    expected = DescanError(
+        pxo_pyi=de.pxo_pyi * ratio,
+        pyo_pyi=de.pyo_pyi * ratio,
+        pxo_pxi=de.pxo_pxi * ratio,
+        pyo_pxi=de.pyo_pxi * ratio,
+        sxo_pyi=de.sxo_pyi * ratio,
+        syo_pyi=de.syo_pyi * ratio,
+        sxo_pxi=de.sxo_pxi * ratio,
+        syo_pxi=de.syo_pxi * ratio,
+        offpxi=de.offpxi,
+        offpyi=de.offpyi,
+        offsxi=de.offsxi,
+        offsyi=de.offsyi,
+    )
+    for name, value, ref in zip(DescanError._fields, modified.descan_error, expected, strict=True):
+        assert sym.simplify(value - ref) == 0, name
+    assert modified.scan_pixel_pitch == scan_pixel_pitch
+    assert modified.derive(descan_error=model.descan_error) == model.derive(
+        scan_pixel_pitch=scan_pixel_pitch
+    )
 
 
 def test_adjust_scan_center(random_model):
