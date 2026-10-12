@@ -18,7 +18,7 @@ from microscope_calibration.common.model import (
     Scanner,
     lambdify_trace_for,
 )
-from microscope_calibration.util.sympy import lambdify
+from microscope_calibration.util.sympy import lambdify, symbol_maker
 # ruff: enable[E402]
 
 # Define here to facilitate mocking in order to test
@@ -85,8 +85,170 @@ def _do_lstsq(input_samples, output_samples):
     return x
 
 
+def _derive_affine_map(inputs, outputs, equations, unknowns):
+    """
+    Derive the matrix of an affine map from :code:`inputs` to :code:`outputs`
+
+    The outputs are expressions of the inputs and of unknowns, e.g. the source
+    tilt. The unknowns are eliminated by solving :code:`equations`, expressions
+    that have to be zero, for them.
+
+    Returns
+    -------
+    matrix
+        Nested tuple with one row per input plus a row for the constant
+        offset, and one column per output plus a constant column, so that
+        :code:`(*inputs, 1) @ matrix == (*outputs, 1)`.
+    """
+    solutions = sym.solve(equations, unknowns, dict=True)
+    if len(solutions) != 1 or set(solutions[0]) != set(unknowns):
+        raise ValueError(f"No unique solution for {unknowns}: {solutions}")
+    (solution,) = solutions
+    outputs = [sym.expand(sym.sympify(o).subs(solution)) for o in outputs]
+    # Clean up factors like 1.0 from Ray._one
+    outputs = [
+        o.xreplace({f: sym.Integer(int(f)) for f in o.atoms(sym.Float) if float(f).is_integer()})
+        for o in outputs
+    ]
+    forbidden = set(inputs) | set(unknowns)
+    rows = []
+    for inp in inputs:
+        row = []
+        for o in outputs:
+            coeff = sym.diff(o, inp)
+            if coeff.free_symbols & forbidden:
+                raise ValueError(f"Map is not affine, d({o})/d({inp}) = {coeff}")
+            row.append(coeff)
+        rows.append((*row, 0))
+    constants = [o.subs({inp: 0 for inp in inputs}) for o in outputs]
+    for c in constants:
+        if c.free_symbols & forbidden:
+            raise ValueError(f"Map is not affine, offset {c}")
+    rows.append((*constants, 1))
+    return tuple(rows)
+
+
+def _derive_backward_matrix():
+    """
+    Derive the backward transformation matrix from :meth:`Model4DSTEM.trace`
+
+    Maps scan position in scan pixel coordinates and physical specimen
+    coordinates to detector pixel coordinates and source tilt. The source tilt
+    is eliminated by solving for the given specimen position.
+    """
+    model = symbol_maker(Model4DSTEM, postfix="model", recurse_for=(PixelYX, DescanError))
+    scan_y, scan_x, tilt_y, tilt_x, spec_y, spec_x = sym.symbols(
+        "scan_y scan_x tilt_y tilt_x spec_y spec_x"
+    )
+    res = model.trace(scan_pos=PixelYX(y=scan_y, x=scan_x), source_dy=tilt_y, source_dx=tilt_x)
+    spec = res["specimen"].ray
+    det = res["detector"].sampling["detector_px"]
+    matrix = _derive_affine_map(
+        inputs=(scan_y, scan_x, spec_y, spec_x),
+        outputs=(det.y, det.x, tilt_y, tilt_x),
+        equations=(spec.y - spec_y, spec.x - spec_x),
+        unknowns=(tilt_y, tilt_x),
+    )
+    return {"model": model}, matrix
+
+
+# Functions that are derived symbolically from Model4DSTEM.trace() and rendered
+# into _generated.py, see microscope_calibration.common.generate
+GENERATED_FUNCTIONS = {
+    "backward_matrix": _derive_backward_matrix,
+}
+
+
+@lambdify(modules=np, recurse_for=(PixelYX, Model4DSTEM, DescanError))
+def _backward_matrix_physical(model: Model4DSTEM):
+    # Imported here so that the generator can run even if
+    # _generated.py is missing or outdated
+    from microscope_calibration.common import _generated
+
+    return _generated.backward_matrix(model=model)
+
+
+def _affine_coefficients(mapping: CoordMappingT) -> tuple[np.ndarray, np.ndarray]:
+    """
+    Matrix :code:`a` and offset :code:`c` of an affine mapping from physical
+    coordinates :code:`(y, x)` to pixel coordinates :code:`(y, x)`, i.e.
+    :code:`mapping(p) == a @ p + c`.
+
+    The mapping is evaluated with SymPy symbols to obtain the coefficients.
+    """
+    y, x = sym.symbols("y x")
+    res = mapping(CoordXY(x=x, y=y))
+    a = np.empty((2, 2))
+    c = np.empty(2)
+    for i, out in enumerate((res.y, res.x)):
+        out = sym.expand(sym.sympify(out))
+        for j, inp in enumerate((y, x)):
+            coeff = sym.diff(out, inp)
+            if coeff.free_symbols:
+                raise ValueError(f"Coordinate mapping is not affine: {out}")
+            a[i, j] = float(coeff)
+        c[i] = float(out.subs({y: 0, x: 0}))
+    return a, c
+
+
+def _specimen_transform(mapping: CoordMappingT) -> np.ndarray:
+    """
+    Matrix that converts the input row :code:`(scan_y, scan_x, px_y, px_x, 1)`
+    with pixel coordinates from :code:`mapping` to the input row with the
+    corresponding physical coordinates :code:`(scan_y, scan_x, y, x, 1)`.
+    """
+    a, c = _affine_coefficients(mapping)
+    try:
+        a_inv = np.linalg.inv(a)
+    except np.linalg.LinAlgError as e:
+        raise ValueError(f"Coordinate mapping is singular: {a}") from e
+    transform = np.eye(5)
+    transform[2:4, 2:4] = a_inv.T
+    transform[4, 2:4] = -(a_inv @ c)
+    return transform
+
+
+def _evaluate_matrix(f, *args) -> np.ndarray:
+    """
+    Evaluate a numeric matrix function, converting division by zero
+    into :class:`FittingError`
+    """
+    try:
+        with np.errstate(divide="ignore", invalid="ignore", over="ignore"):
+            return np.array(f(*args), dtype=np.float64)
+    except ZeroDivisionError as e:
+        raise FittingError("Transformation is singular") from e
+
+
+def _check_footprint(matrix: np.ndarray, semiconv: float, min_footprint_px: float):
+    """
+    Check that a matrix that maps pixel coordinates in some plane to source
+    tilt is well-defined
+
+    The rows 2 and 3 of :code:`matrix` are the pixel coordinates in that plane,
+    columns 2 and 3 the source tilt. Their inverse is the change of pixel
+    coordinates with source tilt. Scaled by the semi-convergence angle, the
+    smallest singular value of that is the smallest semi-axis of the beam's
+    footprint in that plane in pixels.
+
+    If the footprint is (close to) zero, the transformation is singular, e.g.
+    in focus, and pixel coordinates don't determine the tilt.
+    """
+    if not np.all(np.isfinite(matrix)):
+        raise FittingError(f"Transformation is singular: {matrix}")
+    with np.errstate(divide="ignore"):
+        footprint = semiconv / np.linalg.norm(matrix[2:4, 2:4], ord=2)
+    if not footprint >= min_footprint_px:
+        raise FittingError(
+            f"Beam footprint of {footprint} px is smaller than min_footprint_px="
+            f"{min_footprint_px}, the transformation is (close to) singular."
+        )
+
+
 def get_backward_transformation_matrix(
-    rec_model: Model4DSTEM, specimen_to_image: CoordMappingT | None = None
+    rec_model: Model4DSTEM,
+    specimen_to_image: CoordMappingT | None = None,
+    min_footprint_px: float = 1e-6,
 ):
     """
     Calculate a transformation matrix that maps from scan position in scan pixel
@@ -102,65 +264,38 @@ def get_backward_transformation_matrix(
     passes through through the microscope or if it is blocked by the
     beam-shaping aperture.
 
-    It may be possible to derive this matrix from partial derivatives of the
-    model. However, this is postponed for now since this matrix mixes input and
-    output values with respect of the model, so one may have to work with a
-    combination of forward and inverse derivatives.
+    The matrix is derived symbolically from :meth:`Model4DSTEM.trace` for
+    physical specimen coordinates, see :func:`_derive_backward_matrix` and
+    :mod:`microscope_calibration.common.generate`. It is combined with the
+    affine mapping :code:`specimen_to_image` from physical specimen coordinates
+    to specimen pixel coordinates.
 
-    For the time being this method traces a number of sample rays and deduces
-    the mapping matrix from these samples.
+    Parameters
+    ----------
+    rec_model
+        Model of the reconstruction
+    specimen_to_image
+        Affine mapping from physical specimen coordinates to specimen pixel
+        coordinates. It is evaluated with SymPy symbols to determine its
+        coefficients. By default, scan pixel coordinates of :code:`rec_model`.
+    min_footprint_px
+        Minimum smallest semi-axis of the beam's footprint in the specimen
+        plane in specimen pixels, given the semi-convergence angle. Below
+        that, the transformation is considered (close to) singular, e.g. in
+        focus.
+
+    Raises
+    ------
+    FittingError
+        If the transformation is singular or close to singular.
     """
-
-    # scan position y/x, source tilt y/x
-    test_parameters = np.array(
-        (
-            [0.0, 0.0, 0.0, 0.0],
-            [100.0, 100.0, 0.0, 0.0],
-            [-100.0, 100.0, 0.0, 0.0],
-            [10.0, 0.0, 0.0, 0.0],
-            [0.0, 10.0, 0.0, 0.0],
-            [0.0, 0.0, 0.1, 0.0],
-            [0.0, 0.0, 0.0, 0.1],
-            [1.0, 1.0, 1.0, 1.0],
-            [1.0, 2.0, 3.0, 4.0],
-        )
+    if specimen_to_image is None:
+        specimen_to_image = rec_model.real_to_scan
+    matrix = _specimen_transform(specimen_to_image) @ _evaluate_matrix(
+        _backward_matrix_physical, rec_model
     )
-
-    input_samples = []
-    output_samples = []
-
-    @lambdify(modules=np)
-    def get_sample(scan_pos_x, scan_pos_y, source_dy, source_dx):
-        scan_pos = PixelYX(x=scan_pos_x, y=scan_pos_y)
-        res = rec_model.trace(
-            scan_pos=scan_pos,
-            source_dy=source_dy,
-            source_dx=source_dx,
-        )
-
-        if specimen_to_image is None:
-            spec_px = res["specimen"].sampling["scan_px"]
-        else:
-            spec_px = specimen_to_image(CoordXY(x=res["specimen"].ray.x, y=res["specimen"].ray.y))
-        input_sample = (scan_pos.y, scan_pos.x, spec_px.y, spec_px.x, 1.0)
-        output_sample = (
-            res["detector"].sampling["detector_px"].y,
-            res["detector"].sampling["detector_px"].x,
-            source_dy,
-            source_dx,
-            1.0,
-        )
-        return (input_sample, output_sample)
-
-    for test_param_raw in test_parameters:
-        # We are paranoid and confirm that the model is linear
-        for factor in (1.0, 2.0):
-            test_param = test_param_raw * factor
-            input_sample, output_sample = get_sample(*test_param)
-            output_samples.append(output_sample)
-            input_samples.append(input_sample)
-
-    return _do_lstsq(input_samples, output_samples)
+    _check_footprint(matrix, semiconv=float(rec_model.semiconv), min_footprint_px=min_footprint_px)
+    return matrix
 
 
 # Separate functions spun out to facilitate re-use of coordinate calculations

@@ -9,7 +9,7 @@ derivation at runtime.
 import ast
 import builtins
 import dataclasses
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from typing import Any
 
 import sympy as sym
@@ -46,6 +46,10 @@ def _render_tree(tree: Any, printer: SymPyPrinter, types: set[type], indent: str
             for name in names
         ]
         return f"{type(tree).__name__}(\n{''.join(items)}{indent})"
+    elif isinstance(tree, tuple):
+        inner = indent + "    "
+        items = [f"{inner}{_render_tree(item, printer, types, inner)},\n" for item in tree]
+        return f"(\n{''.join(items)}{indent})"
     else:
         return repr(tree)
 
@@ -63,8 +67,8 @@ def render_function(name: str, args: dict[str, Any], output: Any) -> tuple[str, 
         with SymPy symbols as leaves. The symbols are replaced with the
         corresponding attributes of the arguments.
     output
-        Tree of NamedTuples and dataclasses with SymPy expressions of the
-        symbols in :code:`args` as leaves.
+        Tree of NamedTuples, dataclasses and tuples with SymPy expressions of
+        the symbols in :code:`args` or numbers as leaves.
 
     Returns
     -------
@@ -83,50 +87,77 @@ def render_function(name: str, args: dict[str, Any], output: Any) -> tuple[str, 
             if len(path) > 1:
                 assignments.append(f"    {local_name} = {'.'.join(path)}\n")
 
-    output = _replace(output, replacements)
-    used = {s.name for leaf in leaves(output) for s in leaf.free_symbols}
+    output = map_leaves(output, lambda leaf: _xreplace(leaf, replacements))
+    used = {
+        s.name for leaf in leaves(output) if isinstance(leaf, sym.Basic) for s in leaf.free_symbols
+    }
     unknown = used - {s.name for s in replacements.values()}
     if unknown:
         raise ValueError(f"Output depends on symbols {unknown} that are not in args.")
+
+    # Common subexpression elimination keeps the code short and fast
+    if any(s.name.startswith(_CSE_PREFIX) for s in replacements.values()):
+        raise ValueError(f"Argument names must not start with {_CSE_PREFIX}.")
+    expressions = [leaf for leaf in leaves(output) if isinstance(leaf, sym.Basic)]
+    intermediates, reduced = sym.cse(expressions, symbols=sym.numbered_symbols(_CSE_PREFIX))
+    reduced_iter = iter(reduced)
+    output = map_leaves(
+        output, lambda leaf: next(reduced_iter) if isinstance(leaf, sym.Basic) else leaf
+    )
 
     printer = SymPyPrinter({"fully_qualified_modules": False})
     types = set()
     body = _render_tree(output, printer, types, indent="    ")
     # Only assign the attributes that are used to keep the code concise
     lines = [line for line in assignments if line.split(" = ")[0].strip() in used]
+    lines += [f"    {symbol} = {printer.doprint(expr)}\n" for symbol, expr in intermediates]
     source = f"def {name}({', '.join(args)}):\n" + "".join(lines) + f"    return {body}\n"
     return source, types
 
 
+_CSE_PREFIX = "_cse"
+
+
+def _xreplace(leaf: Any, replacements: dict) -> Any:
+    return leaf.xreplace(replacements) if isinstance(leaf, sym.Basic) else leaf
+
+
 def leaves(tree: Any) -> Iterator[sym.Basic]:
     """
-    Yield the SymPy expressions in a tree of NamedTuples and dataclasses
+    Yield the leaves, e.g. SymPy expressions or numbers, of a tree of
+    NamedTuples, dataclasses and tuples
     """
-    if isinstance(tree, sym.Basic):
-        yield tree
-    elif hasattr(tree, "_fields"):
+    if hasattr(tree, "_fields"):
         for name in tree._fields:
             yield from leaves(getattr(tree, name))
     elif dataclasses.is_dataclass(tree):
         for field in dataclasses.fields(tree):
             yield from leaves(getattr(tree, field.name))
+    elif isinstance(tree, tuple):
+        for item in tree:
+            yield from leaves(item)
+    else:
+        yield tree
 
 
-def _replace(tree: Any, replacements: dict) -> Any:
-    if isinstance(tree, sym.Basic):
-        return tree.xreplace(replacements)
-    elif hasattr(tree, "_fields"):
-        return type(tree)(**{n: _replace(getattr(tree, n), replacements) for n in tree._fields})
+def map_leaves(tree: Any, f: Callable[[Any], Any]) -> Any:
+    """
+    Apply :code:`f` to the leaves of a tree of NamedTuples, dataclasses and
+    tuples, in the same order as :func:`leaves`
+    """
+    if hasattr(tree, "_fields"):
+        return type(tree)(**{n: map_leaves(getattr(tree, n), f) for n in tree._fields})
     elif dataclasses.is_dataclass(tree):
         return dataclasses.replace(
             tree,
             **{
-                f.name: _replace(getattr(tree, f.name), replacements)
-                for f in dataclasses.fields(tree)
+                fld.name: map_leaves(getattr(tree, fld.name), f) for fld in dataclasses.fields(tree)
             },
         )
+    elif isinstance(tree, tuple):
+        return tuple(map_leaves(item, f) for item in tree)
     else:
-        return tree
+        return f(tree)
 
 
 def _free_names(source: str) -> set[str]:
