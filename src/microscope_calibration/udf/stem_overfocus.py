@@ -19,48 +19,55 @@ from microscope_calibration.common.stem_overfocus import (
 log = logging.getLogger(__name__)
 
 
+@lru_cache
+def _backward_matrix(model: Model4DSTEM) -> np.ndarray | None:
+    try:
+        return _read_only(get_backward_transformation_matrix(rec_model=model))
+    except FittingError as e:
+        log.warning("Skipping back-projection: %s", e)
+        return None
+
+
+@lru_cache
+def _correction_matrix(model: Model4DSTEM) -> np.ndarray | None:
+    try:
+        return _read_only(get_detector_correction_matrix(rec_model=model))
+    except FittingError as e:
+        log.warning("Skipping detector correction: %s", e)
+        return None
+
+
+def _read_only(mat: np.ndarray) -> np.ndarray:
+    # Cached and shared between calls
+    mat.setflags(write=False)
+    return mat
+
+
 class BaseCorrectionUDF(UDF):
-    def __init__(
-        self,
-        overfocus_model: dict,
-        *args,
-        back_mat=None,
-        corr_mat=None,
-        ref_model=None,
-        **kwargs,
-    ):
-        """
-        model are wrapped in a dict since that allows in-place updates, see
-        https://github.com/LiberTEM/LiberTEM/issues/1780
-        """
-        # Detect changes so that the mapping matrices are recalculated
-        if overfocus_model["model"] != ref_model:
-            back_mat = self._back_mat(rec_model=overfocus_model["model"])
-            corr_mat = self._corr_mat(rec_model=overfocus_model["model"])
-        super().__init__(
-            *args,
-            overfocus_model=overfocus_model,
-            back_mat=back_mat,
-            corr_mat=corr_mat,
-            ref_model=overfocus_model["model"],
-            **kwargs,
-        )
+    """
+    Base class for UDFs that use the transformation matrices of a model
 
-    @staticmethod
-    @lru_cache
-    def _back_mat(*args, **kwargs):
-        try:
-            return get_backward_transformation_matrix(*args, **kwargs)
-        except FittingError:
-            return None
+    Parameters
+    ----------
+    overfocus_model
+        :code:`{"model": model}` with a :class:`Model4DSTEM`. The model is
+        wrapped in a dict so that it can be updated in place, see
+        https://github.com/LiberTEM/LiberTEM/issues/1780. The matrices are
+        calculated from the current model for each task.
 
-    @staticmethod
-    @lru_cache
-    def _corr_mat(*args, **kwargs):
-        try:
-            return get_detector_correction_matrix(*args, **kwargs)
-        except FittingError:
-            return None
+    If a matrix can't be calculated, e.g. the back-projection in focus, the
+    UDF logs a warning and skips the corresponding results.
+    """
+
+    def __init__(self, overfocus_model: dict, **kwargs):
+        super().__init__(overfocus_model=overfocus_model, **kwargs)
+
+    def get_task_data(self):
+        model = self.params.overfocus_model["model"].normalize_types()
+        return {
+            "back_mat": _backward_matrix(model),
+            "corr_mat": _correction_matrix(model),
+        }
 
     def _get_fov(self):
         fov_size_y = int(self.meta.dataset_shape.nav[0])
@@ -69,11 +76,11 @@ class BaseCorrectionUDF(UDF):
 
     @property
     def has_correction(self):
-        return self.params.corr_mat is not None
+        return self.task_data.corr_mat is not None
 
     @property
     def has_backprojection(self):
-        return self.params.back_mat is not None
+        return self.task_data.back_mat is not None
 
 
 class OverfocusUDF(BaseCorrectionUDF):
@@ -97,7 +104,7 @@ class OverfocusUDF(BaseCorrectionUDF):
                 source_semiconv=overfocus_model.semiconv,
                 scan_y=scan_y,
                 scan_x=scan_x,
-                mat=self.params.back_mat,
+                mat=self.task_data.back_mat,
                 image_out=self.results.backprojected_sum,
             )
         center = overfocus_model.detector_center
@@ -107,14 +114,14 @@ class OverfocusUDF(BaseCorrectionUDF):
                 det_corr_x=center.x,
                 scan_y=scan_y,
                 scan_x=scan_x,
-                mat=self.params.corr_mat,
+                mat=self.task_data.corr_mat,
             )
             det_x = corrected_det_x(
                 det_corr_y=center.y,
                 det_corr_x=center.x,
                 scan_y=scan_y,
                 scan_x=scan_x,
-                mat=self.params.corr_mat,
+                mat=self.task_data.corr_mat,
             )
             det_y = int(np.round(det_y))
             det_x = int(np.round(det_x))
@@ -125,7 +132,7 @@ class OverfocusUDF(BaseCorrectionUDF):
                 frame=frame,
                 scan_y=scan_y,
                 scan_x=scan_x,
-                mat=self.params.corr_mat,
+                mat=self.task_data.corr_mat,
                 detector_out=self.results.corrected_sum,
             )
 
@@ -139,20 +146,6 @@ class OverfocusUDF(BaseCorrectionUDF):
 # to allow re-using the correction basics and
 # not run into inheritance complications
 class CorrectedPickUDF(BaseCorrectionUDF):
-    def __init__(
-        self,
-        overfocus_model,
-        back_mat=None,
-        corr_mat=None,
-        ref_model=None,
-    ):
-        super().__init__(
-            overfocus_model,
-            back_mat=back_mat,
-            corr_mat=corr_mat,
-            ref_model=ref_model,
-        )
-
     def get_preferred_input_dtype(self):
         ""
         return self.USE_NATIVE_DTYPE
@@ -196,7 +189,7 @@ class CorrectedPickUDF(BaseCorrectionUDF):
                 frame=frame,
                 scan_y=scan_y,
                 scan_x=scan_x,
-                mat=self.params.corr_mat,
+                mat=self.task_data.corr_mat,
                 detector_out=self.results.corrected[sl][0],
             )
         if self.has_backprojection:
@@ -205,7 +198,7 @@ class CorrectedPickUDF(BaseCorrectionUDF):
                 source_semiconv=overfocus_model.semiconv,
                 scan_y=scan_y,
                 scan_x=scan_x,
-                mat=self.params.back_mat,
+                mat=self.task_data.back_mat,
                 image_out=self.results.backprojected[sl][0],
             )
 

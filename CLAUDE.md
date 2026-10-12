@@ -90,8 +90,8 @@ Key layers, bottom-up:
 4. **`udf/stem_overfocus.py`** — LiberTEM UDFs that apply (3) over a real dataset:
    `OverfocusUDF` (reconstruct an overfocus/real-space image) and `CorrectedPickUDF`. Models
    are passed wrapped in a `dict` so they can be mutated in place (LiberTEM issue #1780); the
-   transformation matrices are cached via `lru_cache` and only recomputed when the model
-   changes.
+   transformation matrices are calculated in `get_task_data()` and cached per model via
+   `lru_cache`.
 
 5. **`util/stem_overfocus_sim.py`** — forward simulator (e.g. `smiley()` test object,
    `project()`) that generates synthetic 4D-STEM data from a model, used heavily in tests and

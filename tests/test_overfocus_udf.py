@@ -1,5 +1,6 @@
 import jax
 import numpy as np
+import pytest
 from libertem.api import Context
 from numpy.testing import assert_allclose
 
@@ -15,7 +16,12 @@ from microscope_calibration.common.stem_overfocus import (
     get_detector_correction_matrix,
     project_frame_backwards,
 )
-from microscope_calibration.udf.stem_overfocus import OverfocusUDF, CorrectedPickUDF
+from microscope_calibration.udf.stem_overfocus import (
+    CorrectedPickUDF,
+    OverfocusUDF,
+    _backward_matrix,
+    _correction_matrix,
+)
 
 trace = lambdify_trace_for(jax.numpy)
 
@@ -154,3 +160,42 @@ def test_corrected_pick_delayed():
     for key, value in res.items():
         print(key)
         assert_allclose(value.delayed_data.compute(), ref[key].data)
+
+
+def test_udf_model_update():
+    ctx = Context.make_with("inline")
+    data = np.random.random((4, 5, 6, 7))
+    ds = ctx.load("memory", data=data)
+    model = Model4DSTEM.default(dataset_shape=ds.shape).derive(overfocus=0.1)
+    overfocus_model = {"model": model}
+    udf = OverfocusUDF(overfocus_model=overfocus_model)
+    res_1 = ctx.run_udf(dataset=ds, udf=udf)
+    # Update in place, with JAX scalars that aren't hashable
+    overfocus_model["model"] = model.derive(scan_rotation=jax.numpy.float64(0.5))
+    res_2 = ctx.run_udf(dataset=ds, udf=udf)
+    ref = ctx.run_udf(
+        dataset=ds, udf=OverfocusUDF(overfocus_model={"model": model.derive(scan_rotation=0.5)})
+    )
+    assert not np.allclose(res_1["backprojected_sum"].data, res_2["backprojected_sum"].data)
+    assert_allclose(res_2["backprojected_sum"].data, ref["backprojected_sum"].data)
+
+
+def test_udf_in_focus(caplog):
+    _backward_matrix.cache_clear()
+    ctx = Context.make_with("inline")
+    data = np.random.random((4, 5, 6, 7))
+    ds = ctx.load("memory", data=data)
+    model = Model4DSTEM.default(dataset_shape=ds.shape)
+    assert model.overfocus == 0
+    res = ctx.run_udf(dataset=ds, udf=OverfocusUDF(overfocus_model={"model": model}))
+    assert "Skipping back-projection" in caplog.text
+    assert np.all(res["backprojected_sum"].data == 0)
+    # The detector correction works in focus
+    assert np.any(res["corrected_sum"].data != 0)
+
+
+def test_cached_matrices_read_only():
+    model = Model4DSTEM.default(dataset_shape=(4, 5, 6, 7)).derive(overfocus=0.1)
+    for mat in (_backward_matrix(model), _correction_matrix(model)):
+        with pytest.raises(ValueError, match="read-only"):
+            mat[0, 0] = 1.0
