@@ -88,9 +88,11 @@ def test_optimize():
         dataset=ds,
         overfocus_udf=udf,
     )
+    # The fit starts at the true values, i.e. this tests the plumbing, not the
+    # convergence: The blur of a back-projected point object is flat.
     res = optimize(loss=loss)
     res_model = make_new_model(res.x)
-    assert_allclose(res_model.scan_rotation, model.scan_rotation, atol=0.1)
+    assert_allclose(res_model.detector_rotation, model.detector_rotation, atol=0.1)
     assert_allclose(res_model.overfocus, model.overfocus, rtol=0.1)
 
     valdict = {"val": False}
@@ -120,8 +122,19 @@ def test_optimize():
         bounds=[(-10, 10), (-10, 10)],
     )
     res_model = make_new_model(res.x)
-    assert_allclose(res_model.scan_rotation, model.scan_rotation, atol=0.1)
+    assert_allclose(res_model.detector_rotation, model.detector_rotation, atol=0.1)
     assert_allclose(res_model.overfocus, model.overfocus, rtol=0.1)
+
+
+def test_overfocus_loss_in_focus():
+    model = Model4DSTEM.default(dataset_shape=(8, 8, 8, 8))
+    with pytest.raises(ValueError, match="overfocus"):
+        make_overfocus_loss_function(
+            model=model,
+            ctx=None,
+            dataset=None,
+            overfocus_udf=OverfocusUDF(overfocus_model={"model": model}),
+        )
 
 
 def test_descan_error():
