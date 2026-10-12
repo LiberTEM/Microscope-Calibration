@@ -1,7 +1,5 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
-
 ## What this is
 
 Tools to calibrate a (scanning) transmission electron microscope, with a focus on 4D-STEM
@@ -46,12 +44,12 @@ exploratory notebooks and is not shipped code.
 ## Dependency extras
 
 Dependencies are intentionally partitioned to keep the core (`common/model.py`) importable
-without pulling in the whole scientific Python stack:
+without pulling in the whole scientific Python stack (packages: see `pyproject.toml`):
 
-- **core** (always): `jax`, `jax-dataclasses`, `sympy`, `temgym-core`, `flax`, `wrapt`, `frozendict`
-- **common**: `libertem`, `numba`, `scipy`, `scikit-image`, `optax`, `optimistix`, `numpy` — needed by the UDFs, simulator, and optimizers
-- **diffraction**: CIF/crystallography (`pycifrw`, `diffpy.structure`, `orix`, `diffsims`)
-- **gui**: `libertem-ui`, `panel`, `bokeh`, `ipywidgets`, etc. — the interactive UI
+- **core** (always): JAX, SymPy, TemGymCore — the model itself
+- **common**: LiberTEM, Numba, SciPy, optimizers — UDFs, simulator, and optimizers
+- **diffraction**: CIF/crystallography
+- **gui**: the interactive UI
 
 Several deps are pinned to git `master`/branches (TemGymCore, LiberTEM-panel-ui, diffsims)
 pending upstream releases — see the `FIXME` comments in `pyproject.toml`. Flag any new
@@ -83,14 +81,9 @@ Key layers, bottom-up:
    `DescanError`) so a symbolic trace can be turned into a numeric function. Touch with care;
    the three-backend contract depends on it.
 
-3. **`common/stem_overfocus.py`** — calculates the pixel-to-pixel transformation matrices
-   (backward projection, detector correction; forward projection in the simulator) from the
-   `ray_transfer_matrix()` of a model, which is derived symbolically from `trace()` and
-   generated. `_eliminate_tilt()` solves the 2x2 tilt system numerically and raises
-   `FittingError` when it is (near-)singular, i.e. the beam footprint is below
-   `min_footprint_px` (e.g. in focus). The docstring of `_derive_ray_transfer_matrix()`
-   explains why the matrices themselves are not generated. Contains the Numba-accelerated
-   projection kernels.
+3. **`common/stem_overfocus.py`** — pixel-to-pixel transformation matrices (backward
+   projection, detector correction) calculated from the generated `ray_transfer_matrix()`;
+   raises `FittingError` when (near-)singular, e.g. in focus. Numba projection kernels.
 
 4. **`udf/stem_overfocus.py`** — LiberTEM UDFs that apply (3) over a real dataset:
    `OverfocusUDF` (reconstruct an overfocus/real-space image) and `CorrectedPickUDF`. Models
@@ -102,11 +95,9 @@ Key layers, bottom-up:
    `project()`) that generates synthetic 4D-STEM data from a model, used heavily in tests and
    the example notebook.
 
-6. **`util/optimize.py`** — inverse problem. Given reference data (center-of-mass regressions,
-   diffraction rings, matched points), fit individual calibration parameters back out:
-   `solve_camera_length`, `solve_scan_pixel_pitch`, `solve_full_descan_error`,
-   `solve_tilt_descan_error`, `solve_coords_points`, etc. Built on JAX autodiff with
-   `optax`/`optimistix`. `normalize_descan_error` canonicalizes the (overparameterized)
+6. **`util/optimize.py`** — inverse problem: fit calibration parameters to reference data
+   (center-of-mass regressions, diffraction rings, matched points) with JAX autodiff and
+   `optimistix` (`solve_*`). `normalize_descan_error` canonicalizes the (overparameterized)
    descan-error representation.
 
 7. **`util/diffraction.py`** — computes diffraction two-theta angles from a CIF crystal
@@ -124,23 +115,17 @@ Key layers, bottom-up:
   you see `try/except TracerBoolConversionError` and `_one`/`flip_factor` style tricks
   (constants threaded through so operations stay differentiable instead of using Python
   conditionals). Preserve that pattern.
-- `trace()` is the single source of truth. Relations derived from it (e.g. the descan error
-  compensation in `adjust_*()`) are derived symbolically, not hard-coded: register a
-  derivation returning symbolic `(args, output)` in the `GENERATED_FUNCTIONS` of the module
-  that uses it (`common/model.py`, `common/stem_overfocus.py`; collected in
-  `common/generate.py`), run the generator, and call the function from `common/_generated.py`
-  (directly for SymPy/plain types, wrapped with `@lambdify(modules=np)` for fast numerics). The renderer is the
-  model-agnostic `util/codegen.py`. Never edit `_generated.py` by hand.
-- Generated code is only valid for `Model4DSTEM` itself. Dispatch goes through
-  `Model4DSTEM._generated_module()`; subclasses get `None` by default and derive at runtime
-  from their own `trace()` (cached per class, `RuntimeDerivationWarning`, non-linear ones raise
-  `NonlinearModelError`). New derived functions need both paths. See the `Model4DSTEM`
-  docstring.
+- `trace()` is the single source of truth. Derive relations from it symbolically instead of
+  hard-coding them: register the derivation in a `GENERATED_FUNCTIONS` registry (collected in
+  `common/generate.py`) and run the generator. Never edit `common/_generated.py` by hand.
+- Generated code is only valid for `Model4DSTEM` itself; new derived functions also need the
+  runtime path for subclasses. See the `Model4DSTEM` docstring.
 - Respect the `PixelYX` vs `CoordXY` distinction; mixing axis order is the most likely source
   of silent geometric bugs.
 - JAX x64 is enabled at import time (`jax.config.update("jax_enable_x64", True)`) in every
   module that uses JAX — this must happen before other JAX imports, hence the `# noqa: E702`
-  and `# ruff: disable[E402]` markers at the top of those files.
+  and `# ruff: disable[E402]` markers at the top of those files. JAX-based solvers call
+  `check_float64()` (`util/optimize.py`).
 
 ## Testing notes
 
@@ -150,3 +135,17 @@ Key layers, bottom-up:
   they can be re-run with `NUMBA_DISABLE_JIT=1` for coverage of the interpreted paths.
 - CI (`.github/workflows/`) runs on Python 3.14 across Linux/Windows/macOS with all extras
   installed.
+
+## Commit messages and PR descriptions
+
+Keep them short and concise, for human review:
+
+- Open with one sentence: what is replaced by what, and the reason if it isn't obvious.
+- One-line bullets naming the change, not how it works. No internal function names,
+  thresholds, defaults, timing or size numbers, or rationale already in docstrings.
+- Point to docs ("see docstring", "see README") instead of explaining.
+- Keep: attribution with a link to the source, user-visible behavior changes (one line each),
+  minimal review notes.
+- Leave out what reviewers see in the diff or trust CI for, e.g. "existing tests unchanged".
+- Commit messages: a short subject plus a few lines at most. Use the
+  "Changes / Behavior changes / Review notes" structure only for PRs.
