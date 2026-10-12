@@ -236,7 +236,7 @@ def lambdify(recurse_for=(), modules=sym, args=None, kwargs=None, **sym_kwargs):
         f = _outer_lambdify(
             wrapped=wrapped,
             modules=modules,
-            sample_args=frozendict(sample_args),
+            sample_args=tuple(sample_args),
             sample_kwargs=frozendict(sample_kwargs),
             sym_kwargs=frozendict(sym_kwargs),
             recurse_for=recurse_for,
