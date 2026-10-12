@@ -19,7 +19,6 @@ from microscope_calibration.util.stem_overfocus_sim import (
     project_frame_forward,
     smiley,
 )
-import jax.numpy as jnp
 
 
 trace = lambdify_trace_for(np)
@@ -191,45 +190,6 @@ def test_nonlinear_model():
     )
 
     with pytest.raises(RuntimeError, match="not linear"):
-        get_forward_transformation_matrix(sim_model=model)
-
-
-def test_no_precision(monkeypatch):
-    model = Badmodel4DSTEM(
-        overfocus=0.123,
-        scan_pixel_pitch=0.234,
-        camera_length=0.73,
-        detector_pixel_pitch=0.0321,
-        semiconv=0.023,
-        scan_center=PixelYX(x=0.13, y=0.23),
-        scan_rotation=0.752,
-        flip_factor=-1.0,
-        detector_center=PixelYX(x=23, y=42),
-        descan_error=DescanError(
-            pxo_pxi=0.2,
-            pxo_pyi=0.3,
-            pyo_pxi=0.5,
-            pyo_pyi=0.7,
-            sxo_pxi=0.11,
-            sxo_pyi=0.13,
-            syo_pxi=0.17,
-            syo_pyi=0.19,
-            offpxi=0.23,
-            offpyi=0.29,
-            offsxi=0.31,
-            offsyi=0.37,
-        ),
-    )
-    # We cause discrepancies and "blame" it on lack of precision
-    # to test this code path
-    import microscope_calibration.common.stem_overfocus
-
-    monkeypatch.setattr(
-        target=microscope_calibration.common.stem_overfocus,
-        name="target_dtype",
-        value=jnp.float32,
-    )
-    with pytest.raises(RuntimeError, match="No float64 support"):
         get_forward_transformation_matrix(sim_model=model)
 
 

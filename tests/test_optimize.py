@@ -9,6 +9,7 @@ from microscope_calibration.common.model import (
 )
 from microscope_calibration.udf.stem_overfocus import OverfocusUDF
 from microscope_calibration.util.optimize import (
+    check_float64,
     _tilt_descan,
     make_overfocus_loss_function,
     normalize_descan_error,
@@ -662,3 +663,27 @@ def test_tilt_descan_error_points(
         )
         assert isinstance(getattr(model.descan_error, key), float)
         assert isinstance(getattr(opt_res.descan_error, key), float)
+
+
+def test_check_float64():
+    check_float64()
+
+
+@pytest.fixture
+def jax_float32():
+    jax.config.update("jax_enable_x64", False)
+    try:
+        yield
+    finally:
+        jax.config.update("jax_enable_x64", True)
+
+
+def test_check_float64_float32(jax_float32):
+    with pytest.raises(RuntimeError, match="No float64 support"):
+        check_float64()
+
+
+def test_solver_checks_float64(jax_float32):
+    model = Model4DSTEM.default(dataset_shape=(32, 32, 32, 32)).derive(overfocus=0.1)
+    with pytest.raises(RuntimeError, match="No float64 support"):
+        solve_camera_length(ref_model=model, diffraction_angle=0.01, radius_px=10.0)

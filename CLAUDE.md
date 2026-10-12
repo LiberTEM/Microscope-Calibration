@@ -83,10 +83,15 @@ Key layers, bottom-up:
    `DescanError`) so a symbolic trace can be turned into a numeric function. Touch with care;
    the three-backend contract depends on it.
 
-3. **`common/stem_overfocus.py`** — derives the pixel-to-pixel transformation matrices
-   (forward and backward projection, detector correction) from a model by least-squares
-   fitting against the trace. Asserts the model is actually linear (`_do_lstsq`); raises
-   `FittingError` when ill-posed. Contains the Numba-accelerated projection kernels.
+3. **`common/stem_overfocus.py`** — calculates the pixel-to-pixel transformation matrices
+   (backward projection, detector correction; forward projection in the simulator) from the
+   `ray_transfer_matrix()` of a model, which is derived symbolically from `trace()` and
+   generated. `_eliminate_tilt()` solves the 2x2 tilt system numerically and raises
+   `FittingError` when it is (near-)singular, i.e. the beam footprint is below
+   `min_footprint_px` (e.g. in focus). The docstring of `_derive_ray_transfer_matrix()`
+   explains why the matrices themselves are not generated. Subclasses that override `trace()`
+   get their ray transfer matrix derived at runtime; non-linear ones raise
+   `NonlinearModelError`. Contains the Numba-accelerated projection kernels.
 
 4. **`udf/stem_overfocus.py`** — LiberTEM UDFs that apply (3) over a real dataset:
    `OverfocusUDF` (reconstruct an overfocus/real-space image) and `CorrectedPickUDF`. Models
@@ -122,8 +127,10 @@ Key layers, bottom-up:
   conditionals). Preserve that pattern.
 - `trace()` is the single source of truth. Relations derived from it (e.g. the descan error
   compensation in `adjust_*()`) are derived symbolically, not hard-coded: register a
-  derivation returning symbolic `(args, output)` in `GENERATED_FUNCTIONS` (`common/model.py`),
-  run the generator, and call the function from `common/_generated.py`. The renderer is the
+  derivation returning symbolic `(args, output)` in the `GENERATED_FUNCTIONS` of the module
+  that uses it (`common/model.py`, `common/stem_overfocus.py`; collected in
+  `common/generate.py`), run the generator, and call the function from `common/_generated.py`
+  (directly for SymPy/plain types, wrapped with `@lambdify(modules=np)` for fast numerics). The renderer is the
   model-agnostic `util/codegen.py`. Never edit `_generated.py` by hand.
 - Respect the `PixelYX` vs `CoordXY` distinction; mixing axis order is the most likely source
   of silent geometric bugs.

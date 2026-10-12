@@ -33,6 +33,32 @@ if TYPE_CHECKING:
 trace = lambdify_trace_for(jnp)
 
 
+def check_float64():
+    """
+    Check that JAX uses float64
+
+    Electron optics calculations combine lengths in the range of picometers,
+    e.g. the electron wavelength, with lengths in the range of meters, e.g. the
+    camera length. The precision of float32 is not sufficient for that. JAX
+    uses float32 by default. This package activates float64 on import with
+    :code:`jax.config.update("jax_enable_x64", True)`, but it can be
+    deactivated again by other code.
+
+    Raises
+    ------
+    RuntimeError
+        If JAX doesn't use float64
+    """
+    test = jnp.array((1, 2, 3), dtype=jnp.float64)
+    if test.dtype != jnp.float64:
+        raise RuntimeError(
+            f"No float64 support activated in JAX, got {test.dtype}. Downcasting to "
+            "float32 leads to inaccuracies that are much larger than permissible for "
+            "electron optics calculations. Activate it with "
+            '`jax.config.update("jax_enable_x64", True)` before using JAX.'
+        )
+
+
 def make_overfocus_loss_function(
     model: Model4DSTEM,
     ctx: Context,
@@ -194,6 +220,7 @@ def _cl_loss(y, args: _CLArgs):
 # FIXME include wavelength calculation etc for more practical
 # input parameters
 def solve_camera_length(ref_model: Model4DSTEM, diffraction_angle, radius_px):
+    check_float64()
     args = _CLArgs(radius_px=radius_px, test_dx=jnp.tan(diffraction_angle), ref_model=ref_model)
     start = jnp.array((ref_model.camera_length,))
     opt_res = optimistix.least_squares(
@@ -232,6 +259,7 @@ def solve_scan_pixel_pitch(
     point_2: PixelYX,
     physical_distance: float,
 ):
+    check_float64()
     args = _SPPArgs(
         ref_model=ref_model,
         point_1=point_1,
@@ -309,6 +337,7 @@ def _de_full_loss(y, args: _DEFullArgs):
 
 
 def solve_full_descan_error(ref_model: Model4DSTEM, regressions: CoMRegressions):
+    check_float64()
     # Caveat: scan and detector center of ref_model and of regressions should
     # match.
 
@@ -412,6 +441,7 @@ def _norm_loss(y, args: _NormArgs):
 
 
 def normalize_descan_error(ref_model: Model4DSTEM):
+    check_float64()
     args = _NormArgs(
         ref_model=ref_model,
     )
@@ -497,6 +527,7 @@ def _de_tilt_loss(y, args: _DETiltArgs):
 
 
 def solve_tilt_descan_error(ref_model: Model4DSTEM, regression: CoMRegression):
+    check_float64()
     # Caveat: scan and detector center of ref_model and of regressions should
     # match.
 
@@ -574,6 +605,7 @@ def _de_tilt_point_loss(y, args: _DETiltPointArgs):
 
 
 def solve_tilt_descan_error_points(ref_model: Model4DSTEM, points: jnp.ndarray):
+    check_float64()
     args = _DETiltPointArgs(
         model=ref_model,
         points=points,
@@ -663,6 +695,7 @@ def _coords_point_loss(y, args: _CoordPointArgs):
 
 
 def solve_coords_points(ref_model: Model4DSTEM, points: jnp.ndarray):
+    check_float64()
     args = _CoordPointArgs(
         model=ref_model,
         points=points,
@@ -714,6 +747,7 @@ class SlopeYX(NamedTuple):
 
 
 def solve_hit_specimen(model: Model4DSTEM, scan_pos: PixelYX, specimen_px: PixelYX):
+    check_float64()
     args = _HitSpecimenArgs(
         model=model,
         scan_pos=scan_pos,
