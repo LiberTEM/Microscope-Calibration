@@ -1118,6 +1118,14 @@ def test_adjust_grad(random_model, param):
     assert_allclose(jax.grad(f)(value), expected, rtol=1e-5, atol=1e-8)
 
 
+@pytest.mark.parametrize("flip_factor", [-1.0, 1.0])
+def test_adjust_flip_factor_jit(random_model, flip_factor):
+    def f(flip_factor):
+        return random_model.adjust_flip_factor(flip_factor).descan_error
+
+    assert_allclose(jax.jit(f)(flip_factor), f(flip_factor), rtol=1e-12, atol=1e-12)
+
+
 def test_invert_focus(random_model):
     model = random_model
     trace = lambdify_trace_for(np)

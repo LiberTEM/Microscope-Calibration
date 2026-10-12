@@ -564,12 +564,8 @@ class Model4DSTEM:
         compensation the same.
 
         This allows first compensating descan error and then adjusting other parameters.
-        Returns this model unchanged if the flip factor is the same.
         """
-        if flip_factor != self.flip_factor:
-            return self._adjust_compensating_descan_error("flip_factor", flip_factor)
-        else:
-            return self
+        return self._adjust_compensating_descan_error("flip_factor", flip_factor)
 
     def adjust_detector_center(self, detector_center: PixelYX) -> Model4DSTEM:
         """
