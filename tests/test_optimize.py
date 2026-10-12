@@ -15,6 +15,7 @@ from microscope_calibration.util.optimize import (
     normalize_descan_error,
     optimize,
     solve_camera_length,
+    solve_coords_points,
     solve_full_descan_error,
     solve_scan_pixel_pitch,
     solve_tilt_descan_error,
@@ -700,3 +701,32 @@ def test_solver_checks_float64(jax_float32):
     model = Model4DSTEM.default(dataset_shape=(32, 32, 32, 32)).derive(overfocus=0.1)
     with pytest.raises(RuntimeError, match="No float64 support"):
         solve_camera_length(ref_model=model, diffraction_angle=0.01, radius_px=10.0)
+
+
+@pytest.mark.parametrize("flip_factor", [1.0, -1.0])
+@pytest.mark.parametrize("ref_flip_factor", [1.0, -1.0])
+def test_coords_points(flip_factor, ref_flip_factor):
+    ref_model = Model4DSTEM.default(dataset_shape=(32, 32, 64, 64)).derive(
+        overfocus=0.01,
+        scan_rotation=0.4,
+        flip_factor=ref_flip_factor,
+        descan_error=DescanError(pxo_pxi=0.1, syo_pyi=-0.2, offpxi=1e-5),
+    )
+    true_model = (
+        ref_model.derive(overfocus=0.012)
+        .adjust_detector_rotation(0.3)
+        .adjust_flip_factor(flip_factor)
+    )
+    points = []
+    for scan_y, scan_x, dy, dx in ((3, 4, 1e-3, -2e-3), (20, 7, -1e-3, 0), (12, 28, 2e-3, 1e-3)):
+        res = trace(true_model, scan_pos=PixelYX(y=scan_y, x=scan_x), source_dy=dy, source_dx=dx)
+        spec = res["specimen"].sampling["scan_px"]
+        det = res["detector"].sampling["detector_px"]
+        points.append((scan_y, scan_x, spec.y, spec.x, det.y, det.x))
+
+    res_model, residual = solve_coords_points(ref_model=ref_model, points=np.array(points))
+    assert res_model.flip_factor == flip_factor
+    assert_allclose(residual, 0.0, atol=1e-6)
+    assert_allclose(res_model.overfocus, true_model.overfocus, rtol=1e-6)
+    assert_allclose(res_model.detector_rotation, true_model.detector_rotation, atol=1e-6)
+    assert_allclose(res_model.descan_error, true_model.descan_error, atol=1e-9)

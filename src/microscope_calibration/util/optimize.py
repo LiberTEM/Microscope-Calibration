@@ -638,7 +638,8 @@ def solve_tilt_descan_error_points(ref_model: Model4DSTEM, points: jnp.ndarray):
 class _CoordPointArgs(NamedTuple):
     model: Model4DSTEM
     # [(scan_y, scan_x, specimen_y (px), specimen_x (px), detector_y, detector_x) * n]
-    points: jnp.array
+    points: jax.Array
+    flip_factor: float
 
 
 @jax.jit
@@ -661,10 +662,10 @@ def _coords_point_modelupdate(
 
 @jax.jit
 def _coords_point_loss(y, args: _CoordPointArgs):
-    detector_rotation, overfocus, flip_factor = y[:3]
+    detector_rotation, overfocus = y[:2]
     # We need to co-optimize the source tilts that hit the detector pixel for
     # each point set because we can't easily calculate that directly
-    tilts = y[3:]
+    tilts = y[2:]
 
     assert len(tilts) == 2 * len(args.points)
 
@@ -672,7 +673,7 @@ def _coords_point_loss(y, args: _CoordPointArgs):
         model=args.model,
         overfocus=overfocus,
         detector_rotation=detector_rotation,
-        flip_factor=flip_factor,
+        flip_factor=args.flip_factor,
     )
 
     detector_distances = []
@@ -693,33 +694,53 @@ def _coords_point_loss(y, args: _CoordPointArgs):
             )
         )
 
-    # Strongly encourage flip_factor in (-1., 1.)
-    aspect = jnp.array((jnp.abs(jnp.abs(flip_factor) - 1) * 100,))
-    return jnp.concatenate((jnp.array(detector_distances), jnp.array(specimen_distances), aspect))
+    return jnp.concatenate((jnp.array(detector_distances), jnp.array(specimen_distances)))
 
 
 def solve_coords_points(ref_model: Model4DSTEM, points: jnp.ndarray):
+    """
+    Fit overfocus, detector rotation and flip factor to matched points
+
+    The flip factor is either 1 or -1. Both are fitted, and the better fit is returned.
+
+    Parameters
+    ----------
+    ref_model
+        Starting values. The descan error is adjusted to compensate the
+        changes, see :meth:`Model4DSTEM.adjust_detector_rotation`.
+    points
+        Array with rows :code:`(scan_y, scan_x, specimen_y, specimen_x,
+        detector_y, detector_x)` in pixels: A ray through scan position
+        :code:`(scan_y, scan_x)` that passes the specimen at the given scan
+        pixel coordinates hits the detector at the given detector pixel.
+
+    Returns
+    -------
+    model, residual
+        Fitted model and the residual of the fitted points in pixels
+    """
     check_float64()
     points = jnp.asarray(points, dtype=jnp.float64)
-    args = _CoordPointArgs(
-        model=ref_model,
-        points=points,
-    )
-
-    start = jnp.array(
-        [ref_model.detector_rotation, ref_model.overfocus, ref_model.flip_factor]
-        + [0.0, 0.0] * len(points)
-    )
-    opt_res = optimistix.least_squares(
-        fn=_coords_point_loss,
-        args=args,
-        solver=optimistix.BFGS(atol=1e-12, rtol=1e-12),
-        y0=start,
-        max_steps=10000,
-    )
-    residual = _coords_point_loss(opt_res.value, args)
+    start = jnp.array([ref_model.detector_rotation, ref_model.overfocus] + [0.0, 0.0] * len(points))
+    results = []
+    for flip_factor in (1.0, -1.0):
+        args = _CoordPointArgs(model=ref_model, points=points, flip_factor=flip_factor)
+        opt_res = optimistix.least_squares(
+            fn=_coords_point_loss,
+            args=args,
+            solver=optimistix.BFGS(atol=1e-12, rtol=1e-12),
+            y0=start,
+            max_steps=10000,
+            # Can fail to converge for the wrong flip factor
+            throw=False,
+        )
+        residual = _coords_point_loss(opt_res.value, args)
+        results.append((float(jnp.sum(residual**2)), flip_factor, opt_res, residual))
+    _, flip_factor, opt_res, residual = min(results, key=lambda r: r[0])
+    if not bool(opt_res.result == optimistix.RESULTS.successful):
+        raise RuntimeError(f"Fit did not converge: {optimistix.RESULTS[opt_res.result]}")
     # Write the new values into the previous parameters
-    detector_rotation, overfocus, flip_factor = opt_res.value[:3]
+    detector_rotation, overfocus = opt_res.value[:2]
     res_model = _coords_point_modelupdate(
         model=ref_model,
         overfocus=overfocus,
