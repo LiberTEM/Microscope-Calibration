@@ -89,9 +89,8 @@ Key layers, bottom-up:
    generated. `_eliminate_tilt()` solves the 2x2 tilt system numerically and raises
    `FittingError` when it is (near-)singular, i.e. the beam footprint is below
    `min_footprint_px` (e.g. in focus). The docstring of `_derive_ray_transfer_matrix()`
-   explains why the matrices themselves are not generated. Subclasses that override `trace()`
-   get their ray transfer matrix derived at runtime; non-linear ones raise
-   `NonlinearModelError`. Contains the Numba-accelerated projection kernels.
+   explains why the matrices themselves are not generated. Contains the Numba-accelerated
+   projection kernels.
 
 4. **`udf/stem_overfocus.py`** — LiberTEM UDFs that apply (3) over a real dataset:
    `OverfocusUDF` (reconstruct an overfocus/real-space image) and `CorrectedPickUDF`. Models
@@ -132,6 +131,11 @@ Key layers, bottom-up:
   `common/generate.py`), run the generator, and call the function from `common/_generated.py`
   (directly for SymPy/plain types, wrapped with `@lambdify(modules=np)` for fast numerics). The renderer is the
   model-agnostic `util/codegen.py`. Never edit `_generated.py` by hand.
+- Generated code is only valid for `Model4DSTEM` itself. Dispatch goes through
+  `Model4DSTEM._generated_module()`; subclasses get `None` by default and derive at runtime
+  from their own `trace()` (cached per class, `RuntimeDerivationWarning`, non-linear ones raise
+  `NonlinearModelError`). New derived functions need both paths. See the `Model4DSTEM`
+  docstring.
 - Respect the `PixelYX` vs `CoordXY` distinction; mixing axis order is the most likely source
   of silent geometric bugs.
 - JAX x64 is enabled at import time (`jax.config.update("jax_enable_x64", True)`) in every

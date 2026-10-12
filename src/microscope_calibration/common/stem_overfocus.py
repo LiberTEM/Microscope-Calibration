@@ -1,4 +1,3 @@
-import dataclasses
 from collections.abc import Callable
 from functools import cache
 
@@ -16,21 +15,21 @@ from microscope_calibration.common.model import (
     CoordXY,
     DescanError,
     Model4DSTEM,
+    NonlinearModelError,
     PixelYX,
     Scanner,
+    check_pytree,
     lambdify_trace_for,
+    symbolic_model,
+    warn_runtime_derivation,
 )
-from microscope_calibration.util.sympy import lambdify, lambdify_tree, symbol_maker
+from microscope_calibration.util.sympy import lambdify, lambdify_tree
 # ruff: enable[E402]
 
 CoordMappingT = Callable[[CoordXY], PixelYX]
 
 
 class FittingError(RuntimeError):
-    pass
-
-
-class NonlinearModelError(RuntimeError):
     pass
 
 
@@ -137,10 +136,7 @@ def _derive_ray_transfer_matrix(model_type: type[Model4DSTEM] = Model4DSTEM):
     reintroduce the sampling and least-squares fitting that the symbolic
     derivation replaced.
     """
-    model = symbol_maker(Model4DSTEM, postfix="model", recurse_for=(PixelYX, DescanError))
-    if model_type is not Model4DSTEM:
-        # symbol_maker() uses __annotations__, which subclasses don't inherit
-        model = model_type(**{f.name: getattr(model, f.name) for f in dataclasses.fields(model)})
+    model = symbolic_model(model_type, postfix="model")
     scan_y, scan_x, tilt_y, tilt_x = sym.symbols("scan_y scan_x tilt_y tilt_x")
     res = model.trace(scan_pos=PixelYX(y=scan_y, x=scan_x), source_dy=tilt_y, source_dx=tilt_x)
     spec = res["specimen"].ray
@@ -159,24 +155,25 @@ GENERATED_FUNCTIONS = {
 }
 
 
-@lambdify(modules=np, recurse_for=(PixelYX, Model4DSTEM, DescanError))
-def _ray_transfer_matrix_numeric(model: Model4DSTEM):
-    # Imported here so that the generator can run even if
-    # _generated.py is missing or outdated
-    from microscope_calibration.common import _generated
-
-    return _generated.ray_transfer_matrix(model=model)
-
-
 @cache
-def _derived_ray_transfer_matrix_numeric(model_type: type[Model4DSTEM]):
+def _ray_transfer_matrix_numeric(model_type: type[Model4DSTEM]):
     """
-    Numeric ray transfer matrix function for subclasses of :class:`Model4DSTEM`
-    that override :meth:`~Model4DSTEM.trace`, derived at runtime since the
-    generated code only applies to :meth:`Model4DSTEM.trace`
+    Numeric ray transfer matrix function for a model class
+
+    Uses generated code if available for the class, see
+    :meth:`Model4DSTEM._generated_module`. Otherwise, it is derived from the
+    class's :meth:`~Model4DSTEM.trace` at runtime.
     """
-    args, matrix = _derive_ray_transfer_matrix(model_type)
-    return lambdify_tree(args["model"], matrix, modules=np)
+    module = model_type._generated_module()
+    if module is None:
+        warn_runtime_derivation("ray_transfer_matrix", model_type)
+        args, matrix = _derive_ray_transfer_matrix(model_type)
+        model = args["model"]
+    else:
+        model = symbolic_model(model_type, postfix="model")
+        matrix = module.ray_transfer_matrix(model=model)
+    check_pytree(model)
+    return lambdify_tree(model, matrix, modules=np)
 
 
 def ray_transfer_matrix(
@@ -207,20 +204,18 @@ def ray_transfer_matrix(
         coordinates. It is evaluated with SymPy symbols to determine its
         coefficients. By default, scan pixel coordinates of :code:`model`.
 
-    For subclasses that override :meth:`~Model4DSTEM.trace`, the matrix is
-    derived from their :code:`trace()` on first use instead.
+    For subclasses without generated code, the matrix is derived from their
+    :code:`trace()` on first use instead, see :class:`Model4DSTEM`.
 
     Raises
     ------
     FittingError
         If the matrix can't be calculated, e.g. with zero pixel pitch.
     NonlinearModelError
-        If the :code:`trace()` of a subclass is not linear.
+        If the :code:`trace()` of a subclass without generated code is not
+        linear.
     """
-    if type(model).trace is Model4DSTEM.trace:
-        f = _ray_transfer_matrix_numeric
-    else:
-        f = _derived_ray_transfer_matrix_numeric(type(model))
+    f = _ray_transfer_matrix_numeric(type(model))
     try:
         with np.errstate(divide="ignore", invalid="ignore", over="ignore"):
             matrix = np.array(f(model), dtype=np.float64)

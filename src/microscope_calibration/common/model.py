@@ -1,6 +1,9 @@
+import dataclasses
+import warnings
 from typing import NamedTuple, Self
 from collections import OrderedDict
-from functools import partial
+from functools import cache, partial
+from types import ModuleType
 
 import jax
 
@@ -8,6 +11,7 @@ jax.config.update("jax_enable_x64", True)  # noqa: E702
 # ruff: disable[E402]
 import jax_dataclasses as jdc
 import sympy as sym
+from sympy.solvers.solveset import NonlinearError
 from jax.errors import TracerBoolConversionError
 from temgym_core import CoordXY, PixelYX
 from temgym_core.components import Component, DescanError, Descanner, Plane, Scanner
@@ -16,7 +20,7 @@ from temgym_core.ray import Ray
 from temgym_core.run import run_iter
 from temgym_core.source import PointSource, Source
 
-from microscope_calibration.util.sympy import lambdify, symbol_maker
+from microscope_calibration.util.sympy import lambdify, lambdify_tree, symbol_maker
 # ruff: enable[E402]
 
 
@@ -59,6 +63,19 @@ def shift(c: CoordXY | PixelYX, s: CoordXY | PixelYX, _one: float = 1.0) -> Coor
     )
 
 
+class NonlinearModelError(RuntimeError):
+    """
+    The :meth:`~Model4DSTEM.trace` of a model is not linear
+    """
+
+
+class RuntimeDerivationWarning(UserWarning):
+    """
+    A function is derived symbolically at runtime since no generated code is
+    available for a model class, see :class:`Model4DSTEM`
+    """
+
+
 # "Layer" of a beam passing through a model
 class ResultSection(NamedTuple):
     component: Component | Source | Propagator
@@ -73,6 +90,55 @@ Result4DSTEM = OrderedDict[str, ResultSection]
 # TODO use LiberTEM-schema later
 @jdc.pytree_dataclass
 class Model4DSTEM:
+    """
+    Geometric calibration of a 4D STEM experiment
+
+    :meth:`trace` is the single source of truth for the model. Functions that
+    depend on it, such as the descan error compensation of the
+    :code:`adjust_*()` methods and the
+    :func:`~microscope_calibration.common.stem_overfocus.ray_transfer_matrix`,
+    are derived symbolically from it with SymPy. Since that takes a few
+    seconds, the result is generated in advance into
+    :mod:`microscope_calibration.common._generated`, see
+    :mod:`microscope_calibration.common.generate`.
+
+    Subclassing
+    -----------
+    The generated code is only valid for :meth:`Model4DSTEM.trace` and the
+    methods it uses, e.g. :meth:`real_to_detector`. A subclass may change the
+    result of :meth:`trace`, so by default it doesn't use the generated code.
+    Instead, the functions are derived from the subclass's :meth:`trace` on
+    first use, once per subclass and function, with a
+    :class:`RuntimeDerivationWarning`. A non-linear :meth:`trace` raises
+    :class:`NonlinearModelError` in that case.
+
+    The module with generated code that is valid for a class is returned by
+    the classmethod :meth:`_generated_module`. A subclass can override it:
+
+    * If the subclass doesn't change the result of :meth:`trace`, e.g. if it
+      only adds convenience methods, return the module for
+      :class:`Model4DSTEM`, i.e. :code:`super()._generated_module()` from
+      :class:`Model4DSTEM`. Make sure that this stays true when the subclass
+      changes.
+    * To avoid the runtime derivation for a subclass that changes
+      :meth:`trace`, generate code for it and return that module. The
+      derivations accept the model class as a parameter, e.g.
+      :code:`_derive_descan_compensation(param, model_type=MySubclass)` and
+      :code:`stem_overfocus._derive_ray_transfer_matrix(MySubclass)`. Register
+      them under the same names as in
+      :data:`microscope_calibration.common.generate.GENERATED_FUNCTIONS`,
+      render them with :func:`microscope_calibration.util.codegen.render_module`
+      into a module of your own, and add a test like
+      :code:`tests/test_codegen.py` that checks that it is up to date.
+
+    Subclasses have to be decorated with
+    :func:`jax_dataclasses.pytree_dataclass` like :class:`Model4DSTEM` so that
+    JAX and :func:`~microscope_calibration.util.sympy.lambdify` see their
+    parameters. They can't add fields: the symbolic derivation only creates
+    symbols for the fields of :class:`Model4DSTEM`, and :meth:`derive` only
+    passes them on.
+    """
+
     overfocus: float  # m
     scan_pixel_pitch: float  # m
     scan_center: PixelYX
@@ -84,6 +150,20 @@ class Model4DSTEM:
     flip_factor: float  # 1.: no flip; -1.: flip
     descan_error: DescanError = DescanError()
     detector_rotation: float = 0.0  # rad
+
+    @classmethod
+    def _generated_module(cls) -> ModuleType | None:
+        """
+        Module with generated code that is valid for this class, or
+        :code:`None` to derive functions at runtime, see :class:`Model4DSTEM`
+        """
+        if cls is Model4DSTEM:
+            # Imported here so that the generator can run even if
+            # _generated.py is missing or outdated
+            from microscope_calibration.common import _generated
+
+            return _generated
+        return None
 
     @classmethod
     def default(cls, dataset_shape: tuple[int, int, int, int] = (0, 0, 0, 0)):
@@ -141,7 +221,8 @@ class Model4DSTEM:
         if flip_y is not None:
             flip_factor = -1.0 if flip_y else 1.0
 
-        return Model4DSTEM(
+        # Keep the class of subclasses
+        return type(self)(
             overfocus=overfocus if overfocus is not None else self.overfocus,
             scan_pixel_pitch=(
                 scan_pixel_pitch if scan_pixel_pitch is not None else self.scan_pixel_pitch
@@ -430,15 +511,14 @@ class Model4DSTEM:
         The compensation is derived symbolically from :meth:`trace`, see
         :func:`_derive_descan_compensation` and :data:`GENERATED_FUNCTIONS`.
         """
-        # Imported here so that the generator can run even if
-        # _generated.py is missing or outdated
-        from microscope_calibration.common import _generated
-
-        compensate = getattr(_generated, f"descan_compensation_{param}")
-        return self.derive(
-            **{param: value},
-            descan_error=compensate(model=self, value=value),
-        )
+        name = f"descan_compensation_{param}"
+        module = type(self)._generated_module()
+        if module is None:
+            compensate = _runtime_descan_compensation(type(self), param)
+            descan_error = compensate({"model": self, "value": value})
+        else:
+            descan_error = getattr(module, name)(model=self, value=value)
+        return self.derive(**{param: value}, descan_error=descan_error)
 
     def adjust_scan_rotation(self, scan_rotation: float) -> Model4DSTEM:
         """
@@ -527,7 +607,55 @@ class Model4DSTEM:
         )
 
 
-def _derive_descan_compensation(param: str):
+def symbolic_model(model_type: type[Model4DSTEM] = Model4DSTEM, postfix: str | None = None):
+    """
+    Instance of :code:`model_type` with SymPy symbols for all parameters
+    """
+    model = symbol_maker(Model4DSTEM, postfix=postfix, recurse_for=(PixelYX, DescanError))
+    if model_type is not Model4DSTEM:
+        # symbol_maker() uses __annotations__, which subclasses don't inherit
+        model = model_type(**{f.name: getattr(model, f.name) for f in dataclasses.fields(model)})
+    return model
+
+
+def check_pytree(model: Model4DSTEM):
+    """
+    Make sure that the class of :code:`model` is registered as a pytree
+
+    Subclasses of :class:`Model4DSTEM` have to be decorated with
+    :func:`jax_dataclasses.pytree_dataclass` as well. Otherwise, JAX and
+    :func:`~microscope_calibration.util.sympy.lambdify` treat them as a single
+    leaf instead of seeing their parameters.
+    """
+    if jax.tree.leaves(model) == [model]:
+        raise TypeError(
+            f"{type(model).__qualname__} is not registered as a pytree. Decorate subclasses "
+            "of Model4DSTEM with @jax_dataclasses.pytree_dataclass."
+        )
+
+
+def warn_runtime_derivation(name: str, model_type: type):
+    warnings.warn(
+        f"No generated code for {name} of {model_type.__qualname__}, deriving it from "
+        f"{model_type.__qualname__}.trace() at runtime. See the docstring of Model4DSTEM.",
+        RuntimeDerivationWarning,
+        stacklevel=3,
+    )
+
+
+@cache
+def _runtime_descan_compensation(model_type: type[Model4DSTEM], param: str):
+    """
+    Descan error compensation for a model class without generated code,
+    derived from its :meth:`~Model4DSTEM.trace` at runtime
+    """
+    warn_runtime_derivation(f"descan_compensation_{param}", model_type)
+    args, output = _derive_descan_compensation(param, model_type=model_type)
+    check_pytree(args["model"])
+    return lambdify_tree(args, output, modules=sym)
+
+
+def _derive_descan_compensation(param: str, model_type: type[Model4DSTEM] = Model4DSTEM):
     """
     Derive how the descan error has to change so that a change of model
     parameter :code:`param` leaves the central ray unchanged in pixel coordinates.
@@ -564,7 +692,7 @@ def _derive_descan_compensation(param: str):
         :func:`microscope_calibration.util.codegen.render_function`
     """
     recurse_for = (PixelYX, DescanError)
-    old = symbol_maker(Model4DSTEM, postfix="old", recurse_for=recurse_for)
+    old = symbolic_model(model_type, postfix="old")
     value = symbol_maker(
         Model4DSTEM.__annotations__[param], postfix=f"{param}_new", recurse_for=recurse_for
     )
@@ -591,7 +719,12 @@ def _derive_descan_compensation(param: str):
         px_old = res_old[plane].sampling[key]
         px_new = res_new[plane].sampling[key]
         for diff in (px_old.y - px_new.y, px_old.x - px_new.x):
-            poly = sym.Poly(sym.expand(diff), scan_y, scan_x, free_variable)
+            try:
+                poly = sym.Poly(sym.expand(diff), scan_y, scan_x, free_variable)
+            except sym.PolynomialError as e:
+                raise NonlinearModelError(
+                    f"{model_type.__qualname__}.trace() is not linear: {diff}"
+                ) from e
             for coeff in poly.coeffs():
                 if coeff.free_symbols & unknowns:
                     equations.append(coeff)
@@ -603,6 +736,11 @@ def _derive_descan_compensation(param: str):
                         f"Change of {param} can't be compensated by the descan error: {coeff} != 0"
                     )
 
+    # sym.solve() would try to solve a nonlinear system, which can take forever
+    try:
+        sym.linear_eq_to_matrix(equations, list(new_de))
+    except NonlinearError as e:
+        raise NonlinearModelError(f"{model_type.__qualname__}.trace() is not linear: {e}") from e
     solutions = sym.solve(equations, list(new_de), dict=True)
     if len(solutions) != 1 or set(solutions[0].keys()) != set(new_de):
         raise ValueError(
