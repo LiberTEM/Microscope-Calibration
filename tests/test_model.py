@@ -1082,10 +1082,6 @@ def test_adjust_camera_length(random_model):
 
 
 def test_invert_focus(random_model):
-    # model = Model4DSTEM.default().derive(
-    #     overfocus=0.1,
-    #     descan_error=DescanError().derive(syo_pxi=0.1),
-    # )
     model = random_model
     trace = lambdify_trace_for(np)
     inverted_model = model.invert_focus().normalize_types()
@@ -1093,7 +1089,6 @@ def test_invert_focus(random_model):
     assert_allclose(
         np.abs(model.detector_rotation - inverted_model.detector_rotation), np.pi, atol=1e-12
     )
-    print(model)
 
     assert_no_descan_deviation_cl(model, inverted_model)
 
@@ -1118,7 +1113,7 @@ def test_invert_focus(random_model):
                     model=model, scan_pos=PixelYX(*scan_pos), source_dy=0.0, source_dx=0.0
                 )
                 inverted_center = trace(
-                    model=model, scan_pos=PixelYX(*scan_pos), source_dy=0.0, source_dx=0.0
+                    model=inverted_model, scan_pos=PixelYX(*scan_pos), source_dy=0.0, source_dx=0.0
                 )
                 res = trace(model=model, scan_pos=PixelYX(*scan_pos), source_dy=dy, source_dx=dx)
                 inv_res = trace(
