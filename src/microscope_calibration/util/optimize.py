@@ -19,6 +19,7 @@ from microscope_calibration.common.model import (
     PixelYX,
     lambdify_trace_for,
 )
+from microscope_calibration.common.stem_overfocus import get_diffraction_pixel_radius
 from microscope_calibration.util.sympy import lambdify
 # ruff: enable[E402]
 
@@ -195,47 +196,50 @@ def optimize(loss, bounds=None, minimizer_kwargs=None, **kwargs):
 
 class _CLArgs(NamedTuple):
     ref_model: Model4DSTEM
-    test_dx: float
+    twotheta: float
     radius_px: float
 
 
 @jax.jit
 def _cl_loss(y, args: _CLArgs):
-    opt_model = args.ref_model.derive(camera_length=y[0], overfocus=0.0)
-    opt_res_1 = trace(
-        opt_model,
-        scan_pos=PixelYX(y=0.0, x=0.0),
-        source_dx=args.test_dx,
-        source_dy=0.0,
-    )
-    opt_res_2 = trace(
-        opt_model,
-        scan_pos=PixelYX(y=0.0, x=0.0),
-        source_dx=-args.test_dx,
-        source_dy=0.0,
-    )
-    px_1 = opt_res_1["detector"].sampling["detector_px"]
-    px_2 = opt_res_2["detector"].sampling["detector_px"]
-    distance = jnp.linalg.norm(jnp.array(px_2) - jnp.array(px_1))
-    return distance - 2 * args.radius_px
+    opt_model = args.ref_model.derive(camera_length=y[0])
+    radius = get_diffraction_pixel_radius(model=opt_model, twotheta=args.twotheta)
+    return jnp.array((radius - args.radius_px,))
 
 
-# FIXME include wavelength calculation etc for more practical
-# input parameters
-def solve_camera_length(ref_model: Model4DSTEM, diffraction_angle, radius_px):
+def solve_camera_length(ref_model: Model4DSTEM, twotheta: float, radius_px: float):
+    """
+    Fit the camera length to the radius of a diffraction ring
+
+    Parameters
+    ----------
+    ref_model
+        Starting value. The other parameters are kept.
+    twotheta
+        Diffraction angle 2θ in radians, e.g. from
+        :func:`microscope_calibration.util.diffraction.get_twothetas`
+    radius_px
+        Observed distance between primary beam and diffracted beam on the
+        detector in pixels, see
+        :func:`~microscope_calibration.common.stem_overfocus.get_diffraction_pixel_radius`
+
+    Returns
+    -------
+    model, residual
+        Fitted model and the residual of the radius in pixels
+    """
     check_float64()
-    args = _CLArgs(radius_px=radius_px, test_dx=jnp.tan(diffraction_angle), ref_model=ref_model)
+    args = _CLArgs(ref_model=ref_model, twotheta=twotheta, radius_px=radius_px)
     start = jnp.array((ref_model.camera_length,))
     opt_res = optimistix.least_squares(
         fn=_cl_loss, args=args, solver=optimistix.BFGS(atol=1e-12, rtol=1e-12), y0=start
     )
-    residual = _cl_loss(opt_res.value, args)
     # The loss function has minima at camera_length and -camera_length.
     # we take the positive side since a negative camera length doesn't make sense
     # for a classical TEM, only for reflection.
-    return ref_model.derive(
-        camera_length=jnp.abs(opt_res.value[0]),
-    ).normalize_types(), residual
+    camera_length = jnp.abs(opt_res.value[0])
+    residual = _cl_loss(jnp.array((camera_length,)), args)
+    return ref_model.derive(camera_length=camera_length).normalize_types(), residual
 
 
 class _SPPArgs(NamedTuple):

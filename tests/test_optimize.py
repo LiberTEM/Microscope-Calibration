@@ -242,39 +242,34 @@ def test_descan_error():
     assert_allclose(optargs, correct)
 
 
-def test_camera_length():
+@pytest.mark.parametrize("overfocus", [0.0, 0.01, -0.02])
+def test_camera_length(overfocus):
     # Determine camera length from a known diffraction angle in radians,
     # corresponding detector pixel offset, and detector pixel pitch
-    scan_pixel_pitch = 0.1
     detector_pixel_pitch = 0.2
-    overfocus = 0.01
     camera_length = 1.234
-    propagation_distance = overfocus + camera_length
-    obj_half_size = 16
     # This is known, e.g. from crystal structure, diffraction order and
     # wavelength
-    angle = np.arctan2(obj_half_size * detector_pixel_pitch / 2 + 0.00314157, propagation_distance)
-    model = Model4DSTEM(
+    twotheta = 0.05
+    model = Model4DSTEM.default(dataset_shape=(32, 32, 64, 64)).derive(
         overfocus=overfocus,
-        scan_pixel_pitch=scan_pixel_pitch,
         camera_length=camera_length,
         detector_pixel_pitch=detector_pixel_pitch,
-        semiconv=angle,
-        scan_center=PixelYX(x=obj_half_size, y=obj_half_size),
-        scan_rotation=0.0,
-        flip_factor=1.0,
-        detector_center=PixelYX(x=2 * obj_half_size, y=2 * obj_half_size),
+        scan_rotation=0.3,
+        detector_rotation=-0.2,
+        descan_error=DescanError(pxo_pxi=0.1, sxo_pyi=0.02, offsyi=0.01),
     )
     # This is observed on the detector
-    px_radius = jnp.tan(angle) * propagation_distance / detector_pixel_pitch
+    px_radius = np.tan(twotheta) * camera_length / detector_pixel_pitch
 
     res, residual = solve_camera_length(
         # Start with a negative value on purpose
         ref_model=model.derive(camera_length=-2 * camera_length),
-        diffraction_angle=angle,
+        twotheta=twotheta,
         radius_px=px_radius,
     )
-    assert_allclose(res.camera_length, propagation_distance)
+    assert_allclose(res.camera_length, camera_length)
+    assert res.overfocus == overfocus
     assert_allclose(residual, 0.0, atol=1e-12)
 
 
@@ -700,7 +695,7 @@ def test_check_float64_float32(jax_float32):
 def test_solver_checks_float64(jax_float32):
     model = Model4DSTEM.default(dataset_shape=(32, 32, 32, 32)).derive(overfocus=0.1)
     with pytest.raises(RuntimeError, match="No float64 support"):
-        solve_camera_length(ref_model=model, diffraction_angle=0.01, radius_px=10.0)
+        solve_camera_length(ref_model=model, twotheta=0.01, radius_px=10.0)
 
 
 @pytest.mark.parametrize("flip_factor", [1.0, -1.0])
