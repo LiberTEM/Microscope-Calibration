@@ -147,5 +147,7 @@ Keep them short and concise, for human review:
 - Keep: attribution with a link to the source, user-visible behavior changes (one line each),
   minimal review notes.
 - Leave out what reviewers see in the diff or trust CI for, e.g. "existing tests unchanged".
+- Don't instruct reviewers ("don't review X", "start with Y"); give useful context instead,
+  e.g. "`X` is generated code, `test_abc()` checks that it is up to date".
 - Commit messages: a short subject plus a few lines at most. Use the
   "Changes / Behavior changes / Review notes" structure only for PRs.
