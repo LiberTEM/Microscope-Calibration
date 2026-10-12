@@ -14,7 +14,7 @@ from microscope_calibration.common.stem_overfocus import (
     get_detector_correction_matrix,
     ray_transfer_matrix,
 )
-from microscope_calibration.udf.stem_overfocus import BaseCorrectionUDF
+from microscope_calibration.udf.stem_overfocus import _backward_matrix
 from microscope_calibration.util.stem_overfocus_sim import get_forward_transformation_matrix
 from microscope_calibration.util.sympy import lambdify
 
@@ -272,8 +272,8 @@ def test_udf_no_backprojection_in_focus(overfocus):
     # The UDF continues without backprojection for singular transformations.
     # Before deriving the matrix symbolically, near-singular cases raised a
     # RuntimeError instead.
-    BaseCorrectionUDF._back_mat.cache_clear()
-    assert BaseCorrectionUDF._back_mat(rec_model=default_model(overfocus=overfocus)) is None
+    _backward_matrix.cache_clear()
+    assert _backward_matrix(default_model(overfocus=overfocus)) is None
 
 
 @pytest.mark.parametrize("delta", (0.0, 1e-12))
