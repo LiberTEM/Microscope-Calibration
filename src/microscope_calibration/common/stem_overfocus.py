@@ -215,6 +215,8 @@ def ray_transfer_matrix(
         If the :code:`trace()` of a subclass without generated code is not
         linear.
     """
+    # The derivation and specimen_to_image work with SymPy
+    model = type(model)._symbolic_class().from_model(model)
     f = _ray_transfer_matrix_numeric(type(model))
     try:
         with np.errstate(divide="ignore", invalid="ignore", over="ignore"):

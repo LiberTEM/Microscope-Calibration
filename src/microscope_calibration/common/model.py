@@ -20,7 +20,13 @@ from temgym_core.ray import Ray
 from temgym_core.run import run_iter
 from temgym_core.source import PointSource, Source
 
-from microscope_calibration.util.sympy import lambdify, lambdify_tree, symbol_maker
+from microscope_calibration.util.sympy import (
+    lambdify,
+    lambdify_class,
+    lambdify_method,
+    lambdify_tree,
+    symbol_maker,
+)
 # ruff: enable[E402]
 
 
@@ -38,6 +44,17 @@ def _to_float(name: str, value) -> float:
         return float(value)
     except TypeError as e:
         raise TypeError(f"Can't convert {name} = {value!r} to float: {e}") from e
+
+
+def _evaluate_sympy(name: str, value):
+    """
+    Convert SymPy numbers in :code:`value` or the leaves of a NamedTuple to :code:`float`
+    """
+    if isinstance(value, tuple) and hasattr(value, "_fields"):
+        return type(value)(
+            **{key: _evaluate_sympy(f"{name}.{key}", getattr(value, key)) for key in value._fields}
+        )
+    return _to_float(name, value) if isinstance(value, sym.Basic) else value
 
 
 def _to_float_tree(name: str, value):
@@ -185,13 +202,82 @@ class Model4DSTEM:
         Module with generated code that is valid for this class, or
         :code:`None` to derive functions at runtime, see :class:`Model4DSTEM`
         """
-        if cls is Model4DSTEM:
+        if cls._symbolic_class() is Model4DSTEM:
             # Imported here so that the generator can run even if
             # _generated.py is missing or outdated
             from microscope_calibration.common import _generated
 
             return _generated
         return None
+
+    @classmethod
+    def lambdify(cls, modules) -> type[Self]:
+        """
+        Subclass with methods compiled for a numeric backend
+
+        The methods that are marked with
+        :func:`~microscope_calibration.util.sympy.lambdify_method`, e.g.
+        :meth:`trace` and the :code:`adjust_*()` methods, are compiled from the
+        SymPy-compatible methods of this class with
+        :func:`~microscope_calibration.util.sympy.lambdify_tree` on first use.
+        The class is created once per class and :code:`modules`.
+
+        Use :meth:`from_model` to convert an instance. Classmethods like
+        :meth:`default` create instances of the subclass directly.
+
+        Parameters
+        ----------
+        modules
+            :code:`modules` argument of :func:`sympy.lambdify`, e.g.
+            :code:`numpy` or :code:`jax.numpy`
+
+        Examples
+        --------
+        >>> import numpy as np
+        >>> NumpyModel = Model4DSTEM.lambdify(np)
+        >>> model = NumpyModel.default(dataset_shape=(32, 32, 64, 64))
+        >>> float(model.adjust_scan_rotation(0.1).scan_rotation)
+        0.1
+        """
+        return lambdify_class(
+            cls._symbolic_class(),
+            modules=modules,
+            make_symbolic=symbolic_model,
+            recurse_for=(PixelYX, CoordXY, DescanError),
+        )
+
+    @classmethod
+    def _symbolic_class(cls) -> type[Model4DSTEM]:
+        """
+        Class with SymPy-compatible methods, i.e. the base class of a class
+        created with :meth:`lambdify`
+        """
+        return getattr(cls, "_lambdify_base", cls)
+
+    @classmethod
+    def from_model(cls, model: Model4DSTEM) -> Self:
+        """
+        Instance of this class with the parameters of :code:`model`
+
+        This converts between the SymPy-compatible class and classes created
+        with :meth:`lambdify`. For the latter, SymPy numbers are converted to
+        :code:`float`.
+
+        Raises
+        ------
+        TypeError
+            If a parameter can't be converted to :code:`float` for a class
+            created with :meth:`lambdify`, e.g. a SymPy expression with free
+            symbols
+        """
+        values = {
+            f.name: getattr(model, f.name)
+            for f in dataclasses.fields(cls)
+            if f.init and hasattr(model, f.name)
+        }
+        if cls._symbolic_class() is not cls:
+            values = {name: _evaluate_sympy(name, value) for name, value in values.items()}
+        return cls(**values)
 
     @classmethod
     def default(cls, dataset_shape: tuple[int, int, int, int] = (0, 0, 0, 0)):
@@ -286,6 +372,7 @@ class Model4DSTEM:
             },
         )
 
+    @lambdify_method
     def scan_to_real(self, pixels: PixelYX, _one: float = 1.0) -> CoordXY:
         return rotate(
             c=scale(
@@ -302,6 +389,7 @@ class Model4DSTEM:
             radians=self.scan_rotation,
         )
 
+    @lambdify_method
     def real_to_scan(self, coords: CoordXY, _one: float = 1.0) -> PixelYX:
         res = shift(
             c=scale(
@@ -319,6 +407,7 @@ class Model4DSTEM:
             x=res.x,
         )
 
+    @lambdify_method
     def detector_to_real(self, pixels: PixelYX, _one: float = 1.0) -> CoordXY:
         return rotate(
             c=scale(
@@ -338,6 +427,7 @@ class Model4DSTEM:
             radians=self.detector_rotation,
         )
 
+    @lambdify_method
     def real_to_detector(self, coords: CoordXY, _one: float = 1.0) -> PixelYX:
         res = shift(
             c=flip_y(
@@ -385,6 +475,7 @@ class Model4DSTEM:
         res["detector"] = Plane(z=self.overfocus + self.camera_length)
         return res
 
+    @lambdify_method
     def trace(
         self,
         scan_pos: PixelYX,
@@ -527,6 +618,7 @@ class Model4DSTEM:
             descan_error = getattr(module, name)(model=self, value=value)
         return self.derive(**{param: value}, descan_error=descan_error)
 
+    @lambdify_method
     def adjust_scan_rotation(self, scan_rotation: float) -> Model4DSTEM:
         """
         Adjust the scan rotation while keeping the effective descan error
@@ -536,6 +628,7 @@ class Model4DSTEM:
         """
         return self._adjust_compensating_descan_error("scan_rotation", scan_rotation)
 
+    @lambdify_method
     def adjust_scan_pixel_pitch(self, scan_pixel_pitch: float) -> Model4DSTEM:
         """
         Adjust the scan pixel pitch while keeping the effective descan error
@@ -545,6 +638,7 @@ class Model4DSTEM:
         """
         return self._adjust_compensating_descan_error("scan_pixel_pitch", scan_pixel_pitch)
 
+    @lambdify_method
     def adjust_scan_center(self, scan_center: PixelYX) -> Model4DSTEM:
         """
         Adjust the scan center while keeping the effective descan error
@@ -554,6 +648,7 @@ class Model4DSTEM:
         """
         return self._adjust_compensating_descan_error("scan_center", scan_center)
 
+    @lambdify_method
     def adjust_detector_rotation(self, detector_rotation: float) -> Model4DSTEM:
         """
         Adjust the detector rotation while keeping the effective descan error
@@ -563,6 +658,7 @@ class Model4DSTEM:
         """
         return self._adjust_compensating_descan_error("detector_rotation", detector_rotation)
 
+    @lambdify_method
     def adjust_flip_factor(self, flip_factor: float) -> Model4DSTEM:
         """
         Adjust the flip factor while keeping the effective descan error
@@ -572,6 +668,7 @@ class Model4DSTEM:
         """
         return self._adjust_compensating_descan_error("flip_factor", flip_factor)
 
+    @lambdify_method
     def adjust_detector_center(self, detector_center: PixelYX) -> Model4DSTEM:
         """
         Adjust the detector center while keeping the effective descan error
@@ -581,6 +678,7 @@ class Model4DSTEM:
         """
         return self._adjust_compensating_descan_error("detector_center", detector_center)
 
+    @lambdify_method
     def adjust_detector_pixel_pitch(self, detector_pixel_pitch: float) -> Model4DSTEM:
         """
         Adjust the detector pixel pitch while keeping the effective descan error
@@ -590,6 +688,7 @@ class Model4DSTEM:
         """
         return self._adjust_compensating_descan_error("detector_pixel_pitch", detector_pixel_pitch)
 
+    @lambdify_method
     def adjust_camera_length(self, camera_length: float) -> Model4DSTEM:
         """
         Adjust the camera length while keeping the effective descan error
@@ -602,6 +701,7 @@ class Model4DSTEM:
         """
         return self._adjust_compensating_descan_error("camera_length", camera_length)
 
+    @lambdify_method
     def invert_focus(self) -> Self:
         """
         Model with inverted sign of the overfocus that projects the specimen
@@ -621,6 +721,7 @@ def symbolic_model(model_type: type[Model4DSTEM] = Model4DSTEM, postfix: str | N
     """
     Instance of :code:`model_type` with SymPy symbols for all parameters
     """
+    model_type = model_type._symbolic_class()
     model = symbol_maker(Model4DSTEM, postfix=postfix, recurse_for=(PixelYX, DescanError))
     if model_type is not Model4DSTEM:
         # symbol_maker() uses __annotations__, which subclasses don't inherit
