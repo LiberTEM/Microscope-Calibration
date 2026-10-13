@@ -62,21 +62,15 @@ authors = [
 repository = "https://github.com/LiberTEM/Microscope-Calibration"
 
 [project.optional-dependencies]
-test = ["pytest", "pytest-cov"]
+test = ["pytest", "pytest-cov", "optax"]
 common = [
     "libertem",
-    # Minimum constraints of numba for all Python versions we support
+    # Constrain numba to a recent version, otherwise version resolution might
+    # try to install an ancient version that isn't constrained properly.
     # See https://numba.readthedocs.io/en/stable/release-notes-overview.html
-    "numba>=0.55;python_version < '3.11'",
-    "numba>=0.57;python_version < '3.12'",
-    "numba>=0.59;python_version < '3.13'",
-    # for any future Python release, constrain numba to a recent version,
-    # otherwise, version resolution might try to install an ancient version
-    # that isn't constrained properly:
-    "numba>=0.61;python_version >= '3.13'",
+    "numba>=0.61",
     "scipy",
     "scikit-image",
-    "optax",
     "optimistix",
     "numpy",
 ]
