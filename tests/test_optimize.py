@@ -5,7 +5,6 @@ from microscope_calibration.common.model import (
     DescanError,
     Model4DSTEM,
     PixelYX,
-    lambdify_trace_for,
 )
 from microscope_calibration.udf.stem_overfocus import OverfocusUDF
 from microscope_calibration.util.optimize import (
@@ -33,7 +32,7 @@ from libertem.udf.com import CoMUDF, RegressionOptions
 from libertem.udf.sum import SumUDF
 from skimage.measure import blur_effect
 
-trace = lambdify_trace_for(jnp)
+JaxModel = Model4DSTEM.lambdify(jnp)
 
 
 def test_optimize():
@@ -170,8 +169,8 @@ def test_descan_error():
 
     target_px = []
     for scan_y, scan_x in test_positions:
-        target_res = trace(
-            model=model, scan_pos=PixelYX(y=scan_y, x=scan_x), source_dy=0, source_dx=0
+        target_res = JaxModel.from_model(model).trace(
+            scan_pos=PixelYX(y=scan_y, x=scan_x), source_dy=0, source_dx=0
         )
         target_px.append(
             (
@@ -195,8 +194,7 @@ def test_descan_error():
         )
         res = []
         for scan_y, scan_x in test_positions:
-            opt_res = trace(
-                model=opt_model,
+            opt_res = JaxModel.from_model(opt_model).trace(
                 scan_pos=PixelYX(y=scan_y, x=scan_x),
                 source_dy=0,
                 source_dx=0,
@@ -390,9 +388,15 @@ def test_full_descan_error(scan_rotation, flip_factor, detector_rotation, descan
     exact_regs = {}
     for cl in sims:
         exact_model = model.derive(camera_length=cl)
-        res_0 = trace(exact_model, scan_pos=PixelYX(y=0.0, x=0.0), source_dy=0.0, source_dx=0.0)
-        res_y = trace(exact_model, scan_pos=PixelYX(y=1.0, x=0.0), source_dy=0.0, source_dx=0.0)
-        res_x = trace(exact_model, scan_pos=PixelYX(y=0.0, x=1.0), source_dy=0.0, source_dx=0.0)
+        res_0 = JaxModel.from_model(exact_model).trace(
+            scan_pos=PixelYX(y=0.0, x=0.0), source_dy=0.0, source_dx=0.0
+        )
+        res_y = JaxModel.from_model(exact_model).trace(
+            scan_pos=PixelYX(y=1.0, x=0.0), source_dy=0.0, source_dx=0.0
+        )
+        res_x = JaxModel.from_model(exact_model).trace(
+            scan_pos=PixelYX(y=0.0, x=1.0), source_dy=0.0, source_dx=0.0
+        )
         dy = res_0["detector"].sampling["detector_px"].y - model.detector_center.y
         dx = res_0["detector"].sampling["detector_px"].x - model.detector_center.x
         dydy = (
@@ -446,8 +450,12 @@ def test_normalize_descan(random_model):
                 pn = normalized.derive(
                     camera_length=cl,
                 )
-                ref = trace(pr, scan_pos=PixelYX(y=sy, x=sx), source_dy=0.0, source_dx=0.0)
-                norm = trace(pn, scan_pos=PixelYX(y=sy, x=sx), source_dy=0.0, source_dx=0.0)
+                ref = JaxModel.from_model(pr).trace(
+                    scan_pos=PixelYX(y=sy, x=sx), source_dy=0.0, source_dx=0.0
+                )
+                norm = JaxModel.from_model(pn).trace(
+                    scan_pos=PixelYX(y=sy, x=sx), source_dy=0.0, source_dx=0.0
+                )
                 assert_allclose(
                     ref["detector"].sampling["detector_px"].x,
                     norm["detector"].sampling["detector_px"].x,
@@ -535,9 +543,15 @@ def test_tilt_descan_error(scan_rotation, flip_factor, detector_rotation, descan
     # The regressions from CoM suffer from imprecision due to aliasing
     # To check optimization accuracy and precision we calculate what the exact
     # values of there regressions should be
-    res_0 = trace(model, scan_pos=PixelYX(y=0.0, x=0.0), source_dy=0.0, source_dx=0.0)
-    res_y = trace(model, scan_pos=PixelYX(y=1.0, x=0.0), source_dy=0.0, source_dx=0.0)
-    res_x = trace(model, scan_pos=PixelYX(y=0.0, x=1.0), source_dy=0.0, source_dx=0.0)
+    res_0 = JaxModel.from_model(model).trace(
+        scan_pos=PixelYX(y=0.0, x=0.0), source_dy=0.0, source_dx=0.0
+    )
+    res_y = JaxModel.from_model(model).trace(
+        scan_pos=PixelYX(y=1.0, x=0.0), source_dy=0.0, source_dx=0.0
+    )
+    res_x = JaxModel.from_model(model).trace(
+        scan_pos=PixelYX(y=0.0, x=1.0), source_dy=0.0, source_dx=0.0
+    )
     dy = res_0["detector"].sampling["detector_px"].y - model.detector_center.y
     dx = res_0["detector"].sampling["detector_px"].x - model.detector_center.x
     dydy = res_y["detector"].sampling["detector_px"].y - res_0["detector"].sampling["detector_px"].y
@@ -640,8 +654,7 @@ def test_tilt_descan_error_points(
 
     points = []
     for scan_y, scan_x in scan_pos:
-        res = trace(
-            model,
+        res = JaxModel.from_model(model).trace(
             scan_pos=PixelYX(y=scan_y, x=scan_x),
             source_dx=0.0,
             source_dy=0.0,
@@ -726,7 +739,9 @@ def test_coords_points(flip_factor, ref_flip_factor, model_class):
     )
     points = []
     for scan_y, scan_x, dy, dx in ((3, 4, 1e-3, -2e-3), (20, 7, -1e-3, 0), (12, 28, 2e-3, 1e-3)):
-        res = trace(true_model, scan_pos=PixelYX(y=scan_y, x=scan_x), source_dy=dy, source_dx=dx)
+        res = JaxModel.from_model(true_model).trace(
+            scan_pos=PixelYX(y=scan_y, x=scan_x), source_dy=dy, source_dx=dx
+        )
         spec = res["specimen"].sampling["scan_px"]
         det = res["detector"].sampling["detector_px"]
         points.append((scan_y, scan_x, spec.y, spec.x, det.y, det.x))
@@ -745,7 +760,7 @@ def test_coords_points(flip_factor, ref_flip_factor, model_class):
 def test_hit_specimen(random_model):
     scan_pos = PixelYX(y=3.0, x=-2.0)
     dy, dx = 1e-3, -2e-3
-    res = trace(random_model, scan_pos=scan_pos, source_dy=dy, source_dx=dx)
+    res = JaxModel.from_model(random_model).trace(scan_pos=scan_pos, source_dy=dy, source_dx=dx)
     specimen_px = res["specimen"].sampling["scan_px"]
     slope, residual = solve_hit_specimen(
         model=random_model, scan_pos=scan_pos, specimen_px=specimen_px

@@ -1,7 +1,7 @@
 import pytest
 from numpy.testing import assert_allclose, assert_equal
 
-from microscope_calibration.common.model import Model4DSTEM, lambdify_trace_for
+from microscope_calibration.common.model import Model4DSTEM
 from microscope_calibration.util.sympy import lambdify
 
 import jax
@@ -12,7 +12,7 @@ import sympy as sym
 from libertem.udf.com import apply_correction, guess_corrections
 from temgym_core import PixelYX
 from temgym_core.components import Component, DescanError, NamedTuple
-from temgym_core.propagator import FreeSpaceParaxial, Propagator
+from temgym_core.propagator import Propagator
 from temgym_core.ray import Ray
 from temgym_core.source import Source
 
@@ -1212,42 +1212,11 @@ def test_normalize_types_non_finite(random_model):
     assert all(type(leaf) is float for leaf in jax.tree.leaves(model))
 
 
-TRACE = {"numpy": lambdify_trace_for(np), "jax": lambdify_trace_for(jnp)}
-
-# TemGymCore registers propagators as pytrees without leaves, see
-# https://github.com/TemGym/TemGymCore
-PYTREE_PROPAGATORS = jax.tree.leaves(FreeSpaceParaxial()) == []
-
-
-@pytest.mark.parametrize("backend", sorted(TRACE))
-def test_trace_numeric_components(random_model, backend):
-    kwargs = {"scan_pos": PixelYX(y=1.0, x=2.0), "source_dy": 0.001, "source_dx": 0.002}
-    res = TRACE[backend](model=random_model, **kwargs)
-    ref = random_model.trace(**kwargs)
-    assert list(res) == list(ref)
-    for key in ref:
-        assert type(res[key].component) is type(ref[key].component)
-        assert jax.tree.structure(res[key]) == jax.tree.structure(ref[key])
-    for leaf, ref_leaf in zip(jax.tree.leaves(res), jax.tree.leaves(ref), strict=True):
-        assert not isinstance(leaf, sym.Basic)
-        if isinstance(ref_leaf, (float, int, sym.Basic)):
-            assert_allclose(float(leaf), float(ref_leaf), rtol=1e-12, atol=1e-12)
-        else:
-            assert type(leaf) is type(ref_leaf)
-
-
-@pytest.mark.skipif(not PYTREE_PROPAGATORS, reason="TemGymCore propagators are no pytrees")
-def test_trace_jit_components(random_model):
-    kwargs = {"scan_pos": PixelYX(y=1.0, x=2.0), "source_dy": 0.001, "source_dx": 0.002}
-    res = jax.jit(TRACE["jax"])(model=random_model, **kwargs)
-    ref = TRACE["numpy"](model=random_model, **kwargs)
-    assert jax.tree.structure(res) == jax.tree.structure(ref)
-    assert_allclose(jax.tree.leaves(res), jax.tree.leaves(ref), rtol=1e-12, atol=1e-12)
+NUMERIC = {"numpy": Model4DSTEM.lambdify(np), "jax": Model4DSTEM.lambdify(jnp)}
 
 
 def test_invert_focus(random_model):
     model = random_model
-    trace = lambdify_trace_for(np)
     inverted_model = model.invert_focus().normalize_types()
     assert_equal(model.overfocus, -inverted_model.overfocus)
     assert_allclose(
@@ -1273,15 +1242,25 @@ def test_invert_focus(random_model):
     for scan_pos in ((0, 0), (0, 1), (3, 2)):
         for dy in (-0.1, 0.023):
             for dx in (-0.02, -0.017):
-                center = trace(
-                    model=model, scan_pos=PixelYX(*scan_pos), source_dy=0.0, source_dx=0.0
+                center = (
+                    NUMERIC["numpy"]
+                    .from_model(model)
+                    .trace(scan_pos=PixelYX(*scan_pos), source_dy=0.0, source_dx=0.0)
                 )
-                inverted_center = trace(
-                    model=inverted_model, scan_pos=PixelYX(*scan_pos), source_dy=0.0, source_dx=0.0
+                inverted_center = (
+                    NUMERIC["numpy"]
+                    .from_model(inverted_model)
+                    .trace(scan_pos=PixelYX(*scan_pos), source_dy=0.0, source_dx=0.0)
                 )
-                res = trace(model=model, scan_pos=PixelYX(*scan_pos), source_dy=dy, source_dx=dx)
-                inv_res = trace(
-                    model=inverted_model, scan_pos=PixelYX(*scan_pos), source_dy=dy, source_dx=dx
+                res = (
+                    NUMERIC["numpy"]
+                    .from_model(model)
+                    .trace(scan_pos=PixelYX(*scan_pos), source_dy=dy, source_dx=dx)
+                )
+                inv_res = (
+                    NUMERIC["numpy"]
+                    .from_model(inverted_model)
+                    .trace(scan_pos=PixelYX(*scan_pos), source_dy=dy, source_dx=dx)
                 )
                 for dim1 in "x", "y":
                     for dim2 in "x", "y":

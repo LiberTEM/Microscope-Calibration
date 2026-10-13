@@ -21,7 +21,6 @@ from temgym_core.run import run_iter
 from temgym_core.source import PointSource, Source
 
 from microscope_calibration.util.sympy import (
-    lambdify,
     lambdify_class,
     lambdify_method,
     lambdify_tree,
@@ -880,11 +879,3 @@ GENERATED_FUNCTIONS = {
         "camera_length",
     )
 }
-
-
-def lambdify_trace_for(modules):
-    @lambdify(modules=modules, recurse_for=(PixelYX, Model4DSTEM, DescanError))
-    def trace(model: Model4DSTEM, scan_pos: PixelYX, source_dy, source_dx):
-        return model.trace(scan_pos=scan_pos, source_dy=source_dy, source_dx=source_dx)
-
-    return trace
