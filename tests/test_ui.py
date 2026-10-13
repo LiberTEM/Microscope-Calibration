@@ -53,6 +53,8 @@ def test_events(kwargs):
     calibrated = layout.current_calibrated()
     assert calibrated.dataset == ds
     m = calibrated.model
+    # Returns the class of the calibrated dataset's model
+    assert type(m) is Model4DSTEM
     assert_allclose(m.camera_length, 1.2)
     # The UI shows the angle, the model holds the slope
     assert_allclose(m.semiconv, np.tan(2 / 1000))

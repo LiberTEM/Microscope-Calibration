@@ -27,7 +27,7 @@ from libertem_ui.display.lines import Curve
 from libertem_ui.display.points import PointSet, RingSet
 from libertem_ui.figure import ApertureFigure
 
-from .common.model import DescanError, Model4DSTEM, PixelYX, lambdify_trace_for
+from .common.model import DescanError, Model4DSTEM, PixelYX
 
 # Also available from this module
 from .dataset import AbstractCalibratedDataset, CalibratedDataset  # noqa: F401
@@ -57,9 +57,6 @@ SigModeT = Literal[
     "lin",
     "log",
 ]
-
-
-trace = lambdify_trace_for(jnp)
 
 
 # Instructions in the layout, see CoordinateCorrectionLayout.layout
@@ -312,7 +309,10 @@ class CoordinateCorrectionLayout:
         self.nav_mode = nav_mode
         self.sig_mode = sig_mode
 
-        self.start_model = calibrated_dataset.model
+        # Class of the calibrated dataset's model, which the UI returns
+        self.model_class = type(calibrated_dataset.model)
+        # Calculate with NumPy, see Model4DSTEM.lambdify()
+        self.start_model = self.model_class.lambdify(np).from_model(calibrated_dataset.model)
 
         if twothetas is None:
             twothetas = np.array((0.0,))
@@ -665,7 +665,7 @@ class CoordinateCorrectionLayout:
         return self.calibrated_dataset.dataset
 
     def current_calibrated(self) -> AbstractCalibratedDataset:
-        return self.calibrated_dataset.calibrated(self.model)
+        return self.calibrated_dataset.calibrated(self.model_class.from_model(self.model))
 
     def update_model_tables(self, model):
         model_df = self.model_table.value
@@ -939,11 +939,11 @@ class CoordinateCorrectionLayout:
             scan_pos=scan_pos,
             specimen_px=specimen_px,
         )
-        res = trace(
-            model,
-            scan_pos=scan_pos,
-            source_dy=slope.dy,
-            source_dx=slope.dx,
+        res = (
+            type(model)
+            .lambdify(np)
+            .from_model(model)
+            .trace(scan_pos=scan_pos, source_dy=slope.dy, source_dx=slope.dx)
         )
         return res["detector"].sampling["detector_px"]
 
