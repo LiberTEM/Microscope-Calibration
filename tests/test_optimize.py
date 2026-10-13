@@ -713,6 +713,7 @@ def test_coords_points(flip_factor, ref_flip_factor):
         ref_model.derive(overfocus=0.012)
         .adjust_detector_rotation(0.3)
         .adjust_flip_factor(flip_factor)
+        .normalize_types()
     )
     points = []
     for scan_y, scan_x, dy, dx in ((3, 4, 1e-3, -2e-3), (20, 7, -1e-3, 0), (12, 28, 2e-3, 1e-3)):

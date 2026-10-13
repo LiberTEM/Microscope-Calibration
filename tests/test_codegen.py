@@ -1,6 +1,5 @@
 import inspect
 
-import jax
 import numpy as np
 import pytest
 import sympy as sym
@@ -54,14 +53,11 @@ def test_render_module():
 
     res = f(p=PixelYX(y=1.0, x=2.0), angle=0.3)
     assert isinstance(res, PixelYX)
-    assert_allclose(res, (np.cos(0.3) + 2.0 * np.sin(0.3) + np.pi, 1.0))
-    # Functions like cos() keep the backend of their argument
-    assert not any(isinstance(v, sym.Basic) for v in res)
+    # Functions like cos() come from SymPy and return SymPy numbers,
+    # like lambdify(modules=sympy)
+    assert_allclose([float(v) for v in res], (np.cos(0.3) + 2.0 * np.sin(0.3) + np.pi, 1.0))
     # Plain arithmetic keeps plain types
     assert type(res.x) is float
-
-    grad = jax.grad(lambda angle: f(p=PixelYX(y=1.0, x=2.0), angle=angle).y)(0.3)
-    assert_allclose(grad, -np.sin(0.3) + 2.0 * np.cos(0.3))
 
     res = f(p=p, angle=angle)
     for r, o in zip(res, output, strict=True):
@@ -73,9 +69,3 @@ def test_render_module_unknown_symbol():
     a, b = sym.symbols("a b")
     with pytest.raises(ValueError, match="not in args"):
         render_module({"f": ({"a": a}, a * b)}, header="")
-
-
-def test_render_module_unknown_function():
-    a = sym.Symbol("a")
-    with pytest.raises(ValueError, match="not available"):
-        render_module({"f": ({"a": a}, sym.tan(a))}, header="")
