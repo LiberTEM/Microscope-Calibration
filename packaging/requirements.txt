@@ -462,9 +462,7 @@ opentelemetry-api==1.45.1
 opt-einsum==3.4.0
     # via jax
 optax==0.2.8
-    # via
-    #   microscope-calibration (../pyproject.toml)
-    #   flax
+    # via flax
 optimistix==0.1.0
     # via microscope-calibration (../pyproject.toml)
 orbax-checkpoint==0.12.7
