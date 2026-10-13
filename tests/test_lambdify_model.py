@@ -1,3 +1,4 @@
+import dataclasses
 import warnings
 
 import jax
@@ -8,6 +9,7 @@ import pytest
 import sympy as sym
 from numpy.testing import assert_allclose
 from temgym_core import CoordXY, PixelYX
+from temgym_core.components import DescanError, Descanner, Plane, Scanner
 
 import microscope_calibration.util.sympy as mc_sympy
 from microscope_calibration.common.model import Model4DSTEM, RuntimeDerivationWarning
@@ -208,3 +210,71 @@ def test_trace_jit(random_model):
     ref = Model4DSTEM.lambdify(np).from_model(random_model).trace(**TRACE_KWARGS)
     assert jax.tree.structure(res) == jax.tree.structure(ref)
     assert_allclose(jax.tree.leaves(res), jax.tree.leaves(ref), rtol=1e-12, atol=1e-12)
+
+
+SPECIMENS = [
+    None,
+    Plane(z=0.0),
+    Scanner(z=0.0, scan_pos_x=1e-3, scan_pos_y=-2e-3, scan_tilt_x=0.01, scan_tilt_y=-0.02),
+    Descanner(
+        z=0.0,
+        scan_pos_x=1e-3,
+        scan_pos_y=-2e-3,
+        scan_tilt_x=0.01,
+        scan_tilt_y=-0.02,
+        descan_error=DescanError(*(0.01 * i for i in range(12))),
+    ),
+]
+
+
+@pytest.mark.parametrize("backend", sorted(BACKENDS))
+@pytest.mark.parametrize(
+    "specimen", SPECIMENS, ids=lambda s: type(s).__name__ if s is not None else "None"
+)
+def test_trace_specimen(random_model, backend, specimen):
+    cls = Model4DSTEM.lambdify(BACKENDS[backend])
+    res = cls.from_model(random_model).trace(**TRACE_KWARGS, specimen=specimen)
+    ref = random_model.trace(**TRACE_KWARGS, specimen=specimen)
+    assert_numeric_equal(res, ref)
+
+
+def test_trace_specimen_at_overfocus(random_model):
+    specimen = Scanner(z=0.0, scan_pos_x=0.0, scan_pos_y=0.0, scan_tilt_x=0.01, scan_tilt_y=0.0)
+    res = random_model.trace(**TRACE_KWARGS, specimen=specimen)
+    assert res["specimen"].component.z == random_model.overfocus
+    moved = random_model.trace(**TRACE_KWARGS, specimen=dataclasses.replace(specimen, z=5.0))
+    assert jax.tree.leaves(moved) == jax.tree.leaves(res)
+
+
+def test_trace_specimen_compiled_per_class(monkeypatch):
+    calls = []
+    original = mc_sympy.lambdify_tree
+
+    def counting(*args, **kwargs):
+        calls.append(1)
+        return original(*args, **kwargs)
+
+    monkeypatch.setattr(mc_sympy, "lambdify_tree", counting)
+    # A list as modules gives a class that no other test uses
+    cls = Model4DSTEM.lambdify([{}, {}, "numpy"])
+    model = cls.default(dataset_shape=(8, 8, 8, 8)).derive(overfocus=0.1)
+    for tilt in (0.01, 0.02, 0.03):
+        specimen = Scanner(z=0.0, scan_pos_x=0.0, scan_pos_y=0.0, scan_tilt_x=tilt, scan_tilt_y=0.0)
+        model.trace(**TRACE_KWARGS, specimen=specimen)
+    assert len(calls) == 1
+    model.trace(**TRACE_KWARGS, specimen=Plane(z=0.0))
+    model.trace(**TRACE_KWARGS)
+    assert len(calls) == 3
+
+
+@jdc.pytree_dataclass
+class TiltScanner(Scanner):
+    # Inherits the annotations of Scanner
+    pass
+
+
+def test_trace_specimen_subclass(random_model):
+    specimen = TiltScanner(z=0.0, scan_pos_x=0.0, scan_pos_y=0.0, scan_tilt_x=0.01, scan_tilt_y=0.0)
+    res = Model4DSTEM.lambdify(np).from_model(random_model).trace(**TRACE_KWARGS, specimen=specimen)
+    assert type(res["specimen"].component) is TiltScanner
+    assert_numeric_equal(res, random_model.trace(**TRACE_KWARGS, specimen=specimen))
