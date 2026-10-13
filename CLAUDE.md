@@ -80,8 +80,6 @@ Key layers, bottom-up:
    `wrapt`) that recurses into nested dataclasses/pytrees (`PixelYX`, `Model4DSTEM`,
    `DescanError`) so a symbolic trace can be turned into a numeric function. Touch with care;
    the three-backend contract depends on it.
-   `util/backend.py` provides math functions such as `cos`/`sin` that dispatch on the argument
-   type; use them instead of `sympy`/`numpy`/`jax.numpy` functions in model code.
 
 3. **`common/stem_overfocus.py`** — pixel-to-pixel transformation matrices (backward
    projection, detector correction) calculated from the generated `ray_transfer_matrix()`;
@@ -117,6 +115,11 @@ Key layers, bottom-up:
   you see `try/except TracerBoolConversionError` and `_one`/`flip_factor` style tricks
   (constants threaded through so operations stay differentiable instead of using Python
   conditionals). Preserve that pattern.
+- Model functions are always SymPy-compatible and use SymPy math (`sym.cos`, `sym.pi`, ...);
+  called directly on floats they may return SymPy numbers. For NumPy or JAX, wrap the call
+  site with `@lambdify(modules=np|jnp, recurse_for=...)` (or use `lambdify_trace_for`). Create
+  the lambdified function once, e.g. at module level: each new function object triggers a new
+  symbolic derivation, so don't decorate inside loops or frequently called functions.
 - `trace()` is the single source of truth. Derive relations from it symbolically instead of
   hard-coding them: register the derivation in a `GENERATED_FUNCTIONS` registry (collected in
   `common/generate.py`) and run the generator. Never edit `common/_generated.py` by hand.

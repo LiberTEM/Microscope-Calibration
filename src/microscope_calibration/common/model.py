@@ -10,7 +10,6 @@ import jax
 jax.config.update("jax_enable_x64", True)  # noqa: E702
 # ruff: disable[E402]
 import jax_dataclasses as jdc
-import numpy as np
 import sympy as sym
 from sympy.solvers.solveset import NonlinearError
 from jax.errors import TracerBoolConversionError
@@ -21,7 +20,6 @@ from temgym_core.ray import Ray
 from temgym_core.run import run_iter
 from temgym_core.source import PointSource, Source
 
-from microscope_calibration.util import backend
 from microscope_calibration.util.sympy import lambdify, lambdify_tree, symbol_maker
 # ruff: enable[E402]
 
@@ -63,8 +61,8 @@ def scale(c: CoordXY | PixelYX, factor: float) -> CoordXY:
 
 
 def rotate(c: CoordXY | PixelYX, radians: float) -> CoordXY:
-    cosr = backend.cos(radians)
-    sinr = backend.sin(radians)
+    cosr = sym.cos(radians)
+    sinr = sym.sin(radians)
     return CoordXY(
         x=c.x * cosr - c.y * sinr,
         y=c.y * cosr + c.x * sinr,
@@ -604,10 +602,9 @@ class Model4DSTEM:
         Over- and underfocus can't be distinguished from the shadow image
         alone. This allows switching between the two interpretations.
         """
-        pi = sym.pi if isinstance(self.detector_rotation, sym.Basic) else np.pi
         return (
             self.derive(overfocus=-self.overfocus)
-            .adjust_detector_rotation(detector_rotation=self.detector_rotation + pi)
+            .adjust_detector_rotation(detector_rotation=self.detector_rotation + sym.pi)
             .adjust_camera_length(camera_length=self.camera_length + 2 * self.overfocus)
         )
 
@@ -657,7 +654,7 @@ def _runtime_descan_compensation(model_type: type[Model4DSTEM], param: str):
     warn_runtime_derivation(f"descan_compensation_{param}", model_type)
     args, output = _derive_descan_compensation(param, model_type=model_type)
     check_pytree(args["model"])
-    return lambdify_tree(args, output, modules=[backend.NAMESPACE, "sympy"])
+    return lambdify_tree(args, output, modules=sym)
 
 
 def _derive_descan_compensation(param: str, model_type: type[Model4DSTEM] = Model4DSTEM):

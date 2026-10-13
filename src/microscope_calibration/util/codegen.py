@@ -15,8 +15,6 @@ from typing import Any
 import sympy as sym
 from sympy.printing.pycode import SymPyPrinter
 
-from microscope_calibration.util import backend
-
 
 def symbol_paths(tree: Any, path: tuple[str, ...]) -> Iterator[tuple[tuple[str, ...], sym.Symbol]]:
     """
@@ -185,8 +183,8 @@ def render_module(functions: dict[str, tuple[dict[str, Any], Any]], header: str)
     Render a module with the given functions
 
     Names that the printed SymPy expressions use, e.g. :code:`cos`, are imported
-    from :mod:`microscope_calibration.util.backend`, so that the result works
-    with SymPy expressions, JAX arrays and tracers, and plain numbers.
+    from :code:`sympy`, so that the result works with SymPy and plain Python
+    number types, like :func:`sympy.lambdify` with :code:`modules=sympy`.
 
     Parameters
     ----------
@@ -207,14 +205,12 @@ def render_module(functions: dict[str, tuple[dict[str, Any], Any]], header: str)
     for t in types:
         imports.setdefault(t.__module__, set()).add(t.__name__)
     type_names = {t.__name__ for t in types}
-    math_names = _free_names(body) - type_names
-    for n in math_names:
-        if n not in backend.NAMESPACE:
-            raise ValueError(
-                f"Generated code uses name {n} that is not available in {backend.__name__}."
-            )
-    if math_names:
-        imports.setdefault(backend.__name__, set()).update(math_names)
+    sympy_names = _free_names(body) - type_names
+    for n in sympy_names:
+        if not hasattr(sym, n):
+            raise ValueError(f"Generated code uses name {n} that is not available in sympy.")
+    if sympy_names:
+        imports.setdefault("sympy", set()).update(sympy_names)
 
     import_lines = "".join(
         f"from {module} import {', '.join(sorted(names))}\n"

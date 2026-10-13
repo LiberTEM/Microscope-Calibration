@@ -1093,16 +1093,47 @@ ADJUST_VALUES = {
 }
 
 
+def _lambdify_adjust(param: str, modules):
+    def adjust(model: Model4DSTEM, value):
+        return getattr(model, f"adjust_{param}")(value)
+
+    # lambdify() generates symbols for the arguments according to their annotations
+    adjust.__annotations__["value"] = Model4DSTEM.__annotations__[param]
+    return lambdify(recurse_for=(PixelYX, Model4DSTEM, DescanError), modules=modules)(adjust)
+
+
+# The model functions are SymPy-compatible. Numeric versions for a backend are
+# created with lambdify() once, not for each call.
+ADJUST_NUMPY = {param: _lambdify_adjust(param, np) for param in ADJUST_VALUES}
+ADJUST_JAX = {param: _lambdify_adjust(param, jnp) for param in ADJUST_VALUES}
+
+
+@lambdify(recurse_for=(PixelYX, Model4DSTEM, DescanError), modules=np)
+def invert_focus_numpy(model: Model4DSTEM):
+    return model.invert_focus()
+
+
 @pytest.mark.parametrize("param", sorted(ADJUST_VALUES))
-def test_adjust_keeps_float_types(random_model, param):
-    adjusted = getattr(random_model, f"adjust_{param}")(ADJUST_VALUES[param])
+def test_adjust_numpy(random_model, param):
+    adjusted = ADJUST_NUMPY[param](random_model, ADJUST_VALUES[param])
+    direct = getattr(random_model, f"adjust_{param}")(ADJUST_VALUES[param])
+    assert type(adjusted) is Model4DSTEM
     for leaf in jax.tree.leaves(adjusted):
         assert not isinstance(leaf, sym.Basic), leaf
+    assert_allclose(
+        jax.tree.leaves(adjusted), jax.tree.leaves(direct.normalize_types()), rtol=1e-12
+    )
 
 
-def test_invert_focus_keeps_float_types(random_model):
-    for leaf in jax.tree.leaves(random_model.invert_focus()):
+def test_invert_focus_numpy(random_model):
+    inverted = invert_focus_numpy(random_model)
+    for leaf in jax.tree.leaves(inverted):
         assert not isinstance(leaf, sym.Basic), leaf
+    assert_allclose(
+        jax.tree.leaves(inverted),
+        jax.tree.leaves(random_model.invert_focus().normalize_types()),
+        rtol=1e-12,
+    )
 
 
 @pytest.mark.parametrize(
@@ -1110,7 +1141,7 @@ def test_invert_focus_keeps_float_types(random_model):
 )
 def test_adjust_grad(random_model, param):
     def f(value):
-        return sum(getattr(random_model, f"adjust_{param}")(value).descan_error)
+        return sum(ADJUST_JAX[param](random_model, value).descan_error)
 
     value = ADJUST_VALUES[param]
     eps = 1e-6
@@ -1120,10 +1151,9 @@ def test_adjust_grad(random_model, param):
 
 @pytest.mark.parametrize("flip_factor", [-1.0, 1.0])
 def test_adjust_flip_factor_jit(random_model, flip_factor):
-    def f(flip_factor):
-        return random_model.adjust_flip_factor(flip_factor).descan_error
-
-    assert_allclose(jax.jit(f)(flip_factor), f(flip_factor), rtol=1e-12, atol=1e-12)
+    res = jax.jit(ADJUST_JAX["flip_factor"])(random_model, flip_factor)
+    ref = ADJUST_NUMPY["flip_factor"](random_model, flip_factor)
+    assert_allclose(res.descan_error, ref.descan_error, rtol=1e-12, atol=1e-12)
 
 
 def test_derive_flip_y(random_model):

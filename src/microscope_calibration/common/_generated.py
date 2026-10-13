@@ -4,7 +4,7 @@
 # microscope_calibration.common.generate.GENERATED_FUNCTIONS.
 # tests/test_codegen.py verifies that this file is up to date.
 
-from microscope_calibration.util.backend import cos, sin
+from sympy import cos, sin
 from temgym_core.components import DescanError
 
 
