@@ -12,7 +12,7 @@ import sympy as sym
 from libertem.udf.com import apply_correction, guess_corrections
 from temgym_core import PixelYX
 from temgym_core.components import Component, DescanError, NamedTuple
-from temgym_core.propagator import Propagator
+from temgym_core.propagator import FreeSpaceParaxial, Propagator
 from temgym_core.ray import Ray
 from temgym_core.source import Source
 
@@ -1210,6 +1210,39 @@ def test_normalize_types_non_finite(random_model):
     assert model.scan_rotation == np.inf
     assert model.descan_error.sxo_pyi == -np.inf
     assert all(type(leaf) is float for leaf in jax.tree.leaves(model))
+
+
+TRACE = {"numpy": lambdify_trace_for(np), "jax": lambdify_trace_for(jnp)}
+
+# TemGymCore registers propagators as pytrees without leaves, see
+# https://github.com/TemGym/TemGymCore
+PYTREE_PROPAGATORS = jax.tree.leaves(FreeSpaceParaxial()) == []
+
+
+@pytest.mark.parametrize("backend", sorted(TRACE))
+def test_trace_numeric_components(random_model, backend):
+    kwargs = {"scan_pos": PixelYX(y=1.0, x=2.0), "source_dy": 0.001, "source_dx": 0.002}
+    res = TRACE[backend](model=random_model, **kwargs)
+    ref = random_model.trace(**kwargs)
+    assert list(res) == list(ref)
+    for key in ref:
+        assert type(res[key].component) is type(ref[key].component)
+        assert jax.tree.structure(res[key]) == jax.tree.structure(ref[key])
+    for leaf, ref_leaf in zip(jax.tree.leaves(res), jax.tree.leaves(ref), strict=True):
+        assert not isinstance(leaf, sym.Basic)
+        if isinstance(ref_leaf, (float, int, sym.Basic)):
+            assert_allclose(float(leaf), float(ref_leaf), rtol=1e-12, atol=1e-12)
+        else:
+            assert type(leaf) is type(ref_leaf)
+
+
+@pytest.mark.skipif(not PYTREE_PROPAGATORS, reason="TemGymCore propagators are no pytrees")
+def test_trace_jit_components(random_model):
+    kwargs = {"scan_pos": PixelYX(y=1.0, x=2.0), "source_dy": 0.001, "source_dx": 0.002}
+    res = jax.jit(TRACE["jax"])(model=random_model, **kwargs)
+    ref = TRACE["numpy"](model=random_model, **kwargs)
+    assert jax.tree.structure(res) == jax.tree.structure(ref)
+    assert_allclose(jax.tree.leaves(res), jax.tree.leaves(ref), rtol=1e-12, atol=1e-12)
 
 
 def test_invert_focus(random_model):

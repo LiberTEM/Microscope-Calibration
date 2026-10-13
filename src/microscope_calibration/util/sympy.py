@@ -1,4 +1,6 @@
 import inspect
+import types
+import typing
 from collections.abc import Container
 from functools import cache
 from numbers import Number
@@ -10,6 +12,7 @@ jax.config.update("jax_enable_x64", True)  # noqa: E702
 # ruff: disable[E402]
 import numpy as np
 import sympy as sym
+from numpy.typing import NDArray
 import wrapt
 from frozendict import frozendict
 from jax.errors import TracerBoolConversionError
@@ -19,6 +22,17 @@ T = TypeVar("T")
 
 
 def isnumerictype(T):
+    # Arrays with numeric dtype, e.g. NDArray[np.floating], since lambdified
+    # functions work element-wise
+    origin = typing.get_origin(T)
+    # NDArray is a type alias in recent NumPy versions
+    if origin is NDArray:
+        (scalar_type,) = typing.get_args(T)
+        return _is_numpy_number(scalar_type)
+    if origin is np.ndarray:
+        (_, dtype) = typing.get_args(T)
+        (scalar_type,) = typing.get_args(dtype)
+        return _is_numpy_number(scalar_type)
     for supercls in (Number, sym.Number):
         # try ... except because some reasonable Ts like int | float cause a TypeError here
         try:
@@ -36,6 +50,12 @@ def isnumerictype(T):
         except TypeError:
             pass
     return False
+
+
+def _is_numpy_number(T) -> bool:
+    if typing.get_origin(T) in (typing.Union, types.UnionType):
+        return all(_is_numpy_number(t) for t in typing.get_args(T))
+    return isinstance(T, type) and issubclass(T, np.number)
 
 
 def is_sympy(expr: Any) -> bool:
@@ -260,9 +280,8 @@ def lambdify(recurse_for=(), modules=sym, args=None, kwargs=None, **sym_kwargs):
 
     @wrapt.decorator
     def lambdified(wrapped, instance, args, kwargs):
-        try:
-            f = compiled[wrapped]
-        except KeyError:
+        f = compiled.get(wrapped)
+        if f is None:
             f = compiled[wrapped] = _outer_lambdify(
                 wrapped=wrapped,
                 modules=modules,

@@ -3,6 +3,9 @@ import numpy as np
 import pytest
 import sympy as sym
 from numpy.testing import assert_allclose
+from temgym_core import CoordsXY
+from temgym_core.components import DescanError, Descanner, Plane, Scanner
+from temgym_core.source import PointSource
 
 from microscope_calibration.util.sympy import lambdify, lambdify_tree
 
@@ -67,3 +70,36 @@ def test_lambdify_tree_jit():
     f = lambdify_tree(inp=(a, b, a), outp=sym.cos(a) * b, modules="jax")
     assert_allclose(jax.jit(f)((0.5, 2.0, 0.5)), np.cos(0.5) * 2.0)
     assert_allclose(jax.grad(lambda x: f((x, 2.0, x)))(0.5), -np.sin(0.5) * 2.0)
+
+
+COMPONENT_RECURSE = (PointSource, Plane, Scanner, Descanner, DescanError, CoordsXY)
+
+COMPONENTS = [
+    PointSource(z=0.1, semi_conv=0.01, offset_xy=CoordsXY(x=0.2, y=0.3)),
+    Plane(z=0.4),
+    Scanner(z=0.5, scan_pos_x=0.6, scan_pos_y=0.7, scan_tilt_x=0.8, scan_tilt_y=0.9),
+    Descanner(
+        z=1.0,
+        scan_pos_x=1.1,
+        scan_pos_y=1.2,
+        scan_tilt_x=1.3,
+        scan_tilt_y=1.4,
+        descan_error=DescanError(*(0.1 * i for i in range(12))),
+    ),
+]
+
+
+@pytest.mark.parametrize("component", COMPONENTS, ids=lambda c: type(c).__name__)
+@pytest.mark.parametrize("modules", [np, jax.numpy])
+def test_lambdify_component_identity(component, modules):
+    # Components as input and output of a lambdified function
+    def identity(c):
+        return c
+
+    identity.__annotations__["c"] = type(component)
+    res = lambdify(recurse_for=COMPONENT_RECURSE, modules=modules)(identity)(component)
+    assert type(res) is type(component)
+    assert jax.tree.structure(res) == jax.tree.structure(component)
+    for leaf in jax.tree.leaves(res):
+        assert not isinstance(leaf, sym.Basic)
+    assert_allclose(jax.tree.leaves(res), jax.tree.leaves(component))
