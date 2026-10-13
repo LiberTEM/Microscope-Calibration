@@ -372,7 +372,7 @@ class Model4DSTEM:
             },
         )
 
-    @lambdify_method
+    @lambdify_method(static=("_one",))
     def scan_to_real(self, pixels: PixelYX, _one: float = 1.0) -> CoordXY:
         return rotate(
             c=scale(
@@ -389,7 +389,7 @@ class Model4DSTEM:
             radians=self.scan_rotation,
         )
 
-    @lambdify_method
+    @lambdify_method(static=("_one",))
     def real_to_scan(self, coords: CoordXY, _one: float = 1.0) -> PixelYX:
         res = shift(
             c=scale(
@@ -407,7 +407,7 @@ class Model4DSTEM:
             x=res.x,
         )
 
-    @lambdify_method
+    @lambdify_method(static=("_one",))
     def detector_to_real(self, pixels: PixelYX, _one: float = 1.0) -> CoordXY:
         return rotate(
             c=scale(
@@ -427,7 +427,7 @@ class Model4DSTEM:
             radians=self.detector_rotation,
         )
 
-    @lambdify_method
+    @lambdify_method(static=("_one",))
     def real_to_detector(self, coords: CoordXY, _one: float = 1.0) -> PixelYX:
         res = shift(
             c=flip_y(
@@ -475,7 +475,8 @@ class Model4DSTEM:
         res["detector"] = Plane(z=self.overfocus + self.camera_length)
         return res
 
-    @lambdify_method
+    # _one is a constant in numeric calculations, which simplifies the expressions
+    @lambdify_method(static=("_one",))
     def trace(
         self,
         scan_pos: PixelYX,

@@ -298,18 +298,25 @@ def lambdify(recurse_for=(), modules=sym, args=None, kwargs=None, **sym_kwargs):
     return lambdified
 
 
-def lambdify_method(method: Callable) -> Callable:
+def lambdify_method(method: Callable | None = None, *, static: tuple[str, ...] = ()):
     """
     Mark a method to be compiled in classes created by :func:`lambdify_class`
 
     The method must be compatible with SymPy. Arguments whose type annotation
     is numeric or in :code:`recurse_for` of :func:`lambdify_class` become
-    symbols, see :func:`symbol_maker`. All other arguments are static: They are
-    passed on as they are, and the method is compiled separately for each of
-    their values, which must be hashable.
+    symbols, see :func:`symbol_maker`. All other arguments and the ones listed
+    in :code:`static` are static: They are passed on as they are, and the
+    method is compiled separately for each of their values, which must be
+    hashable. Static numbers are simplified as constants in the compiled code.
+
+    Use as :code:`@lambdify_method` or :code:`@lambdify_method(static=("arg",))`.
     """
-    method.__lambdify_method__ = True
-    return method
+
+    def mark(method: Callable) -> Callable:
+        method.__lambdify_method__ = frozenset(static)
+        return method
+
+    return mark if method is None else mark(method)
 
 
 class _HashableArg:
@@ -385,7 +392,7 @@ def _lambdify_class(base, modules: _HashableArg, make_symbolic, recurse_for):
         },
     )
     for name in dir(base):
-        if getattr(getattr(base, name), "__lambdify_method__", False):
+        if hasattr(getattr(base, name), "__lambdify_method__"):
             setattr(
                 cls,
                 name,
@@ -398,10 +405,12 @@ def _numeric_method(cls, base, name, modules, make_symbolic, recurse_for):
     method = getattr(base, name)
     signature = inspect.signature(method)
     hints = typing.get_type_hints(method)
+    static_args = method.__lambdify_method__
     numeric_args = [
         arg
         for arg in list(signature.parameters)[1:]
-        if hints.get(arg, float) in recurse_for or isnumerictype(hints.get(arg, float))
+        if arg not in static_args
+        and (hints.get(arg, float) in recurse_for or isnumerictype(hints.get(arg, float)))
     ]
     # static arguments -> compiled function
     compiled = {}
