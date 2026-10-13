@@ -189,3 +189,12 @@ def test_jax_grad(random_model, param):
     eps = 1e-6
     expected = (f(value + eps) - f(value - eps)) / (2 * eps)
     assert_allclose(jax.grad(f)(value), expected, rtol=1e-5, atol=1e-8)
+
+
+def test_static_argument():
+    cls = Model4DSTEM.lambdify(np)
+    model = cls.default(dataset_shape=(8, 8, 8, 8)).derive(overfocus=0.1)
+    ref = Model4DSTEM.from_model(model)
+    for _one in (1.0, 2.0):
+        res = model.scan_to_real(PixelYX(y=1.0, x=2.0), _one=_one)
+        assert_allclose(res, [float(v) for v in ref.scan_to_real(PixelYX(y=1.0, x=2.0), _one=_one)])
