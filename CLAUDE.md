@@ -51,7 +51,7 @@ without pulling in the whole scientific Python stack (packages: see `pyproject.t
 - **diffraction**: CIF/crystallography
 - **gui**: the interactive UI
 
-Several deps are pinned to git `master`/branches (TemGymCore, LiberTEM-panel-ui, diffsims)
+Several deps are pinned to git `master`/branches (LiberTEM-panel-ui, diffsims)
 pending upstream releases — see the `FIXME` comments in `pyproject.toml`. Flag any new
 third-party dependency you introduce.
 

@@ -39,7 +39,8 @@ dynamic = ["version"]
 dependencies = [
     "jax",
     "jax-dataclasses",
-    "temgym-core",
+    # Propagators as pytrees
+    "temgym-core>=0.1.1",
     "sympy",
     "wrapt",
     "frozendict",
