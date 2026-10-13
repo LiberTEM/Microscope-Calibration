@@ -1,4 +1,4 @@
-from typing import NamedTuple, TYPE_CHECKING
+from typing import Annotated, NamedTuple, TYPE_CHECKING
 
 import jax
 
@@ -27,6 +27,11 @@ if TYPE_CHECKING:
     from libertem.udf.base import UDF
 
     from microscope_calibration.udf.stem_overfocus import OverfocusUDF
+
+
+# Instance of type(model).lambdify(jnp) for the arguments of the jitted loss
+# functions. The class is created at runtime, so type checkers see Model4DSTEM.
+_JaxModel = Annotated[Model4DSTEM, "Model4DSTEM.lambdify(jax.numpy)"]
 
 
 def _numeric(model: Model4DSTEM, modules) -> Model4DSTEM:
@@ -155,6 +160,8 @@ def make_overfocus_loss_function(
     if blur_function is None:
         blur_function = blur_effect
 
+    numpy_model = _numeric(model, np)
+
     def make_new_model(args) -> Model4DSTEM:
         """
         Map parameters from +-10 to original range
@@ -168,11 +175,10 @@ def make_overfocus_loss_function(
         transformed_rotation, transformed_overfocus = args
         rotation = transformed_rotation / rotation_scale + rotation_diff
         overfocus = transformed_overfocus / overfocus_scale + overfocus_diff
-        new_model = (
-            _numeric(model, np)
-            .derive(overfocus=overfocus)
-            .adjust_detector_rotation(detector_rotation=rotation / 180 * np.pi)
+        new_model = numpy_model.derive(overfocus=overfocus).adjust_detector_rotation(
+            detector_rotation=rotation / 180 * np.pi
         )
+        # Same class as the starting model
         return type(model).from_model(new_model)
 
     def loss(args) -> float:
@@ -221,7 +227,7 @@ def optimize(loss, bounds=None, minimizer_kwargs=None, **kwargs):
 
 
 class _CLArgs(NamedTuple):
-    ref_model: Model4DSTEM
+    ref_model: _JaxModel
     twotheta: float
     radius_px: float
 
@@ -256,7 +262,7 @@ def solve_camera_length(
     model, residual
         Fitted model and the residual of the radius in pixels
     """
-    args = _CLArgs(ref_model=ref_model, twotheta=twotheta, radius_px=radius_px)
+    args = _CLArgs(ref_model=_numeric(ref_model, jnp), twotheta=twotheta, radius_px=radius_px)
     start = jnp.array((ref_model.camera_length,))
     opt_res, _ = _least_squares(fn=_cl_loss, args=args, y0=start)
     # The loss function has minima at camera_length and -camera_length.
@@ -268,7 +274,7 @@ def solve_camera_length(
 
 
 class _SPPArgs(NamedTuple):
-    ref_model: Model4DSTEM
+    ref_model: _JaxModel
     point_1: PixelYX
     point_2: PixelYX
     physical_distance: float
@@ -360,7 +366,7 @@ def _regression_residuals(model: Model4DSTEM, reg: CoMRegression) -> list:
 
 class _DEFullArgs(NamedTuple):
     # Aligned with the CoM regression coordinate system
-    aligned_model: Model4DSTEM
+    aligned_model: _JaxModel
     regressions: CoMRegressions
 
 
@@ -429,7 +435,7 @@ def solve_full_descan_error(
 
 
 class _NormArgs(NamedTuple):
-    ref_model: Model4DSTEM
+    ref_model: _JaxModel
 
 
 def _zero_const(de: DescanError) -> DescanError:
@@ -506,7 +512,7 @@ def normalize_descan_error(ref_model: Model4DSTEM) -> tuple[Model4DSTEM, jax.Arr
 
 class _DETiltArgs(NamedTuple):
     # Aligned with the CoM regression coordinate system
-    aligned_model: Model4DSTEM
+    aligned_model: _JaxModel
     regression: CoMRegression
 
 
@@ -597,7 +603,7 @@ def solve_tilt_descan_error(
 
 
 class _DETiltPointArgs(NamedTuple):
-    model: Model4DSTEM
+    model: _JaxModel
     # [(scan_y, scan_x, detector_cy, detector_cx) * n]
     points: jax.Array
 
@@ -669,7 +675,7 @@ def solve_tilt_descan_error_points(
 
 
 class _CoordPointArgs(NamedTuple):
-    model: Model4DSTEM
+    model: _JaxModel
     # [(scan_y, scan_x, specimen_y (px), specimen_x (px), detector_y, detector_x) * n]
     points: jax.Array
     flip_factor: float
@@ -784,7 +790,7 @@ def solve_coords_points(ref_model: Model4DSTEM, points: jax.Array) -> tuple[Mode
 
 
 class _HitSpecimenArgs(NamedTuple):
-    model: Model4DSTEM
+    model: _JaxModel
     scan_pos: PixelYX
     specimen_px: PixelYX
 
