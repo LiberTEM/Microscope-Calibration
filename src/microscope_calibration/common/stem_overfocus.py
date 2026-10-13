@@ -19,7 +19,6 @@ from microscope_calibration.common.model import (
     PixelYX,
     Scanner,
     check_pytree,
-    lambdify_trace_for,
     symbolic_model,
     warn_runtime_derivation,
 )
@@ -31,9 +30,6 @@ CoordMappingT = Callable[[CoordXY], PixelYX]
 
 class FittingError(RuntimeError):
     pass
-
-
-trace = lambdify_trace_for(jnp)
 
 
 def _derive_affine_map(inputs, outputs):
@@ -500,14 +496,11 @@ def trace_with_diffractor(model: Model4DSTEM, scan_pos: PixelYX, source_dy, sour
 
 @jax.jit
 def get_diffraction_pixel_radius(model: Model4DSTEM, twotheta: float):
-    center_res = trace(
-        model,
-        scan_pos=PixelYX(0.0, 0.0),
-        source_dx=0.0,
-        source_dy=0.0,
-    )
+    model = type(model).lambdify(jnp).from_model(model)
+    center_res = model.trace(scan_pos=PixelYX(0.0, 0.0), source_dx=0.0, source_dy=0.0)
+    # trace_with_diffractor() is lambdified for Model4DSTEM
     diff_res = trace_with_diffractor(
-        model=model,
+        model=Model4DSTEM.from_model(model),
         scan_pos=PixelYX(0.0, 0.0),
         source_dx=0.0,
         source_dy=0.0,
@@ -521,14 +514,13 @@ def get_diffraction_pixel_radius(model: Model4DSTEM, twotheta: float):
 
 @jax.jit
 def get_primary_beam_radius(model: Model4DSTEM):
-    center_res = trace(
-        model,
+    model = type(model).lambdify(jnp).from_model(model)
+    center_res = model.trace(
         scan_pos=PixelYX(0.0, 0.0),
         source_dx=0.0,
         source_dy=0.0,
     )
-    border_res = trace(
-        model,
+    border_res = model.trace(
         scan_pos=PixelYX(0.0, 0.0),
         source_dx=model.semiconv,
         source_dy=0.0,
@@ -552,15 +544,6 @@ def ring_radii(model: Model4DSTEM, twothetas):
 
 @jax.jit
 def get_center(model: Model4DSTEM, scan_pos: PixelYX):
-    center_res = trace(
-        model,
-        scan_pos=scan_pos,
-        source_dx=0.0,
-        source_dy=0.0,
-    )
-    y = center_res["detector"].sampling["detector_px"].y
-    x = center_res["detector"].sampling["detector_px"].x
-    return PixelYX(
-        y=y,
-        x=x,
-    )
+    model = type(model).lambdify(jnp).from_model(model)
+    res = model.trace(scan_pos=scan_pos, source_dx=0.0, source_dy=0.0)
+    return res["detector"].sampling["detector_px"]

@@ -12,8 +12,12 @@ from microscope_calibration.common.model import (
 from microscope_calibration.common.stem_overfocus import (
     correct_frame,
     get_backward_transformation_matrix,
+    get_center,
     get_detector_correction_matrix,
+    get_diffraction_pixel_radius,
+    get_primary_beam_radius,
     project_frame_backwards,
+    ring_radii,
 )
 from microscope_calibration.util.stem_overfocus_sim import project
 
@@ -566,3 +570,35 @@ def test_correct_fixed_manualref(scan_rotation, detector_rotation, obj_half_size
         sim_ref_model=sim_ref_model,
         specimen_to_image=map_coord,
     )
+
+
+@pytest.mark.parametrize("overfocus", [0.01, -0.02])
+def test_beam_geometry(overfocus):
+    detector_pixel_pitch = 0.2
+    camera_length = 1.234
+    model = Model4DSTEM.default(dataset_shape=(32, 32, 64, 64)).derive(
+        overfocus=overfocus,
+        camera_length=camera_length,
+        detector_pixel_pitch=detector_pixel_pitch,
+        semiconv=0.02,
+        detector_rotation=0.3,
+    )
+    beam_radius = get_primary_beam_radius(model)
+    # The beam diverges from the crossover at the source
+    assert_allclose(
+        beam_radius, 0.02 * abs(overfocus + camera_length) / detector_pixel_pitch, rtol=1e-12
+    )
+    twothetas = (0.05, 0.1)
+    radii = [get_diffraction_pixel_radius(model, twotheta) for twotheta in twothetas]
+    # Diffraction at the specimen
+    assert_allclose(radii, np.tan(twothetas) * camera_length / detector_pixel_pitch, rtol=1e-12)
+    ri, ro = ring_radii(model, twothetas)
+    assert_allclose(ri, np.maximum(np.array(radii) - beam_radius, 0), rtol=1e-12)
+    assert_allclose(ro, np.array(radii) + beam_radius, rtol=1e-12)
+
+
+def test_get_center(random_model):
+    scan_pos = PixelYX(y=3.0, x=-2.0)
+    center = get_center(random_model, scan_pos)
+    ref = random_model.trace(scan_pos=scan_pos, source_dx=0.0, source_dy=0.0)
+    assert_allclose(center, [float(v) for v in ref["detector"].sampling["detector_px"]], rtol=1e-12)
