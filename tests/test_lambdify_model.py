@@ -1,6 +1,11 @@
+import copy
 import dataclasses
+import pickle
+import subprocess
+import sys
 import warnings
 
+import flax.serialization
 import jax
 import jax.numpy as jnp
 import jax_dataclasses as jdc
@@ -278,3 +283,39 @@ def test_trace_specimen_subclass(random_model):
     res = Model4DSTEM.lambdify(np).from_model(random_model).trace(**TRACE_KWARGS, specimen=specimen)
     assert type(res["specimen"].component) is TiltScanner
     assert_numeric_equal(res, random_model.trace(**TRACE_KWARGS, specimen=specimen))
+
+
+@pytest.mark.parametrize(
+    "modules",
+    [np, jnp, "numpy", [{"cos": np.cos}, "numpy"]],
+    ids=["numpy", "jax", "numpy-string", "list"],
+)
+def test_pickle(random_model, modules):
+    cls = Model4DSTEM.lambdify(modules)
+    model = cls.from_model(random_model)
+    for res in (pickle.loads(pickle.dumps(model)), copy.deepcopy(model)):
+        assert type(res) is cls
+        assert res == model
+
+
+def test_pickle_other_process(random_model, tmp_path):
+    # The class is created again in another process, e.g. a Dask worker
+    path = tmp_path / "model.pickle"
+    path.write_bytes(pickle.dumps(Model4DSTEM.lambdify(jnp).from_model(random_model)))
+    script = f"""
+import pickle
+import jax.numpy as jnp
+from microscope_calibration.common.model import Model4DSTEM
+model = pickle.loads(open({str(path)!r}, "rb").read())
+assert type(model) is Model4DSTEM.lambdify(jnp)
+assert type(model.adjust_scan_rotation(0.1)) is Model4DSTEM.lambdify(jnp)
+"""
+    subprocess.run([sys.executable, "-c", script], check=True)
+
+
+def test_flax_state_dict(random_model):
+    model = Model4DSTEM.lambdify(np).from_model(random_model)
+    state = flax.serialization.to_state_dict(model)
+    res = flax.serialization.from_state_dict(target=model, state=state)
+    assert type(res) is type(model)
+    assert res == model
