@@ -112,9 +112,7 @@ Key layers, bottom-up:
 
 - The central invariant is that `trace`/model code must stay valid for **SymPy symbols**, so
   that it can be derived and compiled symbolically. Avoid branching on values (`if x > 0`);
-  use `_one`/`flip_factor` style tricks (constants threaded through) instead. The
-  `try/except TracerBoolConversionError` blocks date from when model code also ran with JAX
-  tracers.
+  use `_one`/`flip_factor` style tricks (constants threaded through) instead.
 - Model functions are always SymPy-compatible and use SymPy math (`sym.cos`, `sym.pi`, ...);
   called directly on floats they may return SymPy numbers. For NumPy or JAX, use
   `Model4DSTEM.lambdify(modules)`, a cached subclass whose methods marked with

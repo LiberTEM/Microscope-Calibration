@@ -12,7 +12,6 @@ jax.config.update("jax_enable_x64", True)  # noqa: E702
 import jax_dataclasses as jdc
 import sympy as sym
 from sympy.solvers.solveset import NonlinearError
-from jax.errors import TracerBoolConversionError
 from temgym_core import CoordXY, PixelYX
 from temgym_core.components import Component, DescanError, Descanner, Plane, Scanner
 from temgym_core.propagator import FreeSpaceParaxial, Propagator
@@ -453,11 +452,8 @@ class Model4DSTEM:
         if specimen is None:
             specimen = Plane(z=self.overfocus)
         else:
-            try:
-                # FIXME better solution later?
-                assert sym.simplify(specimen.z).equals(sym.simplify(self.overfocus))
-            except TracerBoolConversionError:
-                pass
+            # FIXME better solution later?
+            assert sym.simplify(specimen.z).equals(sym.simplify(self.overfocus))
         scan_pos_phys = self.scan_to_real(scan_pos, _one=_one)
         res = OrderedDict()
         res["source"] = PointSource(z=0, semi_conv=self.semiconv)
@@ -511,19 +507,13 @@ class Model4DSTEM:
 
         # skip the first propagation, which should be zero distance
         comp, r = run_result.pop(0)
-        try:
-            assert isinstance(comp, Propagator)
-            assert sym.simplify(comp.distance).equals(0.0)
-            assert equals(r, ray)
-        except TracerBoolConversionError:
-            pass
+        assert isinstance(comp, Propagator)
+        assert sym.simplify(comp.distance).equals(0.0)
+        assert equals(r, ray)
 
         comp, r = run_result.pop(0)
-        try:
-            assert comp == components["source"]
-            assert equals(r, ray)
-        except TracerBoolConversionError:
-            pass
+        assert comp == components["source"]
+        assert equals(r, ray)
         result["source"] = ResultSection(component=comp, ray=r)
 
         comp, r = run_result.pop(0)
@@ -533,29 +523,20 @@ class Model4DSTEM:
         result["overfocus"] = ResultSection(component=comp, ray=r)
 
         comp, r = run_result.pop(0)
-        try:
-            assert comp == components["scanner"]
-            assert isinstance(r, Ray)
-        except TracerBoolConversionError:
-            pass
+        assert comp == components["scanner"]
+        assert isinstance(r, Ray)
         result["scanner"] = ResultSection(component=comp, ray=r)
 
         # Skip zero distance propagation between scanner and specimen
         comp, r = run_result.pop(0)
-        try:
-            assert isinstance(comp, Propagator)
-            assert sym.simplify(comp.distance).equals(0.0)
-            assert isinstance(r, Ray)
-            assert equals(r, result["scanner"].ray)
-        except TracerBoolConversionError:
-            pass
+        assert isinstance(comp, Propagator)
+        assert sym.simplify(comp.distance).equals(0.0)
+        assert isinstance(r, Ray)
+        assert equals(r, result["scanner"].ray)
 
         comp, r = run_result.pop(0)
-        try:
-            assert comp == components["specimen"]
-            assert isinstance(r, Ray)
-        except TracerBoolConversionError:
-            pass
+        assert comp == components["specimen"]
+        assert isinstance(r, Ray)
         scan_px = self.real_to_scan(CoordXY(x=r.x, y=r.y), _one=ray._one)
         result["specimen"] = ResultSection(
             component=comp,
@@ -565,18 +546,12 @@ class Model4DSTEM:
 
         # Skip zero distance propagation between specimen and descanner
         comp, r = run_result.pop(0)
-        try:
-            assert isinstance(comp, Propagator)
-            assert sym.simplify(comp.distance).equals(0.0)
-            assert equals(r, result["specimen"].ray)
-        except TracerBoolConversionError:
-            pass
+        assert isinstance(comp, Propagator)
+        assert sym.simplify(comp.distance).equals(0.0)
+        assert equals(r, result["specimen"].ray)
         comp, r = run_result.pop(0)
-        try:
-            assert comp == components["descanner"]
-            assert isinstance(r, Ray)
-        except TracerBoolConversionError:
-            pass
+        assert comp == components["descanner"]
+        assert isinstance(r, Ray)
         result["descanner"] = ResultSection(component=comp, ray=r)
 
         comp, r = run_result.pop(0)
@@ -586,11 +561,8 @@ class Model4DSTEM:
         result["camera_length"] = ResultSection(component=comp, ray=r)
 
         comp, r = run_result.pop(0)
-        try:
-            assert comp == components["detector"]
-            assert isinstance(r, Ray)
-        except TracerBoolConversionError:
-            pass
+        assert comp == components["detector"]
+        assert isinstance(r, Ray)
         detector_px = self.real_to_detector(CoordXY(x=r.x, y=r.y), _one=ray._one)
         result["detector"] = ResultSection(
             component=comp,
