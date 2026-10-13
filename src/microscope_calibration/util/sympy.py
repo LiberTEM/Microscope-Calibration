@@ -1,6 +1,5 @@
 import inspect
 from collections.abc import Container
-from copy import deepcopy
 from functools import cache
 from numbers import Number
 from typing import Any, TypeVar
@@ -9,6 +8,7 @@ import jax
 
 jax.config.update("jax_enable_x64", True)  # noqa: E702
 # ruff: disable[E402]
+import numpy as np
 import sympy as sym
 import wrapt
 from frozendict import frozendict
@@ -129,80 +129,104 @@ SymbolJaxTree = TypeVar("SymbolJaxTree")
 
 
 def lambdify_tree(inp: SymbolJaxTree, outp: SymbolJaxTree, **kwargs):
+    """
+    Numeric function that calculates the tree :code:`outp` from the tree :code:`inp`
+
+    The SymPy symbols in :code:`inp` are the arguments; other leaves of
+    :code:`inp` are constants that must match in each call. SymPy expressions in
+    :code:`outp` are evaluated with :func:`sympy.lambdify`, using
+    :code:`kwargs`; other leaves are returned as they are.
+    """
     inp_leaves, inp_treedef = jax.tree.flatten(inp)
     outp_leaves, outp_treedef = jax.tree.flatten(outp)
 
     inp_indices = []
     inp_symbols = []
+    # index -> index of the first occurrence of the same symbol
     inp_dups = {}
+    # index -> expected value
+    inp_constants = {}
 
-    for i, leave in enumerate(inp_leaves):
-        if isinstance(leave, sym.Symbol):
-            if leave in inp_symbols:
-                inp_dups[i] = inp_symbols.index(leave)
+    for i, leaf in enumerate(inp_leaves):
+        if isinstance(leaf, sym.Symbol):
+            if leaf in inp_symbols:
+                inp_dups[i] = inp_indices[inp_symbols.index(leaf)]
             else:
                 inp_indices.append(i)
-                inp_symbols.append(leave)
-        elif is_sympy(leave) and not isinstance(leave, (sym.NumberSymbol, sym.Number)):
+                inp_symbols.append(leaf)
+        elif is_sympy(leaf) and not isinstance(leaf, (sym.NumberSymbol, sym.Number)):
             raise ValueError(
-                f"SymPy leave {leave} found that is not a symbol or a constant number. "
+                f"SymPy leaf {leaf} found that is not a symbol or a constant number. "
                 "Only symbols and constants are allowed in the input definition."
             )
+        else:
+            # Compare with plain numbers in calls, which is much faster
+            inp_constants[i] = complex(leaf) if isinstance(leaf, sym.Basic) else leaf
 
-    outp_indices = []
-    outp_exprs = []
+    outp_indices = [i for i, leaf in enumerate(outp_leaves) if isinstance(leaf, sym.Basic)]
+    inner_f = sym.lambdify(inp_symbols, [outp_leaves[i] for i in outp_indices], **kwargs)
 
-    for i, leave in enumerate(outp_leaves):
-        if isinstance(leave, sym.Basic):
-            outp_indices.append(i)
-            outp_exprs.append(leave)
-
-    inp_indices_set = set(inp_indices)
-    inner_f = sym.lambdify(inp_symbols, outp_exprs, **kwargs)
+    def check(ii, ii_leaves):
+        mismatches = [
+            (i, ref) for i, ref in inp_dups.items() if not _equal(ii_leaves[i], ii_leaves[ref])
+        ]
+        if mismatches:
+            i, ref = mismatches[0]
+            paths = _paths(ii)
+            raise ValueError(
+                f"Input value {ii_leaves[i]} with path {paths[i]} was a duplicate symbol in "
+                "original input but is now not matching the input value "
+                f"{ii_leaves[ref]} at {paths[ref]}"
+            )
+        for i, expected in inp_constants.items():
+            if not _equal(ii_leaves[i], expected):
+                raise ValueError(
+                    f"Constant value {ii_leaves[i]} doesn't match reference input "
+                    f"{inp_leaves[i]} for {_paths(ii)[i]}."
+                )
 
     def outer(ii):
-        ii_leaves, ii_treedef = jax.tree.flatten_with_path(ii)
+        ii_leaves, ii_treedef = jax.tree.flatten(ii)
         if ii_treedef != inp_treedef:
             raise ValueError(
                 f"Tree definition of input {ii_treedef} does not match expected "
                 f"tree definition {inp_treedef}."
             )
         try:
-            for i, (path, leave) in enumerate(ii_leaves):
-                if i not in inp_indices_set:
-                    if i in inp_dups:
-                        orig_i = inp_dups[i]
-                        orig_path, orig_leave = ii_leaves[orig_i]
-                        if orig_leave != leave:
-                            raise ValueError(
-                                f"Input value {leave} with path {path} was a duplicate symbol in "
-                                "original input but is now not matching the input value "
-                                f"{orig_leave} at {orig_path}"
-                            )
-                    elif leave != inp_leaves[i]:
-                        raise ValueError(
-                            f"Constant value {leave} doesn't match reference input "
-                            f"{inp_leaves[i]} for {path}."
-                        )
+            check(ii, ii_leaves)
         # Error checking is incompatible with jax.jit
         # but can be skipped without affecting the result
         except TracerBoolConversionError:
             pass
 
-        ii_vals = [ii_leaves[i][1] for i in inp_indices]
-        oo_inner = inner_f(*ii_vals)
-        outp = deepcopy(outp_leaves)
-        for i, val in enumerate(oo_inner):
-            index = outp_indices[i]
+        oo_inner = inner_f(*(ii_leaves[i] for i in inp_indices))
+        outp = list(outp_leaves)
+        for index, val in zip(outp_indices, oo_inner, strict=True):
             outp[index] = val
         return jax.tree.unflatten(outp_treedef, outp)
 
     return outer
 
 
+def _equal(a, b) -> bool:
+    try:
+        return bool(a == b)
+    # Arrays with more than one element
+    except ValueError:
+        return bool(np.array_equal(a, b))
+
+
+def _paths(tree) -> list[str]:
+    return [jax.tree_util.keystr(path) for path, _ in jax.tree.leaves_with_path(tree)]
+
+
+@cache
+def _signature(f) -> inspect.Signature:
+    return inspect.signature(f)
+
+
 def normalized_args(wrapped, args, kwargs):
-    sig = inspect.signature(wrapped)
-    bound = sig.bind(*args, **kwargs)
+    bound = _signature(wrapped).bind(*args, **kwargs)
     bound.apply_defaults()
     all_args = bound.arguments
     return all_args
@@ -230,17 +254,23 @@ def lambdify(recurse_for=(), modules=sym, args=None, kwargs=None, **sym_kwargs):
     sample_args = () if args is None else args
     sample_kwargs = {} if kwargs is None else kwargs
 
+    # wrapped -> numeric function, avoids hashing the arguments of
+    # _outer_lambdify() in each call
+    compiled = {}
+
     @wrapt.decorator
     def lambdified(wrapped, instance, args, kwargs):
-        n_args = normalized_args(wrapped, args, kwargs)
-        f = _outer_lambdify(
-            wrapped=wrapped,
-            modules=modules,
-            sample_args=tuple(sample_args),
-            sample_kwargs=frozendict(sample_kwargs),
-            sym_kwargs=frozendict(sym_kwargs),
-            recurse_for=recurse_for,
-        )
-        return f(n_args)
+        try:
+            f = compiled[wrapped]
+        except KeyError:
+            f = compiled[wrapped] = _outer_lambdify(
+                wrapped=wrapped,
+                modules=modules,
+                sample_args=tuple(sample_args),
+                sample_kwargs=frozendict(sample_kwargs),
+                sym_kwargs=frozendict(sym_kwargs),
+                recurse_for=recurse_for,
+            )
+        return f(normalized_args(wrapped, args, kwargs))
 
     return lambdified
