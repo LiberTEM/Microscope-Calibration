@@ -7,7 +7,6 @@ from microscope_calibration.common.model import (
     DescanError,
     Model4DSTEM,
     PixelYX,
-    lambdify_trace_for,
 )
 from microscope_calibration.common.stem_overfocus import (
     correct_frame,
@@ -21,7 +20,7 @@ from microscope_calibration.common.stem_overfocus import (
 )
 from microscope_calibration.util.stem_overfocus_sim import project
 
-trace = lambdify_trace_for(np)
+NumpyModel = Model4DSTEM.lambdify(np)
 
 
 @pytest.mark.with_numba
@@ -64,7 +63,9 @@ def test_model_consistency_backproject():
     source_dx = out[3]
 
     assert_allclose(out[4], 1)
-    res = trace(model, scan_pos=scan_pos, source_dx=source_dx, source_dy=source_dy)
+    res = NumpyModel.from_model(model).trace(
+        scan_pos=scan_pos, source_dx=source_dx, source_dy=source_dy
+    )
     assert_allclose(out[0], res["detector"].sampling["detector_px"].y, rtol=1e-12, atol=1e-12)
     assert_allclose(out[1], res["detector"].sampling["detector_px"].x, rtol=1e-12, atol=1e-12)
     assert_allclose(inp[2], res["specimen"].sampling["scan_px"].y, rtol=1e-12, atol=1e-12)
@@ -137,9 +138,13 @@ def test_model_consistency_correct():
     source_dx = out[3]
 
     assert_allclose(out[4], 1)
-    res = trace(model, scan_pos=scan_pos, source_dx=source_dx, source_dy=source_dy)
+    res = NumpyModel.from_model(model).trace(
+        scan_pos=scan_pos, source_dx=source_dx, source_dy=source_dy
+    )
 
-    ref_res = trace(ref_model, scan_pos=scan_pos, source_dx=source_dx, source_dy=source_dy)
+    ref_res = NumpyModel.from_model(ref_model).trace(
+        scan_pos=scan_pos, source_dx=source_dx, source_dy=source_dy
+    )
 
     assert_allclose(inp[2], ref_res["detector"].sampling["detector_px"].y, rtol=1e-12, atol=1e-12)
     assert_allclose(inp[3], ref_res["detector"].sampling["detector_px"].x, rtol=1e-12, atol=1e-12)

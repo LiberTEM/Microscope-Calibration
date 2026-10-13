@@ -8,7 +8,6 @@ from microscope_calibration.common.model import (
     DescanError,
     Model4DSTEM,
     PixelYX,
-    lambdify_trace_for,
 )
 from microscope_calibration.common.stem_overfocus import (
     correct_frame,
@@ -23,12 +22,14 @@ from microscope_calibration.udf.stem_overfocus import (
     _correction_matrix,
 )
 
-trace = lambdify_trace_for(jax.numpy)
+JaxModel = Model4DSTEM.lambdify(jax.numpy)
 
 
 @jax.jit
 def get_beam_center(model: Model4DSTEM, scan_y, scan_x):
-    res = trace(model, scan_pos=PixelYX(y=scan_y, x=scan_x), source_dx=0.0, source_dy=0.0)
+    res = JaxModel.from_model(model).trace(
+        scan_pos=PixelYX(y=scan_y, x=scan_x), source_dx=0.0, source_dy=0.0
+    )
     center = res["detector"].sampling["detector_px"]
     return (center.y, center.x)
 

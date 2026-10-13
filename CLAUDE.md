@@ -68,13 +68,12 @@ Key layers, bottom-up:
 
 1. **`common/model.py`** — the model and the optical ray-trace. `Model4DSTEM.trace()` builds
    an ordered chain of `temgym_core` components (source → scanner → specimen → descanner →
-   detector) and runs rays through them. The same code path runs on three backends:
-   concrete `float` values, `sympy` symbols (symbolic model), and `jax` tracers
+   detector) and runs rays through them. The model code is written for SymPy;
+   `Model4DSTEM.lambdify(modules)` derives a subclass with methods compiled for NumPy or JAX
    (autodiff/JIT). Coordinate conventions are strict: `PixelYX` (detector/scan pixel space,
    y-then-x) vs `CoordXY` (physical space, x-then-y). Helpers `scan_to_real`/`real_to_scan`/
    `detector_to_real`/`real_to_detector` convert between them. `adjust_*` / `derive()` return
-   **new** models (immutable update style). `lambdify_trace_for(modules)` compiles the
-   symbolic trace to a fast callable for a given numeric backend.
+   **new** models (immutable update style).
 
 2. **`util/sympy.py`** — the machinery that makes (1) possible: a custom `lambdify` (built on
    `wrapt`) that recurses into nested dataclasses/pytrees (`PixelYX`, `Model4DSTEM`,
@@ -111,11 +110,11 @@ Key layers, bottom-up:
 
 ### Mental model for making changes
 
-- The central invariant is that `trace`/model code must stay valid under **all three backends**
-  (float, sympy, jax). Branching on a value (`if x > 0`) breaks the jax tracer — that is why
-  you see `try/except TracerBoolConversionError` and `_one`/`flip_factor` style tricks
-  (constants threaded through so operations stay differentiable instead of using Python
-  conditionals). Preserve that pattern.
+- The central invariant is that `trace`/model code must stay valid for **SymPy symbols**, so
+  that it can be derived and compiled symbolically. Avoid branching on values (`if x > 0`);
+  use `_one`/`flip_factor` style tricks (constants threaded through) instead. The
+  `try/except TracerBoolConversionError` blocks date from when model code also ran with JAX
+  tracers.
 - Model functions are always SymPy-compatible and use SymPy math (`sym.cos`, `sym.pi`, ...);
   called directly on floats they may return SymPy numbers. For NumPy or JAX, use
   `Model4DSTEM.lambdify(modules)`, a cached subclass whose methods marked with
