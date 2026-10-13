@@ -700,9 +700,18 @@ def test_solver_checks_float64(jax_float32):
         solve_camera_length(ref_model=model, twotheta=0.01, radius_px=10.0)
 
 
-@pytest.mark.parametrize("flip_factor", [1.0, -1.0])
-@pytest.mark.parametrize("ref_flip_factor", [1.0, -1.0])
-def test_coords_points(flip_factor, ref_flip_factor):
+@pytest.mark.parametrize(
+    "flip_factor, ref_flip_factor, model_class",
+    [
+        (1.0, 1.0, Model4DSTEM),
+        (1.0, -1.0, Model4DSTEM),
+        (-1.0, 1.0, Model4DSTEM),
+        (-1.0, -1.0, Model4DSTEM),
+        # Returns the class of ref_model
+        (-1.0, 1.0, Model4DSTEM.lambdify(np)),
+    ],
+)
+def test_coords_points(flip_factor, ref_flip_factor, model_class):
     ref_model = Model4DSTEM.default(dataset_shape=(32, 32, 64, 64)).derive(
         overfocus=0.01,
         scan_rotation=0.4,
@@ -722,7 +731,10 @@ def test_coords_points(flip_factor, ref_flip_factor):
         det = res["detector"].sampling["detector_px"]
         points.append((scan_y, scan_x, spec.y, spec.x, det.y, det.x))
 
-    res_model, residual = solve_coords_points(ref_model=ref_model, points=np.array(points))
+    res_model, residual = solve_coords_points(
+        ref_model=model_class.from_model(ref_model), points=np.array(points)
+    )
+    assert type(res_model) is model_class
     assert res_model.flip_factor == flip_factor
     assert_allclose(residual, 0.0, atol=1e-6)
     assert_allclose(res_model.overfocus, true_model.overfocus, rtol=1e-6)

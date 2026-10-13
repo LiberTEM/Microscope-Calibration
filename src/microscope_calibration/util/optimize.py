@@ -17,10 +17,8 @@ from microscope_calibration.common.model import (
     DescanError,
     Model4DSTEM,
     PixelYX,
-    lambdify_trace_for,
 )
 from microscope_calibration.common.stem_overfocus import get_diffraction_pixel_radius
-from microscope_calibration.util.sympy import lambdify
 # ruff: enable[E402]
 
 if TYPE_CHECKING:
@@ -31,7 +29,12 @@ if TYPE_CHECKING:
     from microscope_calibration.udf.stem_overfocus import OverfocusUDF
 
 
-trace = lambdify_trace_for(jnp)
+def _numeric(model: Model4DSTEM, modules) -> Model4DSTEM:
+    """
+    :code:`model` as instance of :code:`type(model).lambdify(modules)`, see
+    :meth:`Model4DSTEM.lambdify`
+    """
+    return type(model).lambdify(modules).from_model(model)
 
 
 def check_float64():
@@ -165,9 +168,12 @@ def make_overfocus_loss_function(
         transformed_rotation, transformed_overfocus = args
         rotation = transformed_rotation / rotation_scale + rotation_diff
         overfocus = transformed_overfocus / overfocus_scale + overfocus_diff
-        return model.derive(overfocus=overfocus).adjust_detector_rotation(
-            detector_rotation=rotation / 180 * np.pi,
+        new_model = (
+            _numeric(model, np)
+            .derive(overfocus=overfocus)
+            .adjust_detector_rotation(detector_rotation=rotation / 180 * np.pi)
         )
+        return type(model).from_model(new_model)
 
     def loss(args) -> float:
         """
@@ -271,8 +277,8 @@ class _SPPArgs(NamedTuple):
 @jax.jit
 def _spp_loss(y, args: _SPPArgs):
     opt_model = args.ref_model.derive(scan_pixel_pitch=y[0], overfocus=0.0)
-    opt_res_1 = trace(opt_model, scan_pos=args.point_1, source_dx=0.0, source_dy=0.0)
-    opt_res_2 = trace(opt_model, scan_pos=args.point_2, source_dx=0.0, source_dy=0.0)
+    opt_res_1 = opt_model.trace(scan_pos=args.point_1, source_dx=0.0, source_dy=0.0)
+    opt_res_2 = opt_model.trace(scan_pos=args.point_2, source_dx=0.0, source_dy=0.0)
     dx = opt_res_2["specimen"].ray.x - opt_res_1["specimen"].ray.x
     dy = opt_res_2["specimen"].ray.y - opt_res_1["specimen"].ray.y
     opt_distance = jnp.linalg.norm(jnp.array((dy, dx)))
@@ -303,7 +309,7 @@ def solve_scan_pixel_pitch(
         Fitted model and the residuals of the fit in m
     """
     args = _SPPArgs(
-        ref_model=ref_model,
+        ref_model=_numeric(ref_model, jnp),
         point_1=point_1,
         point_2=point_2,
         physical_distance=physical_distance,
@@ -342,12 +348,7 @@ def _regression_residuals(model: Model4DSTEM, reg: CoMRegression) -> list:
         for scan_x in (0.0, 1.0):
             det_y = model.detector_center.y + (dy + dydy * scan_y + dydx * scan_x)
             det_x = model.detector_center.x + (dx + dxdy * scan_y + dxdx * scan_x)
-            res = trace(
-                model,
-                scan_pos=PixelYX(y=scan_y, x=scan_x),
-                source_dx=0.0,
-                source_dy=0.0,
-            )
+            res = model.trace(scan_pos=PixelYX(y=scan_y, x=scan_x), source_dx=0.0, source_dy=0.0)
             distances.extend(
                 (
                     det_y - res["detector"].sampling["detector_px"].y,
@@ -401,13 +402,13 @@ def solve_full_descan_error(
 
     # Align coordinate system directions with native CoM coordinate
     # system without corrections
-    aligned_model = ref_model.derive(
+    aligned_model = _numeric(ref_model, np).derive(
         flip_factor=1.0,
         scan_rotation=0.0,
         detector_rotation=0.0,
     )
     args = _DEFullArgs(
-        aligned_model=aligned_model,
+        aligned_model=_numeric(aligned_model, jnp),
         regressions=regressions,
     )
 
@@ -422,10 +423,9 @@ def solve_full_descan_error(
         .adjust_scan_rotation(ref_model.scan_rotation)
         .adjust_detector_rotation(ref_model.detector_rotation)
         .adjust_flip_factor(ref_model.flip_factor)
-        .normalize_types()
     )
 
-    return res_model, residual
+    return type(ref_model).from_model(res_model).normalize_types(), residual
 
 
 class _NormArgs(NamedTuple):
@@ -456,18 +456,9 @@ def _norm_loss(y, args: _NormArgs):
             1.0,
         ):
             for scan_x in (0.0, 1.0):
-                res = trace(
-                    opt_model,
-                    scan_pos=PixelYX(y=scan_y, x=scan_x),
-                    source_dy=0.0,
-                    source_dx=0.0,
-                )
-                ref = trace(
-                    ref_model,
-                    scan_pos=PixelYX(y=scan_y, x=scan_x),
-                    source_dy=0.0,
-                    source_dx=0.0,
-                )
+                scan_pos = PixelYX(y=scan_y, x=scan_x)
+                res = opt_model.trace(scan_pos=scan_pos, source_dy=0.0, source_dx=0.0)
+                ref = ref_model.trace(scan_pos=scan_pos, source_dy=0.0, source_dx=0.0)
                 distances.append(
                     (
                         res["detector"].sampling["detector_px"].y
@@ -493,7 +484,7 @@ def normalize_descan_error(ref_model: Model4DSTEM) -> tuple[Model4DSTEM, jax.Arr
         Fitted model and the residuals of the fit in detector pixels
     """
     args = _NormArgs(
-        ref_model=ref_model,
+        ref_model=_numeric(ref_model, jnp),
     )
     start = jnp.array(
         (
@@ -573,7 +564,8 @@ def solve_tilt_descan_error(
     # system without corrections
     # We make sure that the offset-based descan error components are preserved
     aligned_model = (
-        ref_model.adjust_flip_factor(
+        _numeric(ref_model, np)
+        .adjust_flip_factor(
             flip_factor=1.0,
         )
         .adjust_scan_rotation(
@@ -584,7 +576,7 @@ def solve_tilt_descan_error(
         )
     )
     args = _DETiltArgs(
-        aligned_model=aligned_model.normalize_types(),
+        aligned_model=_numeric(aligned_model, jnp),
         regression=regression,
     )
 
@@ -599,10 +591,9 @@ def solve_tilt_descan_error(
         .adjust_detector_rotation(ref_model.detector_rotation)
         .adjust_scan_rotation(ref_model.scan_rotation)
         .adjust_flip_factor(ref_model.flip_factor)
-        .normalize_types()
     )
 
-    return res_model, residual
+    return type(ref_model).from_model(res_model).normalize_types(), residual
 
 
 class _DETiltPointArgs(NamedTuple):
@@ -617,12 +608,7 @@ def _de_tilt_point_loss(y, args: _DETiltPointArgs):
 
     distances = []
     for scan_y, scan_x, det_y, det_x in args.points:
-        res = trace(
-            opt_model,
-            scan_pos=PixelYX(y=scan_y, x=scan_x),
-            source_dx=0.0,
-            source_dy=0.0,
-        )
+        res = opt_model.trace(scan_pos=PixelYX(y=scan_y, x=scan_x), source_dx=0.0, source_dy=0.0)
         distances.extend(
             (
                 det_y - res["detector"].sampling["detector_px"].y,
@@ -659,7 +645,7 @@ def solve_tilt_descan_error_points(
     if len(points) < 3:
         raise ValueError(f"Need at least 3 points to fit the descan error, got {len(points)}.")
     args = _DETiltPointArgs(
-        model=ref_model,
+        model=_numeric(ref_model, jnp),
         points=points,
     )
 
@@ -689,8 +675,6 @@ class _CoordPointArgs(NamedTuple):
     flip_factor: float
 
 
-@jax.jit
-@lambdify(recurse_for=(Model4DSTEM, PixelYX, DescanError), modules=jnp)
 def _coords_point_modelupdate(
     model: Model4DSTEM, overfocus, detector_rotation, flip_factor
 ) -> Model4DSTEM:
@@ -727,7 +711,7 @@ def _coords_point_loss(y, args: _CoordPointArgs):
     specimen_distances = []
     for i, (scan_y, scan_x, spec_y, spec_x, det_y, det_x) in enumerate(args.points):
         dy, dx = tilts[2 * i : 2 * i + 2]
-        res = trace(opt_model, scan_pos=PixelYX(y=scan_y, x=scan_x), source_dx=dx, source_dy=dy)
+        res = opt_model.trace(scan_pos=PixelYX(y=scan_y, x=scan_x), source_dx=dx, source_dy=dy)
         detector_distances.extend(
             (
                 res["detector"].sampling["detector_px"].y - det_y,
@@ -772,7 +756,9 @@ def solve_coords_points(ref_model: Model4DSTEM, points: jax.Array) -> tuple[Mode
     start = jnp.array([ref_model.detector_rotation, ref_model.overfocus] + [0.0, 0.0] * len(points))
     results = []
     for flip_factor in (1.0, -1.0):
-        args = _CoordPointArgs(model=ref_model, points=points, flip_factor=flip_factor)
+        args = _CoordPointArgs(
+            model=_numeric(ref_model, jnp), points=points, flip_factor=flip_factor
+        )
         opt_res, residual = _least_squares(
             fn=_coords_point_loss,
             args=args,
@@ -788,13 +774,13 @@ def solve_coords_points(ref_model: Model4DSTEM, points: jax.Array) -> tuple[Mode
     # Write the new values into the previous parameters
     detector_rotation, overfocus = opt_res.value[:2]
     res_model = _coords_point_modelupdate(
-        model=ref_model,
+        model=_numeric(ref_model, np),
         overfocus=overfocus,
         detector_rotation=detector_rotation,
         flip_factor=flip_factor,
-    ).normalize_types()
+    )
 
-    return res_model, residual
+    return type(ref_model).from_model(res_model).normalize_types(), residual
 
 
 class _HitSpecimenArgs(NamedTuple):
@@ -808,7 +794,7 @@ def _hit_specimen_loss(y, args: _HitSpecimenArgs):
     dy, dx = y
     opt_model = args.model
 
-    res = trace(opt_model, scan_pos=args.scan_pos, source_dx=dx, source_dy=dy)
+    res = opt_model.trace(scan_pos=args.scan_pos, source_dx=dx, source_dy=dy)
     specimen_px = res["specimen"].sampling["scan_px"]
     return jnp.array((specimen_px.y - args.specimen_px.y, specimen_px.x - args.specimen_px.x))
 
@@ -839,7 +825,7 @@ def solve_hit_specimen(
         Source tilt and the residual on the specimen in scan pixels
     """
     args = _HitSpecimenArgs(
-        model=model,
+        model=_numeric(model, jnp),
         scan_pos=scan_pos,
         specimen_px=specimen_px,
     )
