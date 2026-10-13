@@ -22,7 +22,8 @@ def test_twothetas(request):
         20.45,  # 113, 0.1227 nm
         21.36,  # 222, 0.1175 nm
         24.67,  # 400, 0.1018 nm
-        26.88,  # 133, 0.0934 nm
+        # Outside of the default reciprocal_radius of get_twothetas():
+        # 26.88,  # 133, 0.0934 nm
     ]
 
     cif_path = os.path.join(os.path.dirname(request.path), "AuEntryWithCollCode163723.cif")
@@ -56,18 +57,25 @@ def test_twothetas(request):
 
     twothetas = get_twothetas(cif_path, 200000)
 
+    assert twothetas[0] == 0
     without_zero = twothetas[1:]
-
-    print(without_zero, expected_111_twotheta, reference_au, corrected_au)
+    assert len(without_zero) == len(corrected_au)
 
     # 111 is the first reflection with intensity
     # get_twothetas rounds to 5 decimals
     assert_almost_equal(without_zero[0], np.round(expected_111_twotheta, decimals=5), decimal=4)
 
-    if len(without_zero) > len(corrected_au):
-        without_zero = without_zero[: len(corrected_au)]
-    elif len(without_zero) < len(corrected_au):
-        corrected_au = corrected_au[: len(without_zero)]
-
     # convert reference to radian
     assert_allclose(corrected_au / 1000, without_zero, rtol=5e-3)
+
+
+def test_twothetas_voltage(request):
+    cif_path = os.path.join(os.path.dirname(request.path), "AuEntryWithCollCode163723.cif")
+    twothetas_200 = get_twothetas(cif_path, 200000)
+    twothetas_300 = get_twothetas(cif_path, 300000)
+    # Relativistic electron wavelength in pm,
+    # https://www.jeol.com/words/emterms/20121023.071258.php#gsc.tab=0
+    wavelength_200 = 2.5079
+    wavelength_300 = 1.9687
+    # Small angles scale with the wavelength, get_twothetas() rounds to 1e-5
+    assert_allclose(twothetas_300, twothetas_200 * wavelength_300 / wavelength_200, atol=4e-5)
