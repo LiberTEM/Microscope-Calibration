@@ -1,5 +1,6 @@
 import dataclasses
 import functools
+import importlib
 import inspect
 import types
 import typing
@@ -365,7 +366,10 @@ def lambdify_class(
     are converted from and to the subclass, so that calls can be chained.
 
     The subclass is created once for each combination of arguments. Its
-    attribute :code:`_lambdify_base` is :code:`base`.
+    attribute :code:`_lambdify_base` is :code:`base`. Instances are pickled
+    as an instance of :code:`base` and the arguments of this function, so
+    that unpickling gives an instance of the subclass in the current
+    process. Module objects in :code:`modules` are pickled by name.
 
     Parameters
     ----------
@@ -393,6 +397,16 @@ def _lambdify_class(base, modules: _HashableArg, make_symbolic, recurse_for):
             "__doc__": f"{base.__name__} with methods compiled for {modules!r}",
             "_lambdify_base": base,
             "_lambdify_modules": modules.value,
+            "__reduce__": lambda self: (
+                _unpickle_lambdified,
+                (
+                    base,
+                    _modules_to_refs(modules.value),
+                    make_symbolic,
+                    recurse_for,
+                    _convert(self, base),
+                ),
+            ),
         },
     )
     for name in dir(base):
@@ -476,6 +490,39 @@ def _numeric_method(cls, base, name, modules, make_symbolic, recurse_for):
 def _is_structured(value) -> bool:
     is_namedtuple = isinstance(value, tuple) and hasattr(value, "_fields")
     return is_namedtuple or (dataclasses.is_dataclass(value) and not isinstance(value, type))
+
+
+def _unpickle_lambdified(base, modules, make_symbolic, recurse_for, obj):
+    cls = lambdify_class(base, _refs_to_modules(modules), make_symbolic, recurse_for)
+    return _convert(obj, cls)
+
+
+class _ModuleRef(typing.NamedTuple):
+    """
+    Module that is pickled by name
+    """
+
+    name: str
+
+
+def _modules_to_refs(value):
+    if isinstance(value, types.ModuleType):
+        return _ModuleRef(value.__name__)
+    elif isinstance(value, dict):
+        return {k: _modules_to_refs(v) for k, v in value.items()}
+    elif isinstance(value, (list, tuple)):
+        return type(value)(_modules_to_refs(v) for v in value)
+    return value
+
+
+def _refs_to_modules(value):
+    if isinstance(value, _ModuleRef):
+        return importlib.import_module(value.name)
+    elif isinstance(value, dict):
+        return {k: _refs_to_modules(v) for k, v in value.items()}
+    elif isinstance(value, (list, tuple)):
+        return type(value)(_refs_to_modules(v) for v in value)
+    return value
 
 
 def _convert(obj, target: type[T]) -> T:
