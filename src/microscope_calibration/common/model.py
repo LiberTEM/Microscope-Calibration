@@ -12,7 +12,7 @@ jax.config.update("jax_enable_x64", True)  # noqa: E702
 import jax_dataclasses as jdc
 import sympy as sym
 from sympy.solvers.solveset import NonlinearError
-from temgym_core import CoordXY, PixelYX
+from temgym_core import CoordXY, CoordsXY, PixelYX
 from temgym_core.components import Component, DescanError, Descanner, Plane, Scanner
 from temgym_core.propagator import FreeSpaceParaxial, Propagator
 from temgym_core.ray import Ray
@@ -241,7 +241,7 @@ class Model4DSTEM:
             cls._symbolic_class(),
             modules=modules,
             make_symbolic=symbolic_model,
-            recurse_for=(PixelYX, CoordXY, DescanError),
+            recurse_for=(PixelYX, CoordXY, CoordsXY, DescanError),
         )
 
     @classmethod
@@ -452,8 +452,8 @@ class Model4DSTEM:
         if specimen is None:
             specimen = Plane(z=self.overfocus)
         else:
-            # FIXME better solution later?
-            assert sym.simplify(specimen.z).equals(sym.simplify(self.overfocus))
+            # The specimen is in the overfocus plane by definition
+            specimen = dataclasses.replace(specimen, z=self.overfocus)
         scan_pos_phys = self.scan_to_real(scan_pos, _one=_one)
         res = OrderedDict()
         res["source"] = PointSource(z=0, semi_conv=self.semiconv)
@@ -480,6 +480,29 @@ class Model4DSTEM:
         specimen: Component | None = None,
         _one: float = 1.0,
     ) -> Result4DSTEM:
+        """
+        Trace a ray through the model
+
+        Parameters
+        ----------
+        scan_pos
+            Scan position in pixels
+        source_dx, source_dy
+            Tilt of the ray at the source in radians
+        specimen
+            Component that acts as the specimen, e.g. a
+            :class:`~temgym_core.components.Scanner` to deflect the ray like a
+            diffracting specimen. It is placed at the overfocus, i.e. its
+            :code:`z` is replaced. By default, a
+            :class:`~temgym_core.components.Plane` that doesn't change the ray.
+        _one
+            Homogeneous coordinate, see :class:`temgym_core.ray.Ray`
+
+        Returns
+        -------
+        result
+            Component and ray for each section of the model, in order
+        """
         components = self._components(
             scan_pos=scan_pos,
             specimen=specimen,

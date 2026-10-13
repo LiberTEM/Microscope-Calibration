@@ -119,8 +119,9 @@ def symbol_maker(params_cls: type[T], postfix: str | None = None, recurse_for: C
     ) -> tuple[int, T]:
         if hasattr(params_cls, "__annotations__"):
             symbols_dict = {}
-            for attr in params_cls.__annotations__:
-                cls = params_cls.__annotations__[attr]
+            # Includes annotations of base classes
+            hints = typing.get_type_hints(params_cls)
+            for attr, cls in hints.items():
                 if cls in recurse_for:
                     (index, symbols_dict[attr]) = symbol_maker_inner(
                         cls, postfix, recurse_for, index
@@ -304,8 +305,11 @@ def lambdify_method(method: Callable | None = None, *, static: tuple[str, ...] =
 
     The method must be compatible with SymPy. Arguments whose type annotation
     is numeric or in :code:`recurse_for` of :func:`lambdify_class` become
-    symbols, see :func:`symbol_maker`. All other arguments and the ones listed
-    in :code:`static` are static: They are passed on as they are, and the
+    symbols, see :func:`symbol_maker`. For arguments with other annotations,
+    e.g. a base class like :code:`Component | None`, a dataclass or NamedTuple
+    value gets symbols for its fields, and the method is compiled once per
+    class of the value. All other values and the arguments listed in
+    :code:`static` are static: They are passed on as they are, and the
     method is compiled separately for each of their values, which must be
     hashable. Static numbers are simplified as constants in the compiled code.
 
@@ -406,22 +410,34 @@ def _numeric_method(cls, base, name, modules, make_symbolic, recurse_for):
     signature = inspect.signature(method)
     hints = typing.get_type_hints(method)
     static_args = method.__lambdify_method__
+    arg_names = list(signature.parameters)[1:]
     numeric_args = [
         arg
-        for arg in list(signature.parameters)[1:]
+        for arg in arg_names
         if arg not in static_args
         and (hints.get(arg, float) in recurse_for or isnumerictype(hints.get(arg, float)))
     ]
-    # static arguments -> compiled function
+    # Arguments with other annotations, e.g. a base class, are numeric if
+    # their value is a dataclass or NamedTuple, and static otherwise
+    typed_args = [arg for arg in arg_names if arg not in static_args and arg not in numeric_args]
+    # key -> compiled function
     compiled = {}
 
-    def compile_method(static: tuple):
+    def compile_method(key: tuple):
         symbolic = {"self": make_symbolic(base)}
         for arg in numeric_args:
             symbolic[arg] = symbol_maker(
                 hints.get(arg, float), postfix=arg, recurse_for=recurse_for
             )
-        output = method(symbolic["self"], **{k: symbolic[k] for k in numeric_args}, **dict(static))
+        static = {}
+        for arg, kind, value in key:
+            if kind == "type":
+                symbolic[arg] = symbol_maker(value, postfix=arg, recurse_for=recurse_for)
+            else:
+                static[arg] = value
+        output = method(
+            symbolic["self"], **{k: v for k, v in symbolic.items() if k != "self"}, **static
+        )
         return lambdify_tree(symbolic, output, modules=modules)
 
     def is_base(x) -> bool:
@@ -432,16 +448,34 @@ def _numeric_method(cls, base, name, modules, make_symbolic, recurse_for):
         arguments = signature.bind(self, *args, **kwargs)
         arguments.apply_defaults()
         values = arguments.arguments
-        static = tuple((k, v) for k, v in list(values.items())[1:] if k not in numeric_args)
-        f = compiled.get(static)
+        key = []
+        inputs = {"self": _convert(self, base)}
+        for arg in numeric_args:
+            inputs[arg] = values[arg]
+        for arg in arg_names:
+            if arg in numeric_args:
+                continue
+            value = values[arg]
+            if arg in typed_args and _is_structured(value):
+                # Compiled once per class with symbols for the fields
+                key.append((arg, "type", type(value)))
+                inputs[arg] = value
+            else:
+                key.append((arg, "value", value))
+        key = tuple(key)
+        f = compiled.get(key)
         if f is None:
-            f = compiled[static] = compile_method(static)
-        inputs = {"self": _convert(self, base), **{k: values[k] for k in numeric_args}}
+            f = compiled[key] = compile_method(key)
         return jax.tree.map(
             lambda x: _convert(x, cls) if is_base(x) else x, f(inputs), is_leaf=is_base
         )
 
     return numeric_method
+
+
+def _is_structured(value) -> bool:
+    is_namedtuple = isinstance(value, tuple) and hasattr(value, "_fields")
+    return is_namedtuple or (dataclasses.is_dataclass(value) and not isinstance(value, type))
 
 
 def _convert(obj, target: type[T]) -> T:

@@ -22,7 +22,7 @@ from microscope_calibration.common.model import (
     symbolic_model,
     warn_runtime_derivation,
 )
-from microscope_calibration.util.sympy import lambdify, lambdify_tree
+from microscope_calibration.util.sympy import lambdify_tree
 # ruff: enable[E402]
 
 CoordMappingT = Callable[[CoordXY], PixelYX]
@@ -481,30 +481,16 @@ def correct_frame(frame, mat, scan_y, scan_x, detector_out):
                 detector_out[det_corr_y, det_corr_x] += frame[det_y, det_x]
 
 
-@lambdify(recurse_for=(PixelYX, Model4DSTEM, DescanError), modules=jnp)
-def trace_with_diffractor(model: Model4DSTEM, scan_pos: PixelYX, source_dy, source_dx, twotheta):
-    diffractor = Scanner(
-        z=model.overfocus,
-        scan_pos_x=0.0,
-        scan_pos_y=0.0,
-        scan_tilt_x=sym.tan(twotheta),
-    )
-    return model.trace(
-        scan_pos=scan_pos, source_dx=source_dx, source_dy=source_dy, specimen=diffractor
-    )
-
-
 @jax.jit
 def get_diffraction_pixel_radius(model: Model4DSTEM, twotheta: float):
     model = type(model).lambdify(jnp).from_model(model)
     center_res = model.trace(scan_pos=PixelYX(0.0, 0.0), source_dx=0.0, source_dy=0.0)
-    # trace_with_diffractor() is lambdified for Model4DSTEM
-    diff_res = trace_with_diffractor(
-        model=Model4DSTEM.from_model(model),
-        scan_pos=PixelYX(0.0, 0.0),
-        source_dx=0.0,
-        source_dy=0.0,
-        twotheta=twotheta,
+    # Deflects the ray like a diffracting specimen
+    diffractor = Scanner(
+        z=0.0, scan_pos_x=0.0, scan_pos_y=0.0, scan_tilt_x=jnp.tan(twotheta), scan_tilt_y=0.0
+    )
+    diff_res = model.trace(
+        scan_pos=PixelYX(0.0, 0.0), source_dx=0.0, source_dy=0.0, specimen=diffractor
     )
     return jnp.linalg.norm(
         jnp.array(center_res["detector"].sampling["detector_px"])
