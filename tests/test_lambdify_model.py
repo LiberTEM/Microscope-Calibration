@@ -8,7 +8,6 @@ import pytest
 import sympy as sym
 from numpy.testing import assert_allclose
 from temgym_core import CoordXY, PixelYX
-from temgym_core.propagator import FreeSpaceParaxial
 
 import microscope_calibration.util.sympy as mc_sympy
 from microscope_calibration.common.model import Model4DSTEM, RuntimeDerivationWarning
@@ -201,12 +200,6 @@ def test_static_argument():
         assert_allclose(res, [float(v) for v in ref.scan_to_real(PixelYX(y=1.0, x=2.0), _one=_one)])
 
 
-# TemGymCore registers propagators as pytrees without leaves, see
-# https://github.com/TemGym/TemGymCore
-PYTREE_PROPAGATORS = jax.tree.leaves(FreeSpaceParaxial()) == []
-
-
-@pytest.mark.skipif(not PYTREE_PROPAGATORS, reason="TemGymCore propagators are no pytrees")
 def test_trace_jit(random_model):
     # The result of trace() includes the components
     res = jax.jit(lambda m: Model4DSTEM.lambdify(jnp).from_model(m).trace(**TRACE_KWARGS))(
