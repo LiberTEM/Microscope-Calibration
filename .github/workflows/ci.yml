@@ -37,14 +37,13 @@ jobs:
           CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
 
   pinned-requirements:
-    if: false  # skip job
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-      - name: Choose Python version ${{ matrix.python_version }}
+      - name: 'Choose Python version 3.14'
         uses: actions/setup-python@v7
         with:
-          python-version: '3.11'
+          python-version: '3.14'
       - name: install the package
         run: python3 -m pip install uv && uv pip install --system .[test,common,diffraction,gui] -r packaging/requirements.txt
       - name: run pytest
