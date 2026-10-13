@@ -14,7 +14,6 @@ include = [
   "tests",
   "CITATION.cff",
   "pytest.ini",
-  "setup.cfg",
 ]
 
 # Version is derived from git tags like v0.1.0
@@ -107,3 +106,23 @@ force-exclude = true
 [tool.ruff.lint]
 select = ["E", "F", "B"]
 ignore = ["E24", "E226", "E241", "E242", "B007"]
+
+[tool.coverage.run]
+branch = true
+
+[tool.coverage.report]
+exclude_also = [
+    # Don't complain about missing debug-only code:
+    "def __repr__",
+    "if self\\.debug",
+    # Don't complain about typing branches:
+    "if TYPE_CHECKING",
+    "if typing.TYPE_CHECKING",
+    # Don't complain if tests don't hit defensive assertion code:
+    "raise AssertionError",
+    "raise NotImplementedError",
+    # Don't complain if non-runnable code isn't run:
+    "if 0:",
+    "if False:",
+    "if __name__ == .__main__.:",
+]
