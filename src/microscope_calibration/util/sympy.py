@@ -1,7 +1,9 @@
+import dataclasses
+import functools
 import inspect
 import types
 import typing
-from collections.abc import Container
+from collections.abc import Callable, Container
 from functools import cache
 from numbers import Number
 from typing import Any, TypeVar
@@ -10,6 +12,7 @@ import jax
 
 jax.config.update("jax_enable_x64", True)  # noqa: E702
 # ruff: disable[E402]
+import jax_dataclasses as jdc
 import numpy as np
 import sympy as sym
 from numpy.typing import NDArray
@@ -293,3 +296,147 @@ def lambdify(recurse_for=(), modules=sym, args=None, kwargs=None, **sym_kwargs):
         return f(normalized_args(wrapped, args, kwargs))
 
     return lambdified
+
+
+def lambdify_method(method: Callable) -> Callable:
+    """
+    Mark a method to be compiled in classes created by :func:`lambdify_class`
+
+    The method must be compatible with SymPy. Arguments whose type annotation
+    is numeric or in :code:`recurse_for` of :func:`lambdify_class` become
+    symbols, see :func:`symbol_maker`. All other arguments are static: They are
+    passed on as they are, and the method is compiled separately for each of
+    their values, which must be hashable.
+    """
+    method.__lambdify_method__ = True
+    return method
+
+
+class _HashableArg:
+    """
+    Wrapper to use arguments like :code:`modules=[{"cos": f}, "numpy"]` as cache keys
+    """
+
+    def __init__(self, value):
+        self.value = value
+        self.key = _freeze(value)
+
+    def __hash__(self):
+        return hash(self.key)
+
+    def __eq__(self, other):
+        return isinstance(other, _HashableArg) and self.key == other.key
+
+    def __repr__(self):
+        return getattr(self.value, "__name__", repr(self.value))
+
+
+def _freeze(value):
+    if isinstance(value, dict):
+        return frozendict({k: _freeze(v) for k, v in value.items()})
+    elif isinstance(value, (list, tuple)):
+        return tuple(_freeze(v) for v in value)
+    return value
+
+
+def lambdify_class(
+    base: type[T],
+    modules,
+    make_symbolic: Callable[[type[T]], T],
+    recurse_for: tuple = (),
+) -> type[T]:
+    """
+    Subclass of the dataclass :code:`base` with numeric versions of its methods
+
+    The methods marked with :func:`lambdify_method` are compiled with
+    :func:`lambdify_tree` from the methods of :code:`base`, using
+    :code:`modules`, on first use. Arguments and results of type :code:`base`
+    are converted from and to the subclass, so that calls can be chained.
+
+    The subclass is created once for each combination of arguments. Its
+    attribute :code:`_lambdify_base` is :code:`base`.
+
+    Parameters
+    ----------
+    base
+        Dataclass registered as a pytree, with SymPy-compatible methods
+    modules
+        :code:`modules` argument of :func:`sympy.lambdify`
+    make_symbolic
+        Function that returns an instance of :code:`base` with SymPy symbols
+        as parameters
+    recurse_for
+        Argument types to create symbols for, see :func:`symbol_maker`
+    """
+    return _lambdify_class(base, _HashableArg(modules), make_symbolic, tuple(recurse_for))
+
+
+@cache
+def _lambdify_class(base, modules: _HashableArg, make_symbolic, recurse_for):
+    cls = type(
+        f"{base.__name__}Lambdified",
+        (base,),
+        {
+            "__module__": base.__module__,
+            "__qualname__": f"{base.__qualname__}.lambdify({modules!r})",
+            "__doc__": f"{base.__name__} with methods compiled for {modules!r}",
+            "_lambdify_base": base,
+            "_lambdify_modules": modules.value,
+        },
+    )
+    for name in dir(base):
+        if getattr(getattr(base, name), "__lambdify_method__", False):
+            setattr(
+                cls,
+                name,
+                _numeric_method(cls, base, name, modules.value, make_symbolic, recurse_for),
+            )
+    return jdc.pytree_dataclass(cls)
+
+
+def _numeric_method(cls, base, name, modules, make_symbolic, recurse_for):
+    method = getattr(base, name)
+    signature = inspect.signature(method)
+    hints = typing.get_type_hints(method)
+    numeric_args = [
+        arg
+        for arg in list(signature.parameters)[1:]
+        if hints.get(arg, float) in recurse_for or isnumerictype(hints.get(arg, float))
+    ]
+    # static arguments -> compiled function
+    compiled = {}
+
+    def compile_method(static: tuple):
+        symbolic = {"self": make_symbolic(base)}
+        for arg in numeric_args:
+            symbolic[arg] = symbol_maker(
+                hints.get(arg, float), postfix=arg, recurse_for=recurse_for
+            )
+        output = method(symbolic["self"], **{k: symbolic[k] for k in numeric_args}, **dict(static))
+        return lambdify_tree(symbolic, output, modules=modules)
+
+    def is_base(x) -> bool:
+        return type(x) is base
+
+    @functools.wraps(method)
+    def numeric_method(self, *args, **kwargs):
+        arguments = signature.bind(self, *args, **kwargs)
+        arguments.apply_defaults()
+        values = arguments.arguments
+        static = tuple((k, v) for k, v in list(values.items())[1:] if k not in numeric_args)
+        f = compiled.get(static)
+        if f is None:
+            f = compiled[static] = compile_method(static)
+        inputs = {"self": _convert(self, base), **{k: values[k] for k in numeric_args}}
+        return jax.tree.map(
+            lambda x: _convert(x, cls) if is_base(x) else x, f(inputs), is_leaf=is_base
+        )
+
+    return numeric_method
+
+
+def _convert(obj, target: type[T]) -> T:
+    """
+    Instance of the dataclass :code:`target` with the field values of :code:`obj`
+    """
+    return target(**{f.name: getattr(obj, f.name) for f in dataclasses.fields(target) if f.init})

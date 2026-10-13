@@ -117,10 +117,14 @@ Key layers, bottom-up:
   (constants threaded through so operations stay differentiable instead of using Python
   conditionals). Preserve that pattern.
 - Model functions are always SymPy-compatible and use SymPy math (`sym.cos`, `sym.pi`, ...);
-  called directly on floats they may return SymPy numbers. For NumPy or JAX, wrap the call
-  site with `@lambdify(modules=np|jnp, recurse_for=...)` (or use `lambdify_trace_for`). Create
-  the lambdified function once, e.g. at module level: each new function object triggers a new
-  symbolic derivation, so don't decorate inside loops or frequently called functions.
+  called directly on floats they may return SymPy numbers. For NumPy or JAX, use
+  `Model4DSTEM.lambdify(modules)`, a cached subclass whose methods marked with
+  `@lambdify_method` are compiled on first use (convert instances with `from_model()`), or
+  wrap a dedicated function with `@lambdify(modules=np|jnp, recurse_for=...)`, e.g. for
+  gradients (see `examples/model.ipynb`). Create lambdified functions once, e.g. at module
+  level: each new function object triggers a new symbolic derivation, so don't decorate inside
+  loops or frequently called functions. Code that evaluates model methods with SymPy symbols,
+  e.g. derivations, must use the symbolic class (`_symbolic_class()`).
 - `trace()` is the single source of truth. Derive relations from it symbolically instead of
   hard-coding them: register the derivation in a `GENERATED_FUNCTIONS` registry (collected in
   `common/generate.py`) and run the generator. Never edit `common/_generated.py` by hand.
