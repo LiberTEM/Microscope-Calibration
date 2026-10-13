@@ -367,49 +367,20 @@ def get_backward_transformation_matrix(
     )
 
 
-# Separate functions spun out to facilitate re-use of coordinate calculations
-# for other purposes
 @numba.njit(inline="always", cache=True)
-def project_tilt_y(image_y, image_x, scan_y, scan_x, mat):
+def affine_column(scan_y, scan_x, in_y, in_x, mat, column):
+    """
+    Column :code:`column` of :code:`(scan_y, scan_x, in_y, in_x, 1) @ mat`
+
+    Calculating single columns of the matrix-vector product allows skipping
+    the rest early and facilitates auto-vectorization of loops.
+    """
     return (
-        scan_y * mat[0, 2]
-        + scan_x * mat[1, 2]
-        + image_y * mat[2, 2]
-        + image_x * mat[3, 2]
-        + mat[4, 2]
-    )
-
-
-@numba.njit(inline="always", cache=True)
-def project_tilt_x(image_y, image_x, scan_y, scan_x, mat):
-    return (
-        scan_y * mat[0, 3]
-        + scan_x * mat[1, 3]
-        + image_y * mat[2, 3]
-        + image_x * mat[3, 3]
-        + mat[4, 3]
-    )
-
-
-@numba.njit(inline="always", cache=True)
-def project_det_y(image_y, image_x, scan_y, scan_x, mat):
-    return (
-        scan_y * mat[0, 0]
-        + scan_x * mat[1, 0]
-        + image_y * mat[2, 0]
-        + image_x * mat[3, 0]
-        + mat[4, 0]
-    )
-
-
-@numba.njit(inline="always", cache=True)
-def project_det_x(image_y, image_x, scan_y, scan_x, mat):
-    return (
-        scan_y * mat[0, 1]
-        + scan_x * mat[1, 1]
-        + image_y * mat[2, 1]
-        + image_x * mat[3, 1]
-        + mat[4, 1]
+        scan_y * mat[0, column]
+        + scan_x * mat[1, column]
+        + in_y * mat[2, column]
+        + in_x * mat[3, column]
+        + mat[4, column]
     )
 
 
@@ -418,22 +389,11 @@ def project_frame_backwards(frame, source_semiconv, mat, scan_y, scan_x, image_o
     limit = np.abs(np.tan(source_semiconv)) ** 2
     for image_y in range(image_out.shape[0]):
         for image_x in range(image_out.shape[1]):
-            # Manually unrolled matrix-vector product to allow skipping before
-            # calculating all values and facilitate auto-vectorization of the
-            # loop
-
-            # _one = (
-            #       scan_y * mat[0, 4] + scan_x * mat[1, 4]
-            #       + det_y * mat[2, 4] + det_x * mat[3, 4] + mat[4, 4]
-            # )
-            # assert np.allclose(_one, 1)
-            tilt_y = project_tilt_y(image_y, image_x, scan_y, scan_x, mat)
-            tilt_x = project_tilt_x(image_y, image_x, scan_y, scan_x, mat)
+            tilt_y = affine_column(scan_y, scan_x, image_y, image_x, mat, 2)
+            tilt_x = affine_column(scan_y, scan_x, image_y, image_x, mat, 3)
             if np.abs(tilt_y) ** 2 + np.abs(tilt_x) ** 2 < limit:
-                det_y = project_det_y(image_y, image_x, scan_y, scan_x, mat)
-                det_x = project_det_x(image_y, image_x, scan_y, scan_x, mat)
-                det_y = int(np.round(det_y))
-                det_x = int(np.round(det_x))
+                det_y = int(np.round(affine_column(scan_y, scan_x, image_y, image_x, mat, 0)))
+                det_x = int(np.round(affine_column(scan_y, scan_x, image_y, image_x, mat, 1)))
                 if det_y >= 0 and det_y < frame.shape[0] and det_x >= 0 and det_x < frame.shape[1]:
                     image_out[image_y, image_x] += frame[det_y, det_x]
 
@@ -498,37 +458,22 @@ def get_detector_correction_matrix(
     )
 
 
-# Separate functions spun out to facilitate re-use of coordinate calculations
-# for other purposes, such as corrected virtual detectors
+# Separate functions to re-use coordinate calculations for other purposes,
+# such as corrected virtual detectors
 @numba.njit(inline="always", cache=True)
 def corrected_det_y(det_corr_y, det_corr_x, scan_y, scan_x, mat):
-    return (
-        scan_y * mat[0, 0]
-        + scan_x * mat[1, 0]
-        + det_corr_y * mat[2, 0]
-        + det_corr_x * mat[3, 0]
-        + mat[4, 0]
-    )
+    return affine_column(scan_y, scan_x, det_corr_y, det_corr_x, mat, 0)
 
 
 @numba.njit(inline="always", cache=True)
 def corrected_det_x(det_corr_y, det_corr_x, scan_y, scan_x, mat):
-    return (
-        scan_y * mat[0, 1]
-        + scan_x * mat[1, 1]
-        + det_corr_y * mat[2, 1]
-        + det_corr_x * mat[3, 1]
-        + mat[4, 1]
-    )
+    return affine_column(scan_y, scan_x, det_corr_y, det_corr_x, mat, 1)
 
 
 @numba.njit(cache=True)
 def correct_frame(frame, mat, scan_y, scan_x, detector_out):
     for det_corr_y in range(detector_out.shape[0]):
         for det_corr_x in range(detector_out.shape[1]):
-            # Manually unrolled matrix-vector product to allow skipping before
-            # calculating all values and facilitate auto-vectorization of the
-            # loop
             det_y = corrected_det_y(det_corr_y, det_corr_x, scan_y, scan_x, mat)
             det_x = corrected_det_x(det_corr_y, det_corr_x, scan_y, scan_x, mat)
             det_y = int(np.round(det_y))

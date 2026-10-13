@@ -24,6 +24,7 @@ from microscope_calibration.util.stem_overfocus_sim import (
 trace = lambdify_trace_for(np)
 
 
+@pytest.mark.with_numba
 def test_project_frame_forward():
     for repeat in range(10):
         scan_y = np.random.random()

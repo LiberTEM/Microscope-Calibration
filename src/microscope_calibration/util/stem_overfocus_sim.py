@@ -10,6 +10,7 @@ from microscope_calibration.common.model import Model4DSTEM
 from microscope_calibration.common.stem_overfocus import (
     CoordMappingT,
     _eliminate_tilt,
+    affine_column,
     ray_transfer_matrix,
 )
 # ruff: enable[E402]
@@ -118,44 +119,11 @@ def project_frame_forward(obj, source_semiconv, mat, scan_y, scan_x, out):
     limit = np.abs(np.tan(source_semiconv)) ** 2
     for det_y in range(out.shape[0]):
         for det_x in range(out.shape[1]):
-            # Manually unrolled matrix-vector product to allow skipping before
-            # calculating all values and facilitate auto-vectorization of the
-            # loop
-
-            # _one = (
-            #       scan_y * mat[0, 4] + scan_x * mat[1, 4]
-            #       + det_y * mat[2, 4] + det_x * mat[3, 4] + mat[4, 4]
-            # )
-            # assert np.allclose(_one, 1)
-            tilt_y = (
-                scan_y * mat[0, 2]
-                + scan_x * mat[1, 2]
-                + det_y * mat[2, 2]
-                + det_x * mat[3, 2]
-                + mat[4, 2]
-            )
-            tilt_x = (
-                scan_y * mat[0, 3]
-                + scan_x * mat[1, 3]
-                + det_y * mat[2, 3]
-                + det_x * mat[3, 3]
-                + mat[4, 3]
-            )
+            tilt_y = affine_column(scan_y, scan_x, det_y, det_x, mat, 2)
+            tilt_x = affine_column(scan_y, scan_x, det_y, det_x, mat, 3)
             if np.abs(tilt_y) ** 2 + np.abs(tilt_x) ** 2 < limit:
-                spec_y = (
-                    scan_y * mat[0, 0]
-                    + scan_x * mat[1, 0]
-                    + det_y * mat[2, 0]
-                    + det_x * mat[3, 0]
-                    + mat[4, 0]
-                )
-                spec_x = (
-                    scan_y * mat[0, 1]
-                    + scan_x * mat[1, 1]
-                    + det_y * mat[2, 1]
-                    + det_x * mat[3, 1]
-                    + mat[4, 1]
-                )
+                spec_y = affine_column(scan_y, scan_x, det_y, det_x, mat, 0)
+                spec_x = affine_column(scan_y, scan_x, det_y, det_x, mat, 1)
                 spec_y = int(np.round(spec_y))
                 spec_x = int(np.round(spec_x))
                 if spec_y >= 0 and spec_y < obj.shape[0] and spec_x >= 0 and spec_x < obj.shape[1]:
