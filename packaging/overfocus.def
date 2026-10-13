@@ -1,5 +1,5 @@
 bootstrap: docker
-from: python:3.11-slim
+from: python:3.14-slim
 
 %files
         ./Microscope-Calibration        /Microscope-Calibration
