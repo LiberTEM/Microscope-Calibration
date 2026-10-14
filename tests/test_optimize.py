@@ -47,14 +47,14 @@ def test_optimize():
     camera_length = 1.0
     propagation_distance = overfocus + camera_length
     obj_half_size = 16
-    angle = np.arctan2(obj_half_size * detector_pixel_pitch / 2 + 0.00314157, propagation_distance)
+    semiconv = (obj_half_size * detector_pixel_pitch / 2 + 0.00314157) / propagation_distance
 
     model = Model4DSTEM(
         overfocus=overfocus,
         scan_pixel_pitch=scan_pixel_pitch,
         camera_length=camera_length,
         detector_pixel_pitch=detector_pixel_pitch,
-        semiconv=angle,
+        semiconv=semiconv,
         scan_center=PixelYX(x=obj_half_size, y=obj_half_size),
         scan_rotation=scan_rotation,
         flip_factor=flip_factor,
@@ -146,14 +146,14 @@ def test_descan_error():
     camera_length = 1.0
     propagation_distance = overfocus + camera_length
     obj_half_size = 16
-    angle = np.arctan2(obj_half_size * detector_pixel_pitch / 2 + 0.00314157, propagation_distance)
+    semiconv = (obj_half_size * detector_pixel_pitch / 2 + 0.00314157) / propagation_distance
 
     model = Model4DSTEM(
         overfocus=overfocus,
         scan_pixel_pitch=scan_pixel_pitch,
         camera_length=camera_length,
         detector_pixel_pitch=detector_pixel_pitch,
-        semiconv=angle,
+        semiconv=semiconv,
         scan_center=PixelYX(x=0.0, y=0.0),
         scan_rotation=0.0,
         flip_factor=1.0,
@@ -281,13 +281,13 @@ def test_scan_pixel_pitch():
     camera_length = 1.234
     propagation_distance = overfocus + camera_length
     obj_half_size = 16
-    angle = np.arctan2(obj_half_size * detector_pixel_pitch / 2 + 0.00314157, propagation_distance)
+    semiconv = (obj_half_size * detector_pixel_pitch / 2 + 0.00314157) / propagation_distance
     model = Model4DSTEM(
         overfocus=overfocus,
         scan_pixel_pitch=scan_pixel_pitch,
         camera_length=camera_length,
         detector_pixel_pitch=detector_pixel_pitch,
-        semiconv=angle,
+        semiconv=semiconv,
         scan_center=PixelYX(x=obj_half_size, y=obj_half_size),
         scan_rotation=0.0,
         flip_factor=1.0,
@@ -331,14 +331,14 @@ def test_full_descan_error(scan_rotation, flip_factor, detector_rotation, descan
     propagation_distance = overfocus + camera_length
     obj_half_size = 8
     # Small epsilon to combat aliasing
-    angle = np.arctan2(obj_half_size * detector_pixel_pitch / 2 * 2 + 0.001, propagation_distance)
+    semiconv = (obj_half_size * detector_pixel_pitch / 2 * 2 + 0.001) / propagation_distance
 
     model = Model4DSTEM(
         overfocus=overfocus,
         scan_pixel_pitch=scan_pixel_pitch,
         camera_length=camera_length,
         detector_pixel_pitch=detector_pixel_pitch,
-        semiconv=angle,
+        semiconv=semiconv,
         scan_center=PixelYX(x=obj_half_size, y=obj_half_size),
         scan_rotation=scan_rotation,
         flip_factor=flip_factor,
@@ -483,14 +483,14 @@ def test_tilt_descan_error(scan_rotation, flip_factor, detector_rotation, descan
     propagation_distance = overfocus + camera_length
     obj_half_size = 8
     # Small epsilon to combat aliasing
-    angle = np.arctan2(obj_half_size * detector_pixel_pitch / 2 * 2 + 0.001, propagation_distance)
+    semiconv = (obj_half_size * detector_pixel_pitch / 2 * 2 + 0.001) / propagation_distance
 
     model = Model4DSTEM(
         overfocus=overfocus,
         scan_pixel_pitch=scan_pixel_pitch,
         camera_length=camera_length,
         detector_pixel_pitch=detector_pixel_pitch,
-        semiconv=angle,
+        semiconv=semiconv,
         scan_center=PixelYX(x=obj_half_size, y=obj_half_size),
         scan_rotation=scan_rotation,
         flip_factor=flip_factor,
@@ -609,14 +609,14 @@ def test_tilt_descan_error_points(
     propagation_distance = overfocus + camera_length
     obj_half_size = 8
     # Small epsilon to combat aliasing
-    angle = np.arctan2(obj_half_size * detector_pixel_pitch / 2 * 2 + 0.001, propagation_distance)
+    semiconv = (obj_half_size * detector_pixel_pitch / 2 * 2 + 0.001) / propagation_distance
 
     model = Model4DSTEM(
         overfocus=overfocus,
         scan_pixel_pitch=scan_pixel_pitch,
         camera_length=camera_length,
         detector_pixel_pitch=detector_pixel_pitch,
-        semiconv=angle,
+        semiconv=semiconv,
         scan_center=PixelYX(x=obj_half_size, y=obj_half_size),
         scan_rotation=scan_rotation,
         flip_factor=flip_factor,

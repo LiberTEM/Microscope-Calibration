@@ -36,7 +36,7 @@ def test_project_frame_forward():
                 for det_x in range(out.shape[1]):
                     inp = np.array((scan_y, scan_x, det_y, det_x, 1.0))
                     spec_y, spec_x, tilt_y, tilt_x, _one = inp @ mat
-                    if np.linalg.norm((tilt_y, tilt_x)) < np.tan(source_semiconv):
+                    if np.linalg.norm((tilt_y, tilt_x)) < source_semiconv:
                         spec_y = int(np.round(spec_y))
                         spec_x = int(np.round(spec_x))
                         if (
@@ -201,7 +201,7 @@ def test_project_identity():
         scan_pixel_pitch=1,
         camera_length=1,
         detector_pixel_pitch=2,
-        semiconv=np.pi / 2,
+        semiconv=np.inf,
         scan_center=PixelYX(x=6.9, y=16.0),
         scan_rotation=0.0,
         flip_factor=1.0,
@@ -226,7 +226,7 @@ def test_project_scale():
         scan_pixel_pitch=1,
         camera_length=1,
         detector_pixel_pitch=1,
-        semiconv=np.pi / 2,
+        semiconv=np.inf,
         scan_center=PixelYX(x=16, y=16.0),
         scan_rotation=0.0,
         flip_factor=1.0,
@@ -250,7 +250,7 @@ def test_project_shift():
         scan_pixel_pitch=1,
         camera_length=1,
         detector_pixel_pitch=2,
-        semiconv=np.pi / 2,
+        semiconv=np.inf,
         scan_center=PixelYX(x=6.9, y=16.0),
         scan_rotation=0.0,
         flip_factor=1.0,
@@ -274,7 +274,7 @@ def test_project_rotate():
         scan_pixel_pitch=1,
         camera_length=1,
         detector_pixel_pitch=2,
-        semiconv=np.pi / 2,
+        semiconv=np.inf,
         scan_center=PixelYX(x=16, y=16.0),
         scan_rotation=np.pi / 2,
         flip_factor=1.0,
@@ -298,7 +298,7 @@ def test_project_flip():
         scan_pixel_pitch=1,
         camera_length=1,
         detector_pixel_pitch=2,
-        semiconv=np.pi / 2,
+        semiconv=np.inf,
         scan_center=PixelYX(x=16, y=16.0),
         scan_rotation=0.0,
         flip_factor=-1.0,
@@ -322,7 +322,7 @@ def test_project_detector_rotate():
         scan_pixel_pitch=1,
         camera_length=1,
         detector_pixel_pitch=2,
-        semiconv=np.pi / 2,
+        semiconv=np.inf,
         scan_center=PixelYX(x=16, y=16.0),
         scan_rotation=0.0,
         flip_factor=1.0,
@@ -347,7 +347,7 @@ def test_project_map_identity():
         scan_pixel_pitch=1,
         camera_length=1,
         detector_pixel_pitch=2,
-        semiconv=np.pi / 2,
+        semiconv=np.inf,
         scan_center=PixelYX(x=16, y=16.0),
         scan_rotation=0.0,
         flip_factor=1.0,
@@ -381,7 +381,7 @@ def test_project_map_scale():
         scan_pixel_pitch=1,
         camera_length=1,
         detector_pixel_pitch=2,
-        semiconv=np.pi / 2,
+        semiconv=np.inf,
         scan_center=PixelYX(x=16, y=16.0),
         scan_rotation=0.0,
         flip_factor=1.0,
@@ -416,7 +416,7 @@ def test_project_map_rotate():
         scan_pixel_pitch=1,
         camera_length=1,
         detector_pixel_pitch=2,
-        semiconv=np.pi / 2,
+        semiconv=np.inf,
         scan_center=PixelYX(x=16, y=16.0),
         scan_rotation=0.0,
         flip_factor=1.0,
@@ -450,7 +450,7 @@ def test_project_map_flip():
         scan_pixel_pitch=1,
         camera_length=1,
         detector_pixel_pitch=2,
-        semiconv=np.pi / 2,
+        semiconv=np.inf,
         scan_center=PixelYX(x=16, y=16.0),
         scan_rotation=0.0,
         flip_factor=1.0,
@@ -483,7 +483,7 @@ def test_project_fixref_scanscale():
         scan_pixel_pitch=2,  # <--
         camera_length=1,
         detector_pixel_pitch=2,
-        semiconv=np.pi / 2,
+        semiconv=np.inf,
         scan_center=PixelYX(x=16, y=16.0),
         scan_rotation=0.0,
         flip_factor=1.0,
@@ -518,7 +518,7 @@ def test_project_fixref_scanshift():
         scan_pixel_pitch=1,
         camera_length=1,
         detector_pixel_pitch=2,
-        semiconv=np.pi / 2,
+        semiconv=np.inf,
         scan_center=PixelYX(x=17, y=15.0),
         scan_rotation=0.0,
         flip_factor=1.0,
@@ -551,7 +551,7 @@ def test_project_fixref_scanrotate():
         scan_pixel_pitch=1,
         camera_length=1,
         detector_pixel_pitch=2,
-        semiconv=np.pi / 2,
+        semiconv=np.inf,
         scan_center=PixelYX(x=16, y=16.0),
         scan_rotation=np.pi / 2,
         flip_factor=1.0,
@@ -586,14 +586,14 @@ def test_project_aperture():
     propagation_distance = overfocus + camera_length
     obj_half_size = 16
     # Small epsilon to avoid hitting numerical errors at exactly the pixel boundary
-    angle = np.arctan2(obj_half_size * detector_pixel_pitch / 2 + 0.001, propagation_distance)
+    semiconv = (obj_half_size * detector_pixel_pitch / 2 + 0.001) / propagation_distance
 
     model = Model4DSTEM(
         overfocus=overfocus,
         scan_pixel_pitch=scan_pixel_pitch,
         camera_length=camera_length,
         detector_pixel_pitch=detector_pixel_pitch,
-        semiconv=angle,
+        semiconv=semiconv,
         scan_center=PixelYX(x=obj_half_size, y=obj_half_size),
         scan_rotation=0.0,
         flip_factor=1.0,
@@ -627,14 +627,14 @@ def test_project_descan():
     propagation_distance = overfocus + camera_length
     obj_half_size = 16
     # Small epsilon to avoid hitting numerical errors at exactly the pixel boundary
-    angle = np.arctan2(obj_half_size * detector_pixel_pitch / 2 + 0.001, propagation_distance)
+    semiconv = (obj_half_size * detector_pixel_pitch / 2 + 0.001) / propagation_distance
 
     model = Model4DSTEM(
         overfocus=overfocus,
         scan_pixel_pitch=scan_pixel_pitch,
         camera_length=camera_length,
         detector_pixel_pitch=detector_pixel_pitch,
-        semiconv=angle,
+        semiconv=semiconv,
         scan_center=PixelYX(x=obj_half_size, y=obj_half_size),
         scan_rotation=0.0,
         flip_factor=1.0,

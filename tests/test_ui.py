@@ -54,7 +54,8 @@ def test_events(kwargs):
     assert calibrated.dataset == ds
     m = calibrated.model
     assert_allclose(m.camera_length, 1.2)
-    assert_allclose(m.semiconv, 2 / 1000)
+    # The UI shows the angle, the model holds the slope
+    assert_allclose(m.semiconv, np.tan(2 / 1000))
     assert_allclose(m.detector_pixel_pitch, 60e-6)
     assert_allclose(m.scan_rotation, np.deg2rad(17))
 

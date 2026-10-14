@@ -287,7 +287,7 @@ def _eliminate_tilt(
     ------
     FittingError
         The rows of :code:`plane` for tilt are the change of the position in
-        the plane with source tilt. Scaled by the semi-convergence angle, the
+        the plane with source tilt. Scaled by the semi-convergence slope, the
         smallest singular value of that is the smallest semi-axis of the
         beam's footprint in the plane in pixels. If the footprint is smaller
         than :code:`min_footprint_px`, the transformation is considered (close
@@ -349,7 +349,7 @@ def get_backward_transformation_matrix(
         coefficients. By default, scan pixel coordinates of :code:`rec_model`.
     min_footprint_px
         Minimum smallest semi-axis of the beam's footprint in the specimen
-        plane in specimen pixels, given the semi-convergence angle. Below
+        plane in specimen pixels, given the semi-convergence slope. Below
         that, the transformation is considered (close to) singular, e.g. in
         focus.
 
@@ -386,7 +386,8 @@ def affine_column(scan_y, scan_x, in_y, in_x, mat, column):
 
 @numba.njit(cache=True)
 def project_frame_backwards(frame, source_semiconv, mat, scan_y, scan_x, image_out):
-    limit = np.abs(np.tan(source_semiconv)) ** 2
+    # source_semiconv is a slope, see Model4DSTEM
+    limit = np.abs(source_semiconv) ** 2
     for image_y in range(image_out.shape[0]):
         for image_x in range(image_out.shape[1]):
             tilt_y = affine_column(scan_y, scan_x, image_y, image_x, mat, 2)
@@ -434,7 +435,7 @@ def get_detector_correction_matrix(
         Model of the reference system
     min_footprint_px
         Minimum smallest semi-axis of the beam's footprint in the detector
-        plane of the reference model in pixels, given the semi-convergence
+        plane of the reference model in pixels, given the semi-convergence slope
         angle of :code:`rec_model`. Below that, the transformation is
         considered (close to) singular, e.g. with the detector in a crossover.
 

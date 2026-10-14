@@ -151,7 +151,7 @@ def test_backproject_identity():
         scan_pixel_pitch=1,
         camera_length=1,
         detector_pixel_pitch=2,
-        semiconv=np.pi / 2,
+        semiconv=np.inf,
         scan_center=PixelYX(x=7.1, y=16.0),
         scan_rotation=0.0,
         flip_factor=1.0,
@@ -163,7 +163,7 @@ def test_backproject_identity():
     mat = get_backward_transformation_matrix(rec_model=model)
     project_frame_backwards(
         frame=obj,
-        source_semiconv=np.pi / 2,
+        source_semiconv=np.inf,
         mat=mat,
         scan_y=16,
         scan_x=7,
@@ -181,7 +181,7 @@ def test_backproject_counterrotate():
         scan_pixel_pitch=1,
         camera_length=1,
         detector_pixel_pitch=2,
-        semiconv=np.pi / 2,
+        semiconv=np.inf,
         scan_center=PixelYX(x=16, y=16.0),
         scan_rotation=np.pi / 2,
         flip_factor=1.0,
@@ -194,7 +194,7 @@ def test_backproject_counterrotate():
     mat = get_backward_transformation_matrix(rec_model=model)
     project_frame_backwards(
         frame=obj,
-        source_semiconv=np.pi / 2,
+        source_semiconv=np.inf,
         mat=mat,
         scan_y=16,
         scan_x=16,
@@ -228,7 +228,7 @@ def test_backproject_rot90_flip(rotate_scan, rotate_detector, fixed_reference, f
         scan_pixel_pitch=1,
         camera_length=1,
         detector_pixel_pitch=2,
-        semiconv=np.pi / 2,
+        semiconv=np.inf,
         scan_center=PixelYX(x=16, y=16.0),
         scan_rotation=scan_rotation,
         flip_factor=flip_factor,
@@ -269,7 +269,7 @@ def test_backproject_rot90_flip(rotate_scan, rotate_detector, fixed_reference, f
             res = np.zeros_like(obj)
             project_frame_backwards(
                 frame=projected[pick_y, pick_x],
-                source_semiconv=np.pi / 2,
+                source_semiconv=np.inf,
                 mat=mat,
                 scan_y=pick_y,
                 scan_x=pick_x,
@@ -287,7 +287,7 @@ def test_backproject_scale_fixed():
         scan_pixel_pitch=2,
         camera_length=1,
         detector_pixel_pitch=2,
-        semiconv=np.pi / 2,
+        semiconv=np.inf,
         scan_center=PixelYX(x=16.0, y=16.0),
         scan_rotation=0.0,
         flip_factor=1.0,
@@ -316,7 +316,7 @@ def test_backproject_scale_fixed():
     mat = get_backward_transformation_matrix(rec_model=model, specimen_to_image=map_coord)
     project_frame_backwards(
         frame=projected[16, 16],
-        source_semiconv=np.pi / 2,
+        source_semiconv=np.inf,
         mat=mat,
         scan_y=16,
         scan_x=16,
@@ -334,7 +334,7 @@ def test_backproject_scale_scanref():
         scan_pixel_pitch=2,
         camera_length=1,
         detector_pixel_pitch=2,
-        semiconv=np.pi / 2,
+        semiconv=np.inf,
         scan_center=PixelYX(x=16.0, y=16.0),
         scan_rotation=0.0,
         flip_factor=1.0,
@@ -356,7 +356,7 @@ def test_backproject_scale_scanref():
     mat = get_backward_transformation_matrix(rec_model=model, specimen_to_image=None)
     project_frame_backwards(
         frame=projected[16, 16],
-        source_semiconv=np.pi / 2,
+        source_semiconv=np.inf,
         mat=mat,
         scan_y=16,
         scan_x=16,
@@ -386,15 +386,13 @@ def correction_model(obj_half_size: int, **changes) -> Model4DSTEM:
     """
     overfocus = 1.0
     scan_shape, detector_shape = correction_shapes(obj_half_size)
-    angle = np.arctan2(
-        obj_half_size * DETECTOR_PIXEL_PITCH / 2 + 0.00314157, overfocus + CAMERA_LENGTH
-    )
+    semiconv = (obj_half_size * DETECTOR_PIXEL_PITCH / 2 + 0.00314157) / (overfocus + CAMERA_LENGTH)
     return Model4DSTEM(
         overfocus=overfocus,
         scan_pixel_pitch=SCAN_PIXEL_PITCH,
         camera_length=CAMERA_LENGTH,
         detector_pixel_pitch=DETECTOR_PIXEL_PITCH,
-        semiconv=angle,
+        semiconv=semiconv,
         scan_center=PixelYX(y=scan_shape[0] / 2, x=scan_shape[1] / 2),
         scan_rotation=0.0,
         flip_factor=1.0,

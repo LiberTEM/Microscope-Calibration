@@ -60,7 +60,7 @@ third-party dependency you introduce.
 The whole library is organized around one central object, **`Model4DSTEM`**
 (`common/model.py`), a `jax_dataclasses.pytree_dataclass` holding the full geometric
 calibration of a 4D-STEM experiment (overfocus, scan pixel pitch, scan center/rotation,
-camera length, detector pixel pitch/center/rotation, semi-convergence angle, flip factor, and
+camera length, detector pixel pitch/center/rotation, semi-convergence slope, flip factor, and
 a 12-parameter `DescanError`). Because it is a JAX pytree, it is both differentiable and
 traceable.
 
