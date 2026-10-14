@@ -129,7 +129,6 @@ class CoordinateCorrectionLayout:
         sig_mode: SigModeT = "lin",
         twothetas: np.ndarray | None = None,
     ):
-        # # Stuff
         self.executor = concurrent.futures.ThreadPoolExecutor(max_workers=1)
         self.calibrated_dataset = calibrated_dataset
         self.ctx = ctx
@@ -143,7 +142,15 @@ class CoordinateCorrectionLayout:
 
         self.coords_adjusted = False
 
-        # # GUI state
+        self._init_state(twothetas)
+        self._init_figures()
+        self._init_widgets()
+        self._connect_events()
+
+    def _init_state(self, twothetas: np.ndarray):
+        """
+        ColumnDataSources and tables that hold the GUI state
+        """
         self.model_model = ColumnDataSource(
             data=(
                 self.model_update(self.start_model)
@@ -195,74 +202,38 @@ class CoordinateCorrectionLayout:
             self.coord_index_cols
         )
 
-        # # GUI elements
+    def _init_figures(self):
+        """
+        Figures with cursors and other glyphs, in the order they are added
+        """
         preview = self.get_preview()
-        self.nav_fig = ApertureFigure.new(
+        self.nav_fig = self._new_figure(
             preview["nav"], title=f"Uncorrected scan map (method: {self.nav_mode})", maxdim=350
         )
-        self.adjust_layout(self.nav_fig, shape=preview["nav"].shape)
-
-        self.cursor = (
-            Cursor(cds=self.model_model, x="scan_x", y="scan_y")
-            .on(self.nav_fig.fig)
-            # this adds the necessary components to make the cursor draggable
-            .editable(selected=True)
-        )
-        # The cursor Glyph is accessed via the .cursor property, until the API is unified
-        self.cursor.cursor.line_color = "red"
+        self.cursor = self._add_cursor(self.nav_fig, self.model_model, "scan_x", "scan_y", "red")
 
         frames = self.get_frames(pos=self.scan_pos)
-        self.pick_fig = ApertureFigure.new(
+        self.pick_fig = self._new_figure(
             frames["raw"],
             title=f"Currently picked uncorrected detector frame ({self.sig_mode})",
             maxdim=350,
         )
-        self.adjust_layout(self.pick_fig, shape=frames["raw"].shape)
-
-        self.beam_centre = (
-            Cursor(cds=self.ring_model, x="detector_cx", y="detector_cy")
-            .on(self.pick_fig.fig)
-            .editable(selected=True)
+        self.beam_centre = self._add_cursor(
+            self.pick_fig, self.ring_model, "detector_cx", "detector_cy", "red"
         )
-        self.beam_centre.glyph.line_color = "red"
-        self.diffraction_ringsets = []
-        for i in range(self.ring_model.data["num_rings"][0]):
-            rikey = f"ri_{i}"
-            rokey = f"ro_{i}"
-            self.diffraction_ringsets.append(
-                RingSet(
-                    cds=self.ring_model,
-                    x="detector_cx",
-                    y="detector_cy",
-                    inner_radius=rikey,
-                    outer_radius=rokey,
-                ).on(self.pick_fig.fig)
-            )
+        self.diffraction_ringsets = self._add_rings(self.pick_fig, self.ring_model)
 
-        self.corr_point_fig = ApertureFigure.new(
+        self.corr_point_fig = self._new_figure(
             preview["corrected_point"],
             title="Point analysis corrected for de-scan error",
             maxdim=250,
         )
-        self.adjust_layout(self.corr_point_fig, shape=preview["corrected_point"].shape)
-        self.cursor_2 = (
-            Cursor(cds=self.model_model, x="scan_x", y="scan_y")
-            .on(self.corr_point_fig.fig)
-            # this adds the necessary components to make the cursor draggable
-            .editable(selected=True)
+        self.cursor_2 = self._add_cursor(
+            self.corr_point_fig, self.model_model, "scan_x", "scan_y", "red"
         )
-        # The cursor Glyph is accessed via the .cursor property, until the API is unified
-        self.cursor_2.cursor.line_color = "red"
-
-        self.nav_feature_cursor = (
-            Cursor(cds=self.feature_model, x="scan_x", y="scan_y")
-            .on(self.corr_point_fig.fig)
-            # this adds the necessary components to make the cursor draggable
-            .editable(selected=True)
+        self.nav_feature_cursor = self._add_cursor(
+            self.corr_point_fig, self.feature_model, "scan_x", "scan_y", "lightgreen"
         )
-        # The cursor Glyph is accessed via the .cursor property, until the API is unified
-        self.nav_feature_cursor.cursor.line_color = "lightgreen"
-
         self.scalebar_handles = (
             PointSet(cds=self.scalebar_model, x="scalebar_x", y="scalebar_y")
             .on(self.corr_point_fig.fig)
@@ -275,99 +246,111 @@ class CoordinateCorrectionLayout:
         self.scalebar_handles.glyph.fill_color = None
         self.scalebar_line.glyph.line_color = "yellow"
 
-        self.corr_pick_fig = ApertureFigure.new(
+        self.corr_pick_fig = self._new_figure(
             frames["corrected"],
             title=f"Frame corrected for de-scan error  ({self.sig_mode})",
             maxdim=250,
         )
-        self.adjust_layout(self.corr_pick_fig, shape=frames["corrected"].shape)
+        self.corr_beam_centre = self._add_cursor(
+            self.corr_pick_fig,
+            self.centered_ring_model,
+            "detector_cx",
+            "detector_cy",
+            "red",
+            editable=False,
+        )
+        self.corr_diffraction_ringsets = self._add_rings(
+            self.corr_pick_fig, self.centered_ring_model
+        )
 
-        self.corr_beam_centre = Cursor(
-            cds=self.centered_ring_model, x="detector_cx", y="detector_cy"
-        ).on(self.corr_pick_fig.fig)
-        self.corr_beam_centre.glyph.line_color = "red"
-        self.corr_diffraction_ringsets = []
-        for i in range(self.centered_ring_model.data["num_rings"][0]):
-            rikey = f"ri_{i}"
-            rokey = f"ro_{i}"
-            self.corr_diffraction_ringsets.append(
-                RingSet(
-                    cds=self.centered_ring_model,
-                    x="detector_cx",
-                    y="detector_cy",
-                    inner_radius=rikey,
-                    outer_radius=rokey,
-                ).on(self.corr_pick_fig.fig)
-            )
-
-        self.corr_sum_fig = ApertureFigure.new(
+        self.corr_sum_fig = self._new_figure(
             preview["corrected_sum"],
             title=f"Sum of frames corrected for de-scan error ({self.sig_mode})",
             maxdim=250,
         )
-        self.adjust_layout(self.corr_sum_fig, shape=preview["corrected_sum"].shape)
-        self.corr_beam_centre_2 = Cursor(
-            cds=self.centered_ring_model, x="detector_cx", y="detector_cy"
-        ).on(self.corr_sum_fig.fig)
-        self.corr_beam_centre_2.glyph.line_color = "red"
-        self.corr_diffraction_ringsets_2 = []
-        for i in range(self.centered_ring_model.data["num_rings"][0]):
-            rikey = f"ri_{i}"
-            rokey = f"ro_{i}"
-            self.corr_diffraction_ringsets_2.append(
-                RingSet(
-                    cds=self.centered_ring_model,
-                    x="detector_cx",
-                    y="detector_cy",
-                    inner_radius=rikey,
-                    outer_radius=rokey,
-                ).on(self.corr_sum_fig.fig)
-            )
+        self.corr_beam_centre_2 = self._add_cursor(
+            self.corr_sum_fig,
+            self.centered_ring_model,
+            "detector_cx",
+            "detector_cy",
+            "red",
+            editable=False,
+        )
+        self.corr_diffraction_ringsets_2 = self._add_rings(
+            self.corr_sum_fig, self.centered_ring_model
+        )
 
-        self.nav_fig_2 = ApertureFigure.new(
+        self.nav_fig_2 = self._new_figure(
             preview["nav"], title=f"Uncorrected scan map (method: {self.nav_mode})"
         )
-        self.adjust_layout(self.nav_fig_2, shape=preview["nav"].shape)
-
-        self.cursor_3 = (
-            Cursor(cds=self.model_model, x="scan_x", y="scan_y")
-            .on(self.nav_fig_2.fig)
-            # this adds the necessary components to make the cursor draggable
-            .editable(selected=True)
+        self.cursor_3 = self._add_cursor(
+            self.nav_fig_2, self.model_model, "scan_x", "scan_y", "red"
         )
-        # The cursor Glyph is accessed via the .cursor property, until the API is unified
-        self.cursor_3.cursor.line_color = "red"
 
-        self.pick_fig_2 = ApertureFigure.new(
+        self.pick_fig_2 = self._new_figure(
             frames["raw"],
             title=f"Currently picked uncorrected detector frame ({self.sig_mode})",
             maxdim=350,
         )
-        self.adjust_layout(self.pick_fig_2, shape=frames["raw"].shape)
-
-        self.nav_feature_select_cursor = (
-            Cursor(cds=self.feature_select_model, x="detector_x", y="detector_y")
-            .on(self.pick_fig_2.fig)
-            # this adds the necessary components to make the cursor draggable
-            .editable(selected=True)
+        self.nav_feature_select_cursor = self._add_cursor(
+            self.pick_fig_2, self.feature_select_model, "detector_x", "detector_y", "lightgreen"
         )
-        # The cursor Glyph is accessed via the .cursor property, until the API is unified
-        self.nav_feature_select_cursor.cursor.line_color = "lightgreen"
 
-        self.back_sum_fig = ApertureFigure.new(
+        self.back_sum_fig = self._new_figure(
             preview["backprojected_sum"],
             title="Frames superimposed in scan coordinate system",
             maxdim=350,
         )
-        self.adjust_layout(self.back_sum_fig, shape=preview["backprojected_sum"].shape)
-
-        self.back_pick_fig = ApertureFigure.new(
+        self.back_pick_fig = self._new_figure(
             frames["backprojected"],
             title="Currently selected frame back-projected to scan coordinate system",
             maxdim=350,
         )
-        self.adjust_layout(self.back_pick_fig, shape=frames["backprojected"].shape)
 
+    @classmethod
+    def _new_figure(cls, data: np.ndarray, title: str, maxdim: int | None = None) -> ApertureFigure:
+        kwargs = {} if maxdim is None else {"maxdim": maxdim}
+        fig = ApertureFigure.new(data, title=title, **kwargs)
+        cls.adjust_layout(fig, shape=data.shape)
+        return fig
+
+    @staticmethod
+    def _add_cursor(
+        fig: ApertureFigure,
+        cds: ColumnDataSource,
+        x: str,
+        y: str,
+        color: str,
+        editable: bool = True,
+    ) -> Cursor:
+        cursor = Cursor(cds=cds, x=x, y=y).on(fig.fig)
+        if editable:
+            # this adds the necessary components to make the cursor draggable
+            cursor = cursor.editable(selected=True)
+        cursor.glyph.line_color = color
+        return cursor
+
+    @staticmethod
+    def _add_rings(fig: ApertureFigure, cds: ColumnDataSource) -> list[RingSet]:
+        """
+        Diffraction rings with the radii :code:`ri_{i}` and :code:`ro_{i}` of
+        :meth:`ring_update`
+        """
+        return [
+            RingSet(
+                cds=cds,
+                x="detector_cx",
+                y="detector_cy",
+                inner_radius=f"ri_{i}",
+                outer_radius=f"ro_{i}",
+            ).on(fig.fig)
+            for i in range(cds.data["num_rings"][0])
+        ]
+
+    def _init_widgets(self):
+        """
+        Inputs, buttons and tables
+        """
         self.cl_input = pn.widgets.FloatInput(
             label="Camera length / m", step=0.01, value=self.start_model.camera_length
         )
@@ -402,23 +385,38 @@ class CoordinateCorrectionLayout:
             value=self.start_model.detector_pixel_pitch * 1e6,
         )
 
-        self.descan_fixpoint_table = pn.widgets.Tabulator(
-            self.descan_fixpoints,
-            buttons={
-                "select": '<i class="fa fa-bullseye"></i>',
-                "delete": '<i class="fa fa-trash"></i>',
-            },
-            # See https://github.com/holoviz/panel/pull/8256
-            selectable=False,
-        )
+        self.descan_fixpoint_table = self._new_fixpoint_table(self.descan_fixpoints)
 
         self.record_button = pn.widgets.Button(label="Record")
         self.apply_button = pn.widgets.Button(label="Apply correction from table")
         self.clear_button = pn.widgets.Button(label="Clear")
         self.correlate_button = pn.widgets.Button(label="Refine correction with cross-correlation")
 
-        self.coord_fixpoint_table = pn.widgets.Tabulator(
-            self.coord_fixpoints,
+        self.coord_fixpoint_table = self._new_fixpoint_table(self.coord_fixpoints)
+
+        self.coord_record_button = pn.widgets.Button(label="Record")
+        self.coord_apply_button = pn.widgets.Button(label="Derive coordinate system from table")
+        self.coord_clear_button = pn.widgets.Button(label="Clear")
+        self.optimize_button = pn.widgets.Button(label="Optimize sharpness of back-projection")
+
+        self.invert_focus_button = pn.widgets.Button(label="Invert sign of overfocus")
+
+        self.model_table = pn.widgets.Tabulator(
+            pd.DataFrame(columns=self.model_columns),
+            # See https://github.com/holoviz/panel/pull/8256
+            selectable=False,
+        )
+        self.descan_error_table = pn.widgets.Tabulator(
+            pd.DataFrame(columns=self.descan_error_columns),
+            # See https://github.com/holoviz/panel/pull/8256
+            selectable=False,
+        )
+        self.update_model_tables(self.start_model)
+
+    @staticmethod
+    def _new_fixpoint_table(df: pd.DataFrame) -> pn.widgets.Tabulator:
+        return pn.widgets.Tabulator(
+            df,
             buttons={
                 "select": '<i class="fa fa-bullseye"></i>',
                 "delete": '<i class="fa fa-trash"></i>',
@@ -427,33 +425,10 @@ class CoordinateCorrectionLayout:
             selectable=False,
         )
 
-        self.coord_record_button = pn.widgets.Button(label="Record")
-        self.coord_apply_button = pn.widgets.Button(label="Derive coordinate system from table")
-        self.coord_clear_button = pn.widgets.Button(label="Clear")
-        self.optimize_button = pn.widgets.Button(label="Optimize sharpness of back-projection")
-        model_dataframe = pd.DataFrame(columns=self.model_columns)
-        descan_error_dataframe = pd.DataFrame(columns=self.descan_error_columns)
-
-        self.invert_focus_button = pn.widgets.Button(label="Invert sign of overfocus")
-
-        self.model_table = pn.widgets.Tabulator(
-            model_dataframe,
-            # See https://github.com/holoviz/panel/pull/8256
-            selectable=False,
-        )
-        self.descan_error_table = pn.widgets.Tabulator(
-            descan_error_dataframe,
-            # See https://github.com/holoviz/panel/pull/8256
-            selectable=False,
-        )
-        self.update_model_tables(self.start_model)
-
-        # # Event handler setup
-
+    def _connect_events(self):
         # ## state
         # trigger whenever the "data" attribute of the cursor ColumnDataSource changes
         self.model_model.on_change("data", self.on_model_model_change)
-        # self.model_model.on_change("data", lambda attr, old, new: print(attr, old, new))
         self.scalebar_model.on_change("data", self.on_scalebar_model_change)
         self.feature_model.on_change("data", self.on_feature_model_change)
 
@@ -480,12 +455,10 @@ class CoordinateCorrectionLayout:
 
         # ## descan fixpoints table
         self.descan_fixpoint_table.on_click(
-            lambda e: self.descan_delete_row(e.row) if e.column == "delete" else None,
-            column="delete",
+            lambda e: self.descan_delete_row(e.row), column="delete"
         )
         self.descan_fixpoint_table.on_click(
-            lambda e: self.descan_move_to_row(e.row) if e.column == "select" else None,
-            column="select",
+            lambda e: self.descan_move_to_row(e.row), column="select"
         )
 
         # ## descan correction buttons
@@ -495,16 +468,10 @@ class CoordinateCorrectionLayout:
         self.correlate_button.on_click(lambda e: self.center_correlation_regression())
 
         # ## coord fixpoints table
-        self.coord_fixpoint_table.on_click(
-            lambda e: self.coord_delete_row(e.row) if e.column == "delete" else None,
-            column="delete",
-        )
-        self.coord_fixpoint_table.on_click(
-            lambda e: self.coord_move_to_row(e.row) if e.column == "select" else None,
-            column="select",
-        )
+        self.coord_fixpoint_table.on_click(lambda e: self.coord_delete_row(e.row), column="delete")
+        self.coord_fixpoint_table.on_click(lambda e: self.coord_move_to_row(e.row), column="select")
 
-        # ## descan correction buttons
+        # ## coordinate system buttons
         self.coord_record_button.on_click(lambda e: self.coord_add_row())
         self.coord_apply_button.on_click(lambda e: self.perform_coord_update())
         self.coord_clear_button.on_click(lambda e: self.coord_drop())
