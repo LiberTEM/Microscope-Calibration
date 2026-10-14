@@ -1,3 +1,4 @@
+import logging
 from numpy.testing import assert_allclose
 import pytest
 
@@ -767,3 +768,19 @@ def test_hit_specimen(random_model):
     )
     assert_allclose(residual, 0.0, atol=1e-9)
     assert_allclose((slope.dy, slope.dx), (dy, dx), rtol=1e-6)
+
+
+def test_solver_compiles_once(caplog):
+    # New parameter values must not trigger a new compilation, e.g. for each
+    # event in the calibration GUI
+    model = Model4DSTEM.default(dataset_shape=(32, 32, 64, 64)).derive(overfocus=0.01)
+    solve_hit_specimen(
+        model=model, scan_pos=PixelYX(y=1.0, x=2.0), specimen_px=PixelYX(y=3.0, x=4.0)
+    )
+    with jax.log_compiles(True), caplog.at_level(logging.WARNING, logger="jax"):
+        solve_hit_specimen(
+            model=model.derive(scan_rotation=0.3),
+            scan_pos=PixelYX(y=2.0, x=1.0),
+            specimen_px=PixelYX(y=5.0, x=6.0),
+        )
+    assert "Compiling" not in caplog.text

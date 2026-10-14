@@ -82,6 +82,9 @@ def _least_squares(fn, args, y0, tol: float = 1e-12, **kwargs):
         Optimization result and :code:`fn(y, args)` for it
     """
     check_float64()
+    # optimistix compiles with equinox.filter_jit, which treats Python numbers
+    # as static and would compile again for each new value
+    args = jax.tree.map(jnp.asarray, args)
     opt_res = optimistix.least_squares(
         fn=fn, args=args, solver=optimistix.BFGS(atol=tol, rtol=tol), y0=y0, **kwargs
     )
