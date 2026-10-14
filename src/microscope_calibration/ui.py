@@ -523,28 +523,10 @@ class CoordinateCorrectionLayout:
         # new will be the CDS dict after the trigger
         assert attr == "data"
         new_model = self.get_model(new)
-
-        # Doesn't work, likely because not all changes trigger this callback,
-        # see https://github.com/holoviz/panel/issues/8275
-        # If the coordinate system calibration is current
-        # if self.coords_adjusted:
-        #     # Check if parameters have changed that invalidate the
-        #     # calibration, and re-calibrate in that case
-        #     old_model = self.get_model(old)
-        #     new_model = self.get_model(new)
-        #     # These should be parameters that are NOT changed by
-        #     # self.perform_coord_update()
-        #     relevant = ('scan_pixel_pitch', 'camera_length', 'scan_rotation')
-        #     if any(getattr(old_model, r) != getattr(new_model, r) for r in relevant):
-        #         print("changed")
-        #         self.perform_coord_update()
-        #     else:
-        #         print("unchanged")
-
+        # Re-calibrating the coordinate system or updating only what changed
+        # doesn't work, likely because not all changes trigger this callback,
+        # see https://github.com/holoviz/panel/issues/8275. Update everything.
         new_pos = self.get_scan_pos(new)
-        # Somehow doesn't work with all the event handling confusion
-        # Just update always and be done with it *sigh*
-        # if old_pos != new_pos:
         frames = self.get_frames(pos=new_pos)
         self.pick_fig.update(frames["raw"])
         self.pick_fig_2.update(frames["raw"])
@@ -662,24 +644,41 @@ class CoordinateCorrectionLayout:
             ),
         )
 
+    @staticmethod
+    def _upsert_row(table: pn.widgets.Tabulator, columns: list, index_cols: list, values: tuple):
+        """
+        Add a row to a fix point table, or update it if the index already exists
+        """
+        idx = values[: len(index_cols)]
+        new_df = pd.DataFrame([values], columns=columns).set_index(index_cols)
+        if idx in table.value.index:
+            table.value.update(new_df)
+            # Make sure the change is registered
+            table.value = table.value
+        else:
+            table.value = pd.concat((table.value, new_df))
+
+    @staticmethod
+    def _delete_row(table: pn.widgets.Tabulator, row: int):
+        df = table.value
+        table.value = df.drop(index=df.index[row])
+
+    @staticmethod
+    def _drop_rows(table: pn.widgets.Tabulator):
+        table.value = table.value.drop(table.value.index)
+
     def descan_add_row(self):
         scan_pos = self.scan_pos
         center_pos = self.get_detector_center(self.ring_model.data)
-        idx = (int(np.round(scan_pos.y)), int(np.round(scan_pos.x)))
-        new_df = pd.DataFrame([idx + (center_pos.y, center_pos.x)], columns=self.descan_columns)
-        new_df = new_df.set_index(self.descan_index_cols)
-        t = self.descan_fixpoint_table
-        if idx in t.value.index:
-            t.value.update(new_df)
-            # Make sure the change is registered
-            t.value = t.value
-        else:
-            t.value = pd.concat((t.value, new_df))
+        self._upsert_row(
+            self.descan_fixpoint_table,
+            self.descan_columns,
+            self.descan_index_cols,
+            (int(np.round(scan_pos.y)), int(np.round(scan_pos.x)), center_pos.y, center_pos.x),
+        )
 
     def descan_delete_row(self, row):
-        df = self.descan_fixpoint_table.value
-        key = df.index[row]
-        self.descan_fixpoint_table.value = df.drop(index=key)
+        self._delete_row(self.descan_fixpoint_table, row)
 
     def descan_move_to_row(self, row):
         df = self.descan_fixpoint_table.value
@@ -689,34 +688,29 @@ class CoordinateCorrectionLayout:
         self.update_with_force(self.model_model, self.scan_pos_update(scan_pos))
 
     def descan_drop(self):
-        t = self.descan_fixpoint_table
-        t.value = t.value.drop(t.value.index)
+        self._drop_rows(self.descan_fixpoint_table)
 
     def coord_add_row(self):
         scan_pos = self.scan_pos
         feature_nav_pos = self.get_scan_pos(self.feature_model.data)
         feature_pos = self.get_feature(self.feature_select_model.data)
-        idx = (
-            int(np.round(scan_pos.y)),
-            int(np.round(scan_pos.x)),
-            float(feature_nav_pos.y),
-            float(feature_nav_pos.x),
+        self._upsert_row(
+            self.coord_fixpoint_table,
+            self.coord_columns,
+            self.coord_index_cols,
+            (
+                int(np.round(scan_pos.y)),
+                int(np.round(scan_pos.x)),
+                float(feature_nav_pos.y),
+                float(feature_nav_pos.x),
+                feature_pos.y,
+                feature_pos.x,
+            ),
         )
-        new_df = pd.DataFrame([idx + (feature_pos.y, feature_pos.x)], columns=self.coord_columns)
-        new_df = new_df.set_index(self.coord_index_cols)
-        t = self.coord_fixpoint_table
-        if idx in t.value.index:
-            t.value.update(new_df)
-            # Make sure the change is registered
-            t.value = t.value
-        else:
-            t.value = pd.concat((t.value, new_df))
         self.coords_adjusted = False
 
     def coord_delete_row(self, row):
-        df = self.coord_fixpoint_table.value
-        key = df.index[row]
-        self.coord_fixpoint_table.value = df.drop(index=key)
+        self._delete_row(self.coord_fixpoint_table, row)
         self.coords_adjusted = False
 
     def coord_move_to_row(self, row):
@@ -732,8 +726,7 @@ class CoordinateCorrectionLayout:
         self.update_with_force(self.feature_select_model, self.feature_update(detector_pos))
 
     def coord_drop(self):
-        t = self.coord_fixpoint_table
-        t.value = t.value.drop(t.value.index)
+        self._drop_rows(self.coord_fixpoint_table)
         self.coords_adjusted = False
 
     def get_model(self, model_data) -> Model4DSTEM:
@@ -745,7 +738,6 @@ class CoordinateCorrectionLayout:
 
     @staticmethod
     def get_model_twothetas(model_data):
-        # return np.array((0.01, 0.02, 0.03.))
         return model_data["twothetas"][0]
 
     @staticmethod
@@ -833,7 +825,6 @@ class CoordinateCorrectionLayout:
             result["nav"] = res[0]["intensity"].data[..., 0]
             result["corrected_point"] = res[1]["corrected_point"].data
         result["backprojected_sum"] = res[1]["backprojected_sum"].data
-        # result["corrected_point"] = res[1]["corrected_point"].data
         if self.sig_mode == "lin":
             result["corrected_sum"] = res[1]["corrected_sum"].data
         elif self.sig_mode == "log":
@@ -981,7 +972,6 @@ class CoordinateCorrectionLayout:
             cds.document.callbacks.hold(holding)
 
     def center_correlation_regression(self):
-        # Delicious! 🍝🍝🍝
         model = self.model
         ri, ro = ring_radii(model, self.get_model_twothetas(self.model_model.data))
         radius_outer = 1.2 * ro[0]
