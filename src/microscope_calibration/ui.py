@@ -102,6 +102,122 @@ class CalibratedDataset(AbstractCalibratedDataset):
         return {}
 
 
+# Instructions in the layout, see CoordinateCorrectionLayout.layout
+SECTION_1_TEXT = """
+# 4D STEM coordinate system calibration
+
+**Dataset**: {dataset}
+
+{tags}
+
+This tool helps to check and adjust the geometry of a 4D STEM
+experiment.
+
+## De-scan error, convergence semi-angle and effective camera length
+
+<details>
+<summary>Instructions</summary>
+
+Fisrt, enter the nominal values for the scan rotation as well as the
+detector pixel pitch in the corresponding input fields.
+
+Second, confirm or calibrate the shift of the beam center as a
+function of scan position (de-scan error).
+
+1. Change the selected scan position on the left
+1. Observe if the cursor on the right stays at the beam center.
+1. Observe if the plot "Corrected point analysis" shows a bright
+   field image of the specimen.
+1. Observe if the plots "Frame corrected for descan error" and "Sum
+   of frames corrected for de-scan error" show the primary beam
+   exactly at the cursor position.
+1. If the positions don't match or the plot is distorted, move the
+   cursor to the beam center and record the position. Do this for at
+   least three different scan positions.
+1. Press the button "Apply correction from table" to re-calibrate
+   the de-scan error.
+1. Observe if the de-scan error is calibrated correctly now by
+   repeating the first three steps.
+
+In case the frames show diffraction rings or spots and a list of
+"twotheta" angles was provided, now calibrate the camera length so
+that the ring glyphs match the peaks or rings in the detector
+frames.
+
+Finally, adjust the convergence semi-angle so that the innermost
+glyph matches the size of the diffraction disk.
+
+</details>
+"""
+
+SCAN_STEP_TEXT = """
+## Scan step calibration
+
+<details>
+
+<summary>Instructions</summary>
+
+Move the yellow line handles in the plot "Corrected point analysis"
+so that the line spans a feature of known physical size. Check the
+size in the "Scale bar" input field and adjust if necessary. Note
+that for defocused data the scale is only correct if the de-scan
+error was compensated correctly.
+
+The scale bar angle value is for information only.
+
+</details>
+"""
+
+SECTION_2_TEXT = """
+## Detector rotation, overfocus and handedness
+
+<details>
+
+<summary>Instructions</summary>
+
+These parameters can only be calibrated in a dataset that was
+recorded with a strong defocus so that the detector shows a shadow
+image projection of the specimen.
+
+1. Move the green cursor in the plot "Corrected point analysis" to a
+   prominent feature.
+1. Select a scan position where this feature is also visible on a
+   detector frame. Selecting the position of the green cursor will
+   show the feature at the beam center.
+1. Observe if the green cursor in the second plot "Picked detector
+   frame" points to the same feature.
+1. Observe if the plot "Frames back-projected to scan coordinate
+   system" shows a sharp image of the specimen that matches the plot
+   "Corrected point analysis".
+1. If the positions don't match or the plot is distorted, move the
+   green cursor in the second plot "Picked detector frame" to the
+   feature and record the position. Do this for at least three
+   different features or scan positions.
+1. Press the button "Derive coordinate system from table" to
+   re-calibrate the coordinate system.
+1. Observe if the coordinate system is calibrated correctly now by
+   repeating the first four steps.
+
+</details>
+"""
+
+
+def tags_markdown(tags: Mapping[str, Any]) -> str:
+    """
+    Collapsible HTML table of the metadata tags of a dataset
+    """
+    if not tags:
+        return "Embedded metadata tags: None"
+    rows = "".join(
+        f"<tr><td>{html.escape(str(key))}</td><td>{html.escape(str(value))}</td></tr>"
+        for key, value in tags.items()
+    )
+    return (
+        "\n<details>\n<summary>Embedded metadata tags</summary>\n"
+        f"<table>{rows}</table>\n</details>\n"
+    )
+
+
 def format_model(model: Model4DSTEM, columns: list[str]) -> dict[str, str]:
     """
     Model parameters as text for the model table, rotations in degrees
@@ -1100,69 +1216,11 @@ class CoordinateCorrectionLayout:
 
     @property
     def layout(self):
-
-        if self.calibrated_dataset.tags:
-            tag_html = [
-                f"<tr><td>{html.escape(str(key))}</td><td>{html.escape(str(value))}</td></tr>"
-                for key, value in self.calibrated_dataset.tags.items()
-            ]
-            tag_html = f"<table>{''.join(tag_html)}</table>"
-            tag_md = f"""
-            <details>
-            <summary>Embedded metadata tags</summary>
-            {tag_html}
-            </details>
-            """
-        else:
-            tag_md = "Embedded metadata tags: None"
-
         self.section_1_label = pn.pane.Markdown(
-            f"""
-            # 4D STEM coordinate system calibration
-
-            **Dataset**: {html.escape(str(self.calibrated_dataset.dataset))}
-
-            {tag_md}
-
-            This tool helps to check and adjust the geometry of a 4D STEM
-            experiment.
-
-            ## De-scan error, convergence semi-angle and effective camera length
-
-            <details>
-            <summary>Instructions</summary>
-
-            Fisrt, enter the nominal values for the scan rotation as well as the
-            detector pixel pitch in the corresponding input fields.
-
-            Second, confirm or calibrate the shift of the beam center as a
-            function of scan position (de-scan error).
-
-            1. Change the selected scan position on the left
-            1. Observe if the cursor on the right stays at the beam center.
-            1. Observe if the plot "Corrected point analysis" shows a bright
-               field image of the specimen.
-            1. Observe if the plots "Frame corrected for descan error" and "Sum
-               of frames corrected for de-scan error" show the primary beam
-               exactly at the cursor position.
-            1. If the positions don't match or the plot is distorted, move the
-               cursor to the beam center and record the position. Do this for at
-               least three different scan positions.
-            1. Press the button "Apply correction from table" to re-calibrate
-               the de-scan error.
-            1. Observe if the de-scan error is calibrated correctly now by
-               repeating the first three steps.
-
-            In case the frames show diffraction rings or spots and a list of
-            "twotheta" angles was provided, now calibrate the camera length so
-            that the ring glyphs match the peaks or rings in the detector
-            frames.
-
-            Finally, adjust the convergence semi-angle so that the innermost
-            glyph matches the size of the diffraction disk.
-
-            </details>
-            """,
+            SECTION_1_TEXT.format(
+                dataset=html.escape(str(self.calibrated_dataset.dataset)),
+                tags=tags_markdown(self.calibrated_dataset.tags),
+            ),
             max_width=500,
         )
         inputs_1 = pn.layout.Row(
@@ -1171,25 +1229,7 @@ class CoordinateCorrectionLayout:
             self.cl_input,
             self.semiconv_input,
         )
-        self.scan_step_label = pn.pane.Markdown(
-            """
-            ## Scan step calibration
-
-            <details>
-
-            <summary>Instructions</summary>
-
-            Move the yellow line handles in the plot "Corrected point analysis"
-            so that the line spans a feature of known physical size. Check the
-            size in the "Scale bar" input field and adjust if necessary. Note
-            that for defocused data the scale is only correct if the de-scan
-            error was compensated correctly.
-
-            The scale bar angle value is for information only.
-
-            </details>
-            """
-        )
+        self.scan_step_label = pn.pane.Markdown(SCAN_STEP_TEXT)
         inputs_2 = pn.layout.Row(
             self.scalebar_input,
             self.scale_angle_display,
@@ -1201,41 +1241,7 @@ class CoordinateCorrectionLayout:
             self.corr_sum_fig.layout,
         )
 
-        self.section_2_label = pn.pane.Markdown(
-            """
-            ## Detector rotation, overfocus and handedness
-
-            <details>
-
-            <summary>Instructions</summary>
-
-            These parameters can only be calibrated in a dataset that was
-            recorded with a strong defocus so that the detector shows a shadow
-            image projection of the specimen.
-
-            1. Move the green cursor in the plot "Corrected point analysis" to a
-               prominent feature.
-            1. Select a scan position where this feature is also visible on a
-               detector frame. Selecting the position of the green cursor will
-               show the feature at the beam center.
-            1. Observe if the green cursor in the second plot "Picked detector
-               frame" points to the same feature.
-            1. Observe if the plot "Frames back-projected to scan coordinate
-               system" shows a sharp image of the specimen that matches the plot
-               "Corrected point analysis".
-            1. If the positions don't match or the plot is distorted, move the
-               green cursor in the second plot "Picked detector frame" to the
-               feature and record the position. Do this for at least three
-               different features or scan positions.
-            1. Press the button "Derive coordinate system from table" to
-               re-calibrate the coordinate system.
-            1. Observe if the coordinate system is calibrated correctly now by
-               repeating the first four steps.
-
-            </details>
-            """,
-            max_width=500,
-        )
+        self.section_2_label = pn.pane.Markdown(SECTION_2_TEXT, max_width=500)
         raw_figs_2 = pn.layout.Row(self.nav_fig_2.layout, self.pick_fig_2.layout)
         back_figs = pn.layout.Row(self.back_sum_fig.layout, self.back_pick_fig.layout)
         descan_buttons = pn.layout.Row(
