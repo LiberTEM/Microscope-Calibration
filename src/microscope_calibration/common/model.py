@@ -221,7 +221,11 @@ class Model4DSTEM:
         The class is created once per class and :code:`modules`.
 
         Use :meth:`from_model` to convert an instance. Classmethods like
-        :meth:`default` create instances of the subclass directly.
+        :meth:`default` create instances of the subclass directly. Instances
+        keep the values as given, e.g. Python floats. Code compiled with
+        :func:`equinox.filter_jit`, such as optimistix, treats these as static
+        and compiles again for each new value. Convert them to arrays with
+        :code:`jax.tree.map(jax.numpy.asarray, model)` before passing them.
 
         Parameters
         ----------
