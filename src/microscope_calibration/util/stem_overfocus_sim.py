@@ -96,7 +96,7 @@ def get_forward_transformation_matrix(
         coefficients. By default, scan pixel coordinates of :code:`sim_model`.
     min_footprint_px
         Minimum smallest semi-axis of the beam's footprint in the detector
-        plane in pixels, given the semi-convergence angle. Below that, the
+        plane in pixels, given the semi-convergence slope. Below that, the
         transformation is considered (close to) singular, e.g. with the
         detector in a crossover.
 
@@ -116,7 +116,8 @@ def get_forward_transformation_matrix(
 
 @numba.njit(cache=True)
 def project_frame_forward(obj, source_semiconv, mat, scan_y, scan_x, out):
-    limit = np.abs(np.tan(source_semiconv)) ** 2
+    # source_semiconv is a slope, see Model4DSTEM
+    limit = np.abs(source_semiconv) ** 2
     for det_y in range(out.shape[0]):
         for det_x in range(out.shape[1]):
             tilt_y = affine_column(scan_y, scan_x, det_y, det_x, mat, 2)

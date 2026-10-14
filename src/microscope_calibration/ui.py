@@ -374,7 +374,8 @@ class CoordinateCorrectionLayout:
         self.semiconv_input = pn.widgets.FloatInput(
             label="Convergence semi-angle / mrad",
             step=0.01,
-            value=self.start_model.semiconv * 1000,
+            # The model uses the slope, see Model4DSTEM
+            value=float(np.arctan(self.start_model.semiconv)) * 1000,
         )
         self.scalebar_input = pn.widgets.FloatInput(
             label="Scale bar / nm",
@@ -642,7 +643,7 @@ class CoordinateCorrectionLayout:
         self.update_with_force(self.model_model, self.model_update(model))
 
     def update_semiconv(self, event):
-        model = self.model.derive(semiconv=event.new / 1000)
+        model = self.model.derive(semiconv=float(np.tan(event.new / 1000)))
         self.update_with_force(self.model_model, self.model_update(model))
 
     def update_scale(self, event):

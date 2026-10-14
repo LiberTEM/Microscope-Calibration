@@ -157,6 +157,13 @@ class Model4DSTEM:
     JAX and :func:`~microscope_calibration.util.sympy.lambdify` see their
     parameters. They can't add fields that affect :meth:`trace`: the symbolic
     derivation only creates symbols for the fields of :class:`Model4DSTEM`.
+
+    Units
+    -----
+    Lengths are in m, rotations in rad. :code:`semiconv` is the maximum
+    slope of rays at the source relative to the optical axis, i.e.
+    :code:`tan()` of the convergence semi-angle, since :meth:`trace` works with
+    slopes.
     """
 
     overfocus: float  # m
@@ -166,7 +173,8 @@ class Model4DSTEM:
     camera_length: float  # m
     detector_pixel_pitch: float  # m
     detector_center: PixelYX
-    semiconv: float  # rad
+    # Slope at the source, i.e. tan() of the convergence semi-angle
+    semiconv: float
     flip_factor: float  # 1.: no flip; -1.: flip
     descan_error: DescanError = DescanError()
     detector_rotation: float = 0.0  # rad
@@ -217,7 +225,7 @@ class Model4DSTEM:
             camera_length=1.0,
             detector_pixel_pitch=50e-6,
             detector_center=detector_center,
-            semiconv=1e-3,  # radian
+            semiconv=1e-3,  # slope
             flip_factor=1.0,
         )
 
@@ -232,7 +240,7 @@ class Model4DSTEM:
         detector_pixel_pitch: float | None = None,  # m
         detector_center: PixelYX | None = None,
         detector_rotation: float | None = None,  # rad
-        semiconv: float | None = None,  # rad
+        semiconv: float | None = None,  # slope
         flip_y: bool | None = None,
         flip_factor: float | None = None,
         descan_error: DescanError | None = None,
