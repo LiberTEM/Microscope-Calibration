@@ -102,6 +102,105 @@ class CalibratedDataset(AbstractCalibratedDataset):
         return {}
 
 
+def format_model(model: Model4DSTEM, columns: list[str]) -> dict[str, str]:
+    """
+    Model parameters as text for the model table, rotations in degrees
+    """
+    res = {}
+    for key in columns:
+        value = getattr(model, key)
+        if isinstance(value, float):
+            if "rotation" in key:
+                value = np.rad2deg(value)
+            value = f"{value:.5}"
+            if "rotation" in key:
+                value = value + "°"
+        else:
+            value = str(value)
+        res[key] = value
+    return res
+
+
+def format_descan_error(descan_error: DescanError) -> dict[str, str]:
+    """
+    Descan error components as text for the descan error table
+    """
+    return {
+        key: f"{value:.5}" if isinstance(value, float) else str(value)
+        for key, value in descan_error._asdict().items()
+    }
+
+
+def correlation_pattern(ri: np.ndarray, ro: np.ndarray) -> BackgroundSubtraction:
+    """
+    Pattern to find the primary beam with the ring radii of :func:`ring_radii`
+    """
+    radius_outer = 1.2 * ro[0]
+    if len(ri) >= 2:
+        radius_outer = max(radius_outer, ri[1] / 2)
+    # Make sure we stay away from other peaks
+    return BackgroundSubtraction(radius=ro[0], radius_outer=radius_outer)
+
+
+def expected_center_shifts(model: Model4DSTEM, nav_shape: tuple[int, int]) -> np.ndarray:
+    """
+    Shift of the primary beam from the detector center at each scan position
+    according to the descan error of :code:`model`, in detector pixels (y, x)
+    """
+    # Correction to same parameters, except descan error of 0
+    ref_model = model.derive(descan_error=DescanError())
+    mat = get_detector_correction_matrix(rec_model=model, ref_model=ref_model)
+    # Scan positions in the dataset
+    y, x = np.mgrid[: nav_shape[0], : nav_shape[1]]
+    # Calculate where the nominal center actually is on the detector
+    expected_x = corrected_det_x(
+        det_corr_x=model.detector_center.x,
+        det_corr_y=model.detector_center.y,
+        scan_x=x,
+        scan_y=y,
+        mat=mat,
+    )
+    expected_y = corrected_det_y(
+        det_corr_x=model.detector_center.x,
+        det_corr_y=model.detector_center.y,
+        scan_x=x,
+        scan_y=y,
+        mat=mat,
+    )
+    # Subtract the expected position so that only the deviation remains
+    dc = model.detector_center
+    return np.stack((expected_y - dc.y, expected_x - dc.x), axis=-1)
+
+
+def center_regression(field: np.ndarray, center: PixelYX) -> np.ndarray:
+    """
+    Linear regression of beam positions, following the CoMUDF regression
+
+    Parameters
+    ----------
+    field
+        Beam position (y, x) on the detector for each scan position (y, x)
+    center
+        Nominal detector center
+
+    Returns
+    -------
+    regression
+        Rows offset, d/dy, d/dx of the deviation from :code:`center`, with
+        columns (y, x), see :data:`~microscope_calibration.util.optimize.CoMRegression`
+    """
+    # Only keep deviation from expected value in regression
+    field = field.copy()
+    field[..., 0] -= center.y
+    field[..., 1] -= center.x
+    inp = np.ones(field.shape[:-1] + (3,))
+    y, x = np.ogrid[: field.shape[0], : field.shape[1]]
+    inp[..., 1] = y
+    inp[..., 2] = x
+    reg_res = np.linalg.lstsq(inp.reshape((-1, 3)), field.reshape((-1, 2)), rcond=None)
+    return reg_res[0]
+
+
 class CoordinateCorrectionLayout:
     descan_columns = ["scan_y", "scan_x", "detector_cy", "detector_cx"]
     descan_index_cols = descan_columns[:2]
@@ -492,26 +591,12 @@ class CoordinateCorrectionLayout:
 
     def update_model_tables(self, model):
         model_df = self.model_table.value
-        for key in self.model_columns:
-            value = getattr(model, key)
-            if isinstance(value, float):
-                if "rotation" in key:
-                    value = np.rad2deg(value)
-                value = f"{value:.5}"
-                if "rotation" in key:
-                    value = value + "°"
-            else:
-                value = str(value)
+        for key, value in format_model(model, self.model_columns).items():
             model_df.loc[0, key] = value
         self.model_table.value = model_df
 
         descan_df = self.descan_error_table.value
-        for key in self.descan_error_columns:
-            value = getattr(model.descan_error, key)
-            if isinstance(value, float):
-                value = f"{value:.5}"
-            else:
-                value = str(value)
+        for key, value in format_descan_error(model.descan_error).items():
             descan_df.loc[0, key] = value
         self.descan_error_table.value = descan_df
 
@@ -974,35 +1059,7 @@ class CoordinateCorrectionLayout:
     def center_correlation_regression(self):
         model = self.model
         ri, ro = ring_radii(model, self.get_model_twothetas(self.model_model.data))
-        radius_outer = 1.2 * ro[0]
-        if len(ri) >= 2:
-            radius_outer = max(radius_outer, ri[1] / 2)
-        # Make sure we stay away from other peaks
-        pattern = BackgroundSubtraction(radius=ro[0], radius_outer=radius_outer)
-        # Correction to same parameters, except descan error of 0
-        ref_model = model.derive(descan_error=DescanError())
-        mat = get_detector_correction_matrix(rec_model=model, ref_model=ref_model)
-        # Scan positions in the dataset
-        nav_shape = self.dataset.shape.nav
-        y, x = np.mgrid[: nav_shape[0], : nav_shape[1]]
-        # Calculate where the nominal center actually is on the detector
-        expected_x = corrected_det_x(
-            det_corr_x=model.detector_center.x,
-            det_corr_y=model.detector_center.y,
-            scan_x=x,
-            scan_y=y,
-            mat=mat,
-        )
-        expected_y = corrected_det_y(
-            det_corr_x=model.detector_center.x,
-            det_corr_y=model.detector_center.y,
-            scan_x=x,
-            scan_y=y,
-            mat=mat,
-        )
-        # Subtract the expected position so that only the deviation remains
-        dc = model.detector_center
-        shifts = np.stack((expected_y - dc.y, expected_x - dc.x), axis=-1)
+        shifts = expected_center_shifts(model, nav_shape=tuple(self.dataset.shape.nav))
         aux_shifts = FastCorrelationUDF.aux_data(
             data=shifts,
             kind="nav",
@@ -1013,23 +1070,14 @@ class CoordinateCorrectionLayout:
             ctx=self.ctx,
             dataset=self.dataset,
             peaks=np.array([model.detector_center]),
-            match_pattern=pattern,
+            match_pattern=correlation_pattern(ri, ro),
             zero_shift=aux_shifts,
             upsample=True,
         )
-
-        # Following CoMUDF regression
-        field = res["refineds"].data[:, :, 0, :]
-        # Only keep deviation from expected value in regression
-        field[..., 0] -= model.detector_center.y
-        field[..., 1] -= model.detector_center.x
-
-        inp = np.ones(field.shape[:-1] + (3,))
-        y, x = np.ogrid[: field.shape[0], : field.shape[1]]
-        inp[..., 1] = y
-        inp[..., 2] = x
-        reg_res = np.linalg.lstsq(inp.reshape((-1, 3)), field.reshape((-1, 2)), rcond=None)
-        new_model, residual = solve_tilt_descan_error(ref_model=model, regression=reg_res[0])
+        regression = center_regression(
+            res["refineds"].data[:, :, 0, :], center=model.detector_center
+        )
+        new_model, residual = solve_tilt_descan_error(ref_model=model, regression=regression)
         self.model_model.data.update(**self.model_update(new_model))
         self.push()
 
