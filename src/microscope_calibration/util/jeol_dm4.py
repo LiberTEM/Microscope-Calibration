@@ -17,7 +17,7 @@ from libertem.api import Context
 from ncempy.io.dm import fileDM
 
 from microscope_calibration.common.model import DescanError, Model4DSTEM
-from microscope_calibration.ui import CalibratedDataset
+from microscope_calibration.dataset import CalibratedDataset
 
 # Tags of the 4D STEM data. ImageList.1 is the thumbnail.
 IMAGE = ".ImageList.2"
