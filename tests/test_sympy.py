@@ -103,3 +103,10 @@ def test_lambdify_component_identity(component, modules):
     for leaf in jax.tree.leaves(res):
         assert not isinstance(leaf, sym.Basic)
     assert_allclose(jax.tree.leaves(res), jax.tree.leaves(component))
+
+
+def test_lambdify_tree_integer_constants():
+    a = sym.Symbol("a")
+    f = lambdify_tree(inp=(a,), outp=(a * 0, sym.Integer(2), a), modules=jax.numpy)
+    for value in f((1.0,)):
+        assert jax.numpy.issubdtype(jax.numpy.asarray(value).dtype, jax.numpy.floating)

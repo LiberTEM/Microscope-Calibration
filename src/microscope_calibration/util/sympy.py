@@ -189,7 +189,13 @@ def lambdify_tree(inp: SymbolJaxTree, outp: SymbolJaxTree, **kwargs):
             inp_constants[i] = complex(leaf) if isinstance(leaf, sym.Basic) else leaf
 
     outp_indices = [i for i, leaf in enumerate(outp_leaves) if isinstance(leaf, sym.Basic)]
-    inner_f = sym.lambdify(inp_symbols, [outp_leaves[i] for i in outp_indices], **kwargs)
+    # Integer constants, e.g. a simplified zero, as float like the other
+    # outputs, also since JAX derivatives require floating point outputs
+    outp_exprs = [
+        sym.Float(leaf) if isinstance(leaf, sym.Integer) else leaf
+        for leaf in (outp_leaves[i] for i in outp_indices)
+    ]
+    inner_f = sym.lambdify(inp_symbols, outp_exprs, **kwargs)
 
     def check(ii, ii_leaves):
         mismatches = [

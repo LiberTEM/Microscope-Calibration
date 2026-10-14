@@ -319,3 +319,30 @@ def test_flax_state_dict(random_model):
     res = flax.serialization.from_state_dict(target=model, state=state)
     assert type(res) is type(model)
     assert res == model
+
+
+def test_trace_float_outputs(random_model):
+    res = Model4DSTEM.lambdify(jnp).from_model(random_model).trace(**TRACE_KWARGS)
+    for leaf in jax.tree.leaves(res):
+        assert jnp.issubdtype(jnp.asarray(leaf).dtype, jnp.floating), leaf
+
+
+def test_trace_jacobian():
+    model = Model4DSTEM.lambdify(jnp).from_model(Model4DSTEM.default())
+    # Positional arguments in the order of trace(scan_pos, source_dx, source_dy)
+    jac = jax.jacobian(model.trace, argnums=(0, 1, 2))(PixelYX(y=1.0, x=2.0), 0.02, 0.01)
+    d_scan_pos, d_dx, d_dy = jac["detector"].sampling["detector_px"].x
+    # In focus, camera length 1 m, detector pixel pitch 50 um
+    assert_allclose((d_scan_pos.y, d_scan_pos.x, d_dx, d_dy), (0.0, 0.0, 1 / 50e-6, 0.0))
+
+
+def test_model_jacobian():
+    def detector_x(model):
+        res = model.trace(scan_pos=PixelYX(y=1.0, x=2.0), source_dy=0.01, source_dx=0.02)
+        return res["detector"].sampling["detector_px"].x
+
+    model = Model4DSTEM.lambdify(jnp).from_model(Model4DSTEM.default())
+    jac = jax.jacobian(detector_x)(model)
+    assert type(jac) is type(model)
+    assert_allclose(jac.camera_length, 0.02 / 50e-6)
+    assert_allclose(jac.detector_pixel_pitch, -0.02 / 50e-6**2)
