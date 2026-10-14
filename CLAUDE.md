@@ -104,9 +104,10 @@ Key layers, bottom-up:
    structure (uses the `diffraction` extra); feeds known-geometry references into the
    optimizers.
 
-8. **`ui.py`** — interactive Panel/Bokeh calibration GUI (`gui` extra). `CalibratedDataset`
-   pairs a dataset with a model; `CoordinateCorrectionLayout` wires sliders/tables to live
-   re-projection so a user can tune calibration against a displayed dataset.
+8. **`ui.py`** — interactive Panel/Bokeh calibration GUI (`gui` extra).
+   `CoordinateCorrectionLayout` wires sliders/tables to live re-projection so a user can tune
+   calibration against a displayed dataset. `CalibratedDataset` (`dataset.py`, also importable
+   from `ui`) pairs a dataset with a model.
 
 ### Mental model for making changes
 

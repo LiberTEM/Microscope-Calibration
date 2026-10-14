@@ -1,5 +1,4 @@
 import concurrent.futures
-from abc import ABC, abstractmethod
 from typing import Literal, Any
 from collections.abc import Mapping
 import html
@@ -29,6 +28,9 @@ from libertem_ui.display.points import PointSet, RingSet
 from libertem_ui.figure import ApertureFigure
 
 from .common.model import DescanError, Model4DSTEM, PixelYX, lambdify_trace_for
+
+# Also available from this module
+from .dataset import AbstractCalibratedDataset, CalibratedDataset  # noqa: F401
 from .common.stem_overfocus import (
     corrected_det_x,
     corrected_det_y,
@@ -58,48 +60,6 @@ SigModeT = Literal[
 
 
 trace = lambdify_trace_for(jnp)
-
-
-class AbstractCalibratedDataset(ABC):
-    @property
-    @abstractmethod
-    def model(self) -> Model4DSTEM:
-        raise NotImplementedError()
-
-    @property
-    @abstractmethod
-    def dataset(self) -> DataSet:
-        raise NotImplementedError()
-
-    @abstractmethod
-    def calibrated(self, model: Model4DSTEM) -> AbstractCalibratedDataset:
-        raise NotImplementedError()
-
-    @property
-    @abstractmethod
-    def tags(self) -> Mapping[str, Any]:
-        raise NotImplementedError()
-
-
-class CalibratedDataset(AbstractCalibratedDataset):
-    def __init__(self, dataset: DataSet, model: Model4DSTEM):
-        self._ds = dataset
-        self._model = model
-
-    @property
-    def dataset(self) -> DataSet:
-        return self._ds
-
-    @property
-    def model(self) -> Model4DSTEM:
-        return self._model
-
-    def calibrated(self, model) -> CalibratedDataset:
-        return CalibratedDataset(dataset=self.dataset, model=model)
-
-    @property
-    def tags(self):
-        return {}
 
 
 # Instructions in the layout, see CoordinateCorrectionLayout.layout
