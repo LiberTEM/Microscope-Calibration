@@ -78,17 +78,18 @@ experiment.
 <details>
 <summary>Instructions</summary>
 
-Fisrt, enter the nominal values for the scan rotation as well as the
+First, enter the nominal values for the scan rotation as well as the
 detector pixel pitch in the corresponding input fields.
 
 Second, confirm or calibrate the shift of the beam center as a
 function of scan position (de-scan error).
 
-1. Change the selected scan position on the left
-1. Observe if the cursor on the right stays at the beam center.
-1. Observe if the plot "Corrected point analysis" shows a bright
-   field image of the specimen.
-1. Observe if the plots "Frame corrected for descan error" and "Sum
+1. Change the selected scan position in the plot "Uncorrected scan map".
+1. Observe if the cursor in the plot "Currently picked uncorrected
+   detector frame" stays at the beam center.
+1. Observe if the plot "Point analysis corrected for de-scan error"
+   shows a bright field image of the specimen.
+1. Observe if the plots "Frame corrected for de-scan error" and "Sum
    of frames corrected for de-scan error" show the primary beam
    exactly at the cursor position.
 1. If the positions don't match or the plot is distorted, move the
@@ -117,8 +118,8 @@ SCAN_STEP_TEXT = """
 
 <summary>Instructions</summary>
 
-Move the yellow line handles in the plot "Corrected point analysis"
-so that the line spans a feature of known physical size. Check the
+Move the yellow line handles in the plot "Point analysis corrected for
+de-scan error" above so that the line spans a feature of known physical size. Check the
 size in the "Scale bar" input field and adjust if necessary. Note
 that for defocused data the scale is only correct if the de-scan
 error was compensated correctly.
@@ -139,19 +140,20 @@ These parameters can only be calibrated in a dataset that was
 recorded with a strong defocus so that the detector shows a shadow
 image projection of the specimen.
 
-1. Move the green cursor in the plot "Corrected point analysis" to a
-   prominent feature.
-1. Select a scan position where this feature is also visible on a
-   detector frame. Selecting the position of the green cursor will
-   show the feature at the beam center.
-1. Observe if the green cursor in the second plot "Picked detector
-   frame" points to the same feature.
-1. Observe if the plot "Frames back-projected to scan coordinate
+1. Move the green cursor in the plot "Point analysis corrected for
+   de-scan error" above to a prominent feature.
+1. Select a scan position in the plot "Uncorrected scan map" below
+   where this feature is also visible on a detector frame. Selecting
+   the position of the green cursor will show the feature at the beam
+   center.
+1. Observe if the green cursor in the plot "Currently picked
+   uncorrected detector frame" below points to the same feature.
+1. Observe if the plot "Frames superimposed in scan coordinate
    system" shows a sharp image of the specimen that matches the plot
-   "Corrected point analysis".
+   "Point analysis corrected for de-scan error".
 1. If the positions don't match or the plot is distorted, move the
-   green cursor in the second plot "Picked detector frame" to the
-   feature and record the position. Do this for at least three
+   green cursor in the plot "Currently picked uncorrected detector
+   frame" below to the feature and record the position. Do this for at least three
    different features or scan positions.
 1. Press the button "Derive coordinate system from table" to
    re-calibrate the coordinate system.
@@ -423,7 +425,7 @@ class CoordinateCorrectionLayout:
 
         self.corr_pick_fig = self._new_figure(
             frames["corrected"],
-            title=f"Frame corrected for de-scan error  ({self.sig_mode})",
+            title=f"Frame corrected for de-scan error ({self.sig_mode})",
             maxdim=250,
         )
         self.corr_beam_centre = self._add_cursor(
@@ -1239,11 +1241,11 @@ class CoordinateCorrectionLayout:
             self.section_1_label,
             inputs_1,
             raw_figs,
-            descan_section,
-            self.section_2_label,
             corrected_figs,
+            descan_section,
             self.scan_step_label,
             inputs_2,
+            self.section_2_label,
             raw_figs_2,
             coord_section,
             back_figs,
