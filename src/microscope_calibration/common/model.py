@@ -460,7 +460,7 @@ class Model4DSTEM:
             specimen = dataclasses.replace(specimen, z=self.overfocus)
         scan_pos_phys = self.scan_to_real(scan_pos, _one=_one)
         res = OrderedDict()
-        res["source"] = PointSource(z=0, semi_conv=self.semiconv)
+        res["source"] = PointSource(z=0.0, semi_conv=self.semiconv)
         res["scanner"] = Scanner(
             z=self.overfocus, scan_pos_x=scan_pos_phys.x, scan_pos_y=scan_pos_phys.y
         )
