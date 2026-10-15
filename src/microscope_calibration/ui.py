@@ -1,6 +1,7 @@
 from typing import Any, ClassVar, Literal, cast
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 import html
+import logging
 
 import jax
 
@@ -48,6 +49,8 @@ from .util.optimize import (
     solve_tilt_descan_error_points,
 )
 # ruff: enable[E402]
+
+log = logging.getLogger(__name__)
 
 # pyright: reportIndexIssue=false, reportOptionalMemberAccess=false
 # pyright: reportOptionalSubscript=false, reportArgumentType=false, reportCallIssue=false
@@ -180,6 +183,15 @@ def tags_markdown(tags: Mapping[str, Any]) -> str:
         "\n<details>\n<summary>Embedded metadata tags</summary>\n"
         f"<table>{rows}</table>\n</details>\n"
     )
+
+
+def residual_text(residual) -> str:
+    """
+    RMS and maximum of the residual of a fit in pixels as text
+    """
+    residual = np.abs(np.asarray(residual, dtype=np.float64))
+    rms = np.sqrt(np.mean(residual**2))
+    return f"RMS residual {rms:.3g} px, max {np.max(residual):.3g} px"
 
 
 def format_model(model: Model4DSTEM, columns: list[str]) -> dict[str, str]:
@@ -584,6 +596,10 @@ class CoordinateCorrectionLayout:
 
         self.invert_focus_button = pn.widgets.Button(label="Invert sign of overfocus")
 
+        # Results and errors of the actions of the tables, see _report()
+        self.descan_status = pn.pane.Alert("", alert_type="success", visible=False, width=400)
+        self.coord_status = pn.pane.Alert("", alert_type="success", visible=False, width=400)
+
         self.model_table = pn.widgets.Tabulator(
             pd.DataFrame(columns=self.model_columns),
             # See https://github.com/holoviz/panel/pull/8256
@@ -614,6 +630,11 @@ class CoordinateCorrectionLayout:
         self._on_data_change(self.model_model, self.on_model_model_change)
         self._on_data_change(self.scalebar_model, self.on_scalebar_model_change)
         self._on_data_change(self.feature_model, self.on_feature_model_change)
+        # Status messages of the table actions only apply until the next change
+        for cds in (self.model_model, self.scalebar_model, self.feature_model):
+            self._on_data_change(cds, lambda attr, old, new: self._clear_status())
+        for table in (self.descan_fixpoint_table, self.coord_fixpoint_table):
+            table.param.watch(lambda event: self._clear_status(), "value")
 
         # ## nav_fig
         self.nav_fig.fig.on_event(Tap, self.move_scan_to)
@@ -646,9 +667,13 @@ class CoordinateCorrectionLayout:
 
         # ## descan correction buttons
         self.record_button.on_click(lambda e: self.descan_add_row())
-        self.apply_button.on_click(lambda e: self.perform_descan_update())
+        self.apply_button.on_click(
+            lambda e: self._report(self.descan_status, self.perform_descan_update)
+        )
         self.clear_button.on_click(lambda e: self.descan_drop())
-        self.correlate_button.on_click(lambda e: self.center_correlation_regression())
+        self.correlate_button.on_click(
+            lambda e: self._report(self.descan_status, self.center_correlation_regression)
+        )
 
         # ## coord fixpoints table
         self.coord_fixpoint_table.on_click(lambda e: self.coord_delete_row(e.row), column="delete")
@@ -656,9 +681,11 @@ class CoordinateCorrectionLayout:
 
         # ## coordinate system buttons
         self.coord_record_button.on_click(lambda e: self.coord_add_row())
-        self.coord_apply_button.on_click(lambda e: self.perform_coord_update())
+        self.coord_apply_button.on_click(
+            lambda e: self._report(self.coord_status, self.perform_coord_update)
+        )
         self.coord_clear_button.on_click(lambda e: self.coord_drop())
-        self.optimize_button.on_click(lambda e: self.sharpen())
+        self.optimize_button.on_click(lambda e: self._report(self.coord_status, self.sharpen))
         self.invert_focus_button.on_click(lambda e: self.invert_focus())
 
     @staticmethod
@@ -1092,22 +1119,20 @@ class CoordinateCorrectionLayout:
             "detector_cx": [float(detector_center.x)],
         }
 
-    def perform_descan_update(self):
+    def perform_descan_update(self) -> str:
         points = self.descan_fixpoint_table.value.reset_index().to_numpy(dtype=np.float64)
-        if len(points):
-            new_model, _residual = solve_tilt_descan_error_points(
-                ref_model=self.model, points=jnp.array(points)
-            )
-            self.update_with_force(self.model_model, self.model_update(new_model))
+        new_model, residual = solve_tilt_descan_error_points(
+            ref_model=self.model, points=jnp.array(points)
+        )
+        self.update_with_force(self.model_model, self.model_update(new_model))
+        return f"De-scan correction applied from {len(points)} points: {residual_text(residual)}"
 
-    def perform_coord_update(self):
+    def perform_coord_update(self) -> str:
         points = self.coord_fixpoint_table.value.reset_index().to_numpy(dtype=np.float64)
-        if len(points):
-            new_model, _residual = solve_coords_points(
-                ref_model=self.model, points=jnp.array(points)
-            )
-            self.update_with_force(self.model_model, self.model_update(new_model))
-            self.coords_adjusted = True
+        new_model, residual = solve_coords_points(ref_model=self.model, points=jnp.array(points))
+        self.update_with_force(self.model_model, self.model_update(new_model))
+        self.coords_adjusted = True
+        return f"Coordinate system derived from {len(points)} points: {residual_text(residual)}"
 
     def invert_focus(self):
         self.update_with_force(self.model_model, self.model_update(self.model.invert_focus()))
@@ -1127,6 +1152,29 @@ class CoordinateCorrectionLayout:
     def push(self):
         self._push()
 
+    def _clear_status(self):
+        """
+        Hide the status messages of the table actions, see :meth:`_report`
+        """
+        for status in (self.descan_status, self.coord_status):
+            status.visible = False
+
+    @staticmethod
+    def _report(status: pn.pane.Alert, action: Callable[[], str]):
+        """
+        Run :code:`action` and show its result message or error in :code:`status`
+        """
+        try:
+            message = action()
+        except Exception as e:
+            log.exception("Action of the calibration GUI failed")
+            status.alert_type = "danger"
+            status.object = f"{type(e).__name__}: {html.escape(str(e))}"
+        else:
+            status.alert_type = "success"
+            status.object = html.escape(message)
+        status.visible = True
+
     def _on_data_change(self, cds: ColumnDataSource, callback):
         """
         Register :code:`callback` for changes of the data of :code:`cds`, see
@@ -1145,6 +1193,7 @@ class CoordinateCorrectionLayout:
         :meth:`push` sends the collected changes, so the callbacks registered
         with :meth:`_on_data_change` are called here.
         """
+        self._clear_status()
         doc = cds.document
         held = doc is not None and doc.callbacks.hold_value is not None
         old = dict(cds.data)
@@ -1154,7 +1203,7 @@ class CoordinateCorrectionLayout:
             for callback in self._data_callbacks.get(cds.id, []):
                 callback("data", old, cds.data)
 
-    def center_correlation_regression(self):
+    def center_correlation_regression(self) -> str:
         model = self.model
         ri, ro = ring_radii(model, self.get_model_twothetas(self.model_model.data))
         shifts = expected_center_shifts(model, nav_shape=tuple(self.dataset.shape.nav))
@@ -1175,11 +1224,11 @@ class CoordinateCorrectionLayout:
         regression = center_regression(
             res["refineds"].data[:, :, 0, :], center=model.detector_center
         )
-        new_model, _residual = solve_tilt_descan_error(ref_model=model, regression=regression)
-        self.model_model.data.update(**self.model_update(new_model))
-        self.push()
+        new_model, residual = solve_tilt_descan_error(ref_model=model, regression=regression)
+        self.update_with_force(self.model_model, self.model_update(new_model))
+        return f"De-scan correction refined with cross-correlation: {residual_text(residual)}"
 
-    def sharpen(self):
+    def sharpen(self) -> str:
         def callback(args, model, res, blur):
             self.back_sum_fig.update(res[0]["backprojected_sum"].data)
             self.update_model_tables(model)
@@ -1195,6 +1244,7 @@ class CoordinateCorrectionLayout:
         res = optimize(loss)
         model = make_new_model(res.x)
         self.update_with_force(self.model_model, self.model_update(model))
+        return f"Sharpness optimized: blur {float(res.fun):.4g}"
 
     @property
     def layout(self):
@@ -1235,8 +1285,11 @@ class CoordinateCorrectionLayout:
         self.descan_label = pn.pane.Markdown(
             "### De-scan correction table",
         )
+        # The status next to the table doesn't move the layout when it appears
         descan_section = pn.layout.Column(
-            self.descan_label, self.descan_fixpoint_table, descan_buttons
+            self.descan_label,
+            pn.layout.Row(self.descan_fixpoint_table, self.descan_status),
+            descan_buttons,
         )
         coord_buttons = pn.layout.Row(
             self.coord_record_button,
@@ -1247,7 +1300,11 @@ class CoordinateCorrectionLayout:
         self.coord_label = pn.pane.Markdown(
             "### Coordinate system calibration table",
         )
-        coord_section = pn.layout.Column(self.coord_label, self.coord_fixpoint_table, coord_buttons)
+        coord_section = pn.layout.Column(
+            self.coord_label,
+            pn.layout.Row(self.coord_fixpoint_table, self.coord_status),
+            coord_buttons,
+        )
         self.result_label = pn.pane.Markdown(
             "### Current model parameters",
         )

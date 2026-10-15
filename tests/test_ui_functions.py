@@ -1,14 +1,17 @@
 import numpy as np
+import panel as pn
 from numpy.testing import assert_allclose
 
 from microscope_calibration.common.model import DescanError, Model4DSTEM, PixelYX
 from microscope_calibration.common.stem_overfocus import get_center
 from microscope_calibration.ui import (
+    CoordinateCorrectionLayout,
     center_regression,
     correlation_pattern,
     expected_center_shifts,
     format_descan_error,
     format_model,
+    residual_text,
 )
 
 
@@ -68,3 +71,22 @@ def test_format_model():
         "scan_center": str(model.scan_center),
     }
     assert format_descan_error(model.descan_error)["offpxi"] == "1.2346"
+
+
+def test_residual_text():
+    assert residual_text(np.array([3.0, -4.0])) == "RMS residual 3.54 px, max 4 px"
+
+
+def test_report():
+    status = pn.pane.Alert("", visible=False)
+    CoordinateCorrectionLayout._report(status, lambda: "Done <ok>")
+    assert status.visible
+    assert status.alert_type == "success"
+    assert status.object == "Done &lt;ok&gt;"
+
+    def fail():
+        raise ValueError("Need at least 3 points")
+
+    CoordinateCorrectionLayout._report(status, fail)
+    assert status.alert_type == "danger"
+    assert status.object == "ValueError: Need at least 3 points"
