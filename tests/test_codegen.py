@@ -1,9 +1,11 @@
 import inspect
+from typing import NamedTuple
 
 import numpy as np
 import pytest
 import sympy as sym
 from numpy.testing import assert_allclose
+import temgym_core
 from temgym_core import PixelYX
 
 from microscope_calibration.common import _generated
@@ -69,3 +71,26 @@ def test_render_module_unknown_symbol():
     a, b = sym.symbols("a b")
     with pytest.raises(ValueError, match="not in args"):
         render_module({"f": ({"a": a}, a * b)}, header="")
+
+
+def test_render_module_duplicate_symbol():
+    a = sym.Symbol("a")
+    with pytest.raises(ValueError, match="Duplicate symbol"):
+        render_module({"f": ({"a": a, "b": PixelYX(y=a, x=a)}, a)}, header="")
+
+
+def test_render_module_cse_prefix():
+    a = sym.Symbol("a")
+    with pytest.raises(ValueError, match="must not start with"):
+        render_module({"f": ({"_cse0": a}, a)}, header="")
+
+
+def test_render_module_type_name_clash():
+    class PixelYX(NamedTuple):
+        y: float
+        x: float
+
+    a, b = sym.symbols("a b")
+    output = (temgym_core.PixelYX(y=a, x=b), PixelYX(y=b, x=a))
+    with pytest.raises(ValueError, match="same name"):
+        render_module({"f": ({"a": a, "b": b}, output)}, header="")

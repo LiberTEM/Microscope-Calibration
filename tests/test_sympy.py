@@ -3,11 +3,18 @@ import numpy as np
 import pytest
 import sympy as sym
 from numpy.testing import assert_allclose
-from temgym_core import CoordsXY
+from temgym_core import CoordsXY, PixelYX
 from temgym_core.components import DescanError, Descanner, Plane, Scanner
 from temgym_core.source import PointSource
 
-from microscope_calibration.util.sympy import lambdify, lambdify_tree
+from microscope_calibration.common.model import Model4DSTEM
+from microscope_calibration.util.sympy import (
+    is_sympy,
+    isnumerictype,
+    lambdify,
+    lambdify_tree,
+    symbol_maker,
+)
 
 
 @pytest.mark.parametrize("sample", ("args", "kwargs"))
@@ -110,3 +117,61 @@ def test_lambdify_tree_integer_constants():
     f = lambdify_tree(inp=(a,), outp=(a * 0, sym.Integer(2), a), modules=jax.numpy)
     for value in f((1.0,)):
         assert jax.numpy.issubdtype(jax.numpy.asarray(value).dtype, jax.numpy.floating)
+
+
+def test_lambdify_keyword_only():
+    @lambdify(modules=np)
+    def f(a: float, *, b: float):
+        return a * b
+
+    assert f(2.0, b=3.0) == 6.0
+
+
+def test_lambdify_recurse_for_list():
+    @lambdify(modules=np, recurse_for=[PixelYX])
+    def f(p: PixelYX):
+        return p.y * p.x
+
+    assert f(PixelYX(y=2.0, x=3.0)) == 6.0
+
+
+@pytest.mark.parametrize(
+    "value, expected",
+    (
+        (sym.Symbol("x"), True),
+        (sym.Symbol("x") + 1, True),
+        (sym.Matrix([1, 2]), True),
+        (sym.ImmutableMatrix([1, 2]), True),
+        (sym.Array([1, 2]), True),
+        (sym.MutableDenseNDimArray([1, 2]), True),
+        (1.0, False),
+        (np.array([1.0]), False),
+    ),
+)
+def test_is_sympy(value, expected):
+    assert is_sympy(value) is expected
+
+
+@pytest.mark.parametrize(
+    "t, expected",
+    (
+        (float, True),
+        (int, True),
+        (complex, True),
+        (int | float, True),
+        (sym.Float, True),
+        (str, False),
+        (str | None, False),
+        (PixelYX, False),
+    ),
+)
+def test_isnumerictype(t, expected):
+    assert isnumerictype(t) is expected
+
+
+def test_symbol_maker_unsupported_type():
+    with pytest.raises(TypeError, match="Can't generate symbol"):
+        symbol_maker(str)
+    with pytest.raises(TypeError, match="Can't generate symbol"):
+        # PixelYX not in recurse_for
+        symbol_maker(Model4DSTEM)

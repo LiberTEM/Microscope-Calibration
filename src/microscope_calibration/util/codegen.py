@@ -53,6 +53,10 @@ def _render_tree(tree: Any, printer: SymPyPrinter, types: set[type], indent: str
     return repr(tree)
 
 
+# Prefix of the common subexpressions in the generated code
+_CSE_PREFIX = "_cse"
+
+
 def render_function(name: str, args: dict[str, Any], output: Any) -> tuple[str, set[type]]:
     """
     Render a function that calculates :code:`output` from :code:`args`
@@ -84,7 +88,7 @@ def render_function(name: str, args: dict[str, Any], output: Any) -> tuple[str, 
                 raise ValueError(f"Duplicate symbol {symbol} in {path}")
             replacements[symbol] = sym.Symbol(local_name)
             if len(path) > 1:
-                assignments.append(f"    {local_name} = {'.'.join(path)}\n")
+                assignments.append((local_name, ".".join(path)))
 
     output = map_leaves(output, lambda leaf: _xreplace(leaf, replacements))
     used = {
@@ -108,13 +112,10 @@ def render_function(name: str, args: dict[str, Any], output: Any) -> tuple[str, 
     types = set()
     body = _render_tree(output, printer, types, indent="    ")
     # Only assign the attributes that are used to keep the code concise
-    lines = [line for line in assignments if line.split(" = ")[0].strip() in used]
+    lines = [f"    {name} = {path}\n" for name, path in assignments if name in used]
     lines += [f"    {symbol} = {printer.doprint(expr)}\n" for symbol, expr in intermediates]
     source = f"def {name}({', '.join(args)}):\n" + "".join(lines) + f"    return {body}\n"
     return source, types
-
-
-_CSE_PREFIX = "_cse"
 
 
 def _xreplace(leaf: Any, replacements: dict) -> Any:
@@ -203,6 +204,8 @@ def render_module(functions: dict[str, tuple[dict[str, Any], Any]], header: str)
     for t in types:
         imports.setdefault(t.__module__, set()).add(t.__name__)
     type_names = {t.__name__ for t in types}
+    if len(type_names) != len(types):
+        raise ValueError(f"Generated code uses different types with the same name: {types}")
     sympy_names = _free_names(body) - type_names
     for n in sympy_names:
         if not hasattr(sym, n):
