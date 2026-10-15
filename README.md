@@ -13,9 +13,10 @@ The scientific background is described in the preprint https://arxiv.org/abs/240
 
 - **`Model4DSTEM`** (`microscope_calibration.common.model`) holds the full geometric calibration
   of a 4D-STEM experiment and traces rays through it using
-  [TemGymCore](https://github.com/TemGym/TemGymCore). The same model works with plain floats,
-  SymPy symbols (exact symbolic solutions) and JAX (automatic differentiation, JIT), so it can
-  be used to reason about ray paths and to build solvers and optimizers.
+  [TemGymCore](https://github.com/TemGym/TemGymCore). The model is written for SymPy, which
+  gives exact symbolic solutions. `Model4DSTEM.lambdify(modules)` derives versions for NumPy
+  and JAX (automatic differentiation, JIT) from it, so it can be used to reason about ray paths
+  and to build fast solvers and optimizers.
 - **Optimizers** (`microscope_calibration.util.optimize`) fit calibration parameters such as
   camera length, scan pixel pitch and descan error to reference data.
 - **LiberTEM UDFs** (`microscope_calibration.udf`) apply a calibration to real datasets, e.g. to
@@ -49,6 +50,8 @@ The notebooks in [`examples/`](examples/) are currently the best documentation:
 
 - [`model.ipynb`](examples/model.ipynb): basic use of `Model4DSTEM` to reason about ray paths,
   with exact symbolic (SymPy) and numerical (JAX + Optimistix) solutions.
+- [`numeric.ipynb`](examples/numeric.ipynb): numeric versions of `Model4DSTEM` for NumPy and
+  JAX with `Model4DSTEM.lambdify()`, including broadcasting and derivatives.
 - [`generate.ipynb`](examples/generate.ipynb): simulate an overfocused 4D-STEM dataset.
 - [`stem_overfocus.ipynb`](examples/stem_overfocus.ipynb): interactive calibration of a series
   of real datasets, including descan error, camera length using diffraction rings, and
@@ -65,6 +68,9 @@ pip install -e .[test,common,diffraction,gui]
 pytest tests/
 pre-commit run --all-files
 ```
+
+The pre-commit hooks include a pyright type check that uses the active environment, so
+install the package as above before running them.
 
 ### Generated code
 
