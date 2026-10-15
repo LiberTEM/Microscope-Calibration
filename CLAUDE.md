@@ -37,7 +37,8 @@ ruff check src/ tests/
 ruff format src/ tests/
 pre-commit run --all-files
 
-# Type check src/ (configured in pyproject.toml, runs in CI, not in pre-commit)
+# Type check src/ (configured in pyproject.toml, runs in pre-commit from the active
+# environment and in CI)
 pyright
 ```
 

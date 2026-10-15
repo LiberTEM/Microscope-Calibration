@@ -1,5 +1,10 @@
 # See https://pre-commit.com for more information
 # See https://pre-commit.com/hooks.html for more hooks
+# pre-commit.ci has no environment with the dependencies that pyright needs,
+# the CI job "typecheck" checks the types instead
+ci:
+  skip: [pyright]
+
 repos:
 - repo: https://github.com/pre-commit/pre-commit-hooks
   rev: v6.0.0
@@ -20,3 +25,13 @@ repos:
   hooks:
     - id: pyupgrade
       args: ["--py314-plus"]
+# Uses pyright from the active environment, which has the dependencies of the
+# package installed, see CLAUDE.md
+- repo: local
+  hooks:
+    - id: pyright
+      name: pyright
+      entry: pyright
+      language: system
+      types: [python]
+      pass_filenames: false
