@@ -139,3 +139,33 @@ def test_update_with_force(held):
     if held:
         # The change is collected to be sent to the browser
         assert doc.callbacks._held_events
+
+
+def test_status_messages():
+    ctx = Context.make_with("inline")
+    ds = ctx.load("memory", data=np.zeros((4, 5, 6, 7)))
+    model = Model4DSTEM.default(dataset_shape=ds.shape).derive(overfocus=0.01)
+    layout = CoordinateCorrectionLayout(
+        calibrated_dataset=CalibratedDataset(dataset=ds, model=model), ctx=ctx
+    )
+    _ = layout.layout
+    assert not layout.descan_status.visible
+    # Empty table
+    layout.apply_button.clicks += 1
+    assert layout.descan_status.visible
+    assert layout.descan_status.alert_type == "danger"
+    assert "at least 3 points" in layout.descan_status.object
+    for y, x in ((0, 0), (1, 3), (3, 1)):
+        layout.move_scan_to(MockEvent(y=y, x=x))
+        layout.descan_add_row()
+    layout.apply_button.clicks += 1
+    assert layout.descan_status.alert_type == "success"
+    assert "from 3 points: RMS residual" in layout.descan_status.object
+    assert layout.descan_status.visible
+    # Hidden on the next change
+    layout.move_scan_to(MockEvent(y=2, x=2))
+    assert not layout.descan_status.visible
+    layout.apply_button.clicks += 1
+    assert layout.descan_status.visible
+    layout.descan_drop()
+    assert not layout.descan_status.visible
