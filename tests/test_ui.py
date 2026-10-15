@@ -93,3 +93,23 @@ def test_events(kwargs):
 
     layout.coord_delete_row(0)
     layout.coord_drop()
+
+
+def test_in_focus_keeps_feature_selection(monkeypatch):
+    ctx = Context.make_with("inline")
+    ds = ctx.load("memory", data=np.zeros((4, 5, 6, 7)))
+    model = Model4DSTEM.default(dataset_shape=ds.shape)
+    assert model.overfocus == 0
+    layout = CoordinateCorrectionLayout(
+        calibrated_dataset=CalibratedDataset(dataset=ds, model=model), ctx=ctx
+    )
+    start = dict(layout.feature_select_model.data)
+
+    def fail(**kwargs):
+        raise AssertionError("Feature position on the detector is not defined in focus")
+
+    monkeypatch.setattr(layout, "get_feature_on_detector", fail)
+    layout.move_scan_to(MockEvent(y=1, x=2))
+    layout.move_feature_to(MockEvent(y=2, x=3))
+    layout.cl_input.value = 1.2
+    assert layout.feature_select_model.data == start

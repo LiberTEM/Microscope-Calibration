@@ -715,12 +715,11 @@ class CoordinateCorrectionLayout:
             self.centered_ring_model,
             self.ring_update(model_data=new, detector_center=new_model.detector_center),
         )
-        detector_pos = self.get_feature_on_detector(
+        self._update_feature_select(
             model=new_model,
             scan_pos=new_pos,
             specimen_px=self.get_scan_pos(self.feature_model.data),
         )
-        self.update_with_force(self.feature_select_model, self.feature_update(detector_pos))
         self.update_model_tables(new_model)
 
     def on_scalebar_model_change(self, attr, old, new):
@@ -746,14 +745,24 @@ class CoordinateCorrectionLayout:
         # old will be the CDS dict before the trigger
         # new will be the CDS dict after the trigger
         assert attr == "data"
-        model = self.model
+        self._update_feature_select(
+            model=self.model,
+            scan_pos=self.get_scan_pos(self.model_model.data),
+            specimen_px=self.get_scan_pos(new),
+        )
+
+    def _update_feature_select(self, model: Model4DSTEM, scan_pos: PixelYX, specimen_px: PixelYX):
+        """
+        Move the feature selection on the detector to where the ray that passes
+        the specimen at :code:`specimen_px` hits it
+
+        Unchanged in focus, where all rays pass the specimen at the scan position.
+        """
         if model.overfocus != 0:
-            feature_pos = self.get_feature_on_detector(
-                model=model,
-                scan_pos=self.get_scan_pos(self.model_model.data),
-                specimen_px=self.get_scan_pos(new),
+            detector_pos = self.get_feature_on_detector(
+                model=model, scan_pos=scan_pos, specimen_px=specimen_px
             )
-            self.update_with_force(self.feature_select_model, self.feature_update(feature_pos))
+            self.update_with_force(self.feature_select_model, self.feature_update(detector_pos))
 
     def update_cl(self, event):
         base = self.model
