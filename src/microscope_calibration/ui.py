@@ -143,7 +143,7 @@ recorded with a strong defocus so that the detector shows a shadow
 image projection of the specimen.
 
 1. Move the green cursor in the plot "Point analysis corrected for
-   de-scan error" above to a prominent feature.
+   de-scan error" below to a prominent feature.
 1. Select a scan position in the plot "Uncorrected scan map" below
    where this feature is also visible on a detector frame. Selecting
    the position of the green cursor will show the feature at the beam
@@ -1261,11 +1261,11 @@ class CoordinateCorrectionLayout:
             self.section_1_label,
             inputs_1,
             raw_figs,
-            corrected_figs,
             descan_section,
+            self.section_2_label,
+            corrected_figs,
             self.scan_step_label,
             inputs_2,
-            self.section_2_label,
             raw_figs_2,
             coord_section,
             back_figs,
