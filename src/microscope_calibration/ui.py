@@ -1,4 +1,3 @@
-import concurrent.futures
 from typing import Any, ClassVar, Literal, cast
 from collections.abc import Mapping
 import html
@@ -309,7 +308,6 @@ class CoordinateCorrectionLayout:
         sig_mode: SigModeT = "lin",
         twothetas: np.ndarray | None = None,
     ):
-        self.executor = concurrent.futures.ThreadPoolExecutor(max_workers=1)
         self.calibrated_dataset = calibrated_dataset
         self.ctx = ctx
         self.nav_mode = nav_mode
@@ -324,6 +322,8 @@ class CoordinateCorrectionLayout:
             twothetas = np.array((0.0,))
 
         self.coords_adjusted = False
+        # ColumnDataSource ID -> callbacks for data changes, see _on_data_change()
+        self._data_callbacks = {}
 
         self._init_state(twothetas)
         self._init_figures()
@@ -611,9 +611,9 @@ class CoordinateCorrectionLayout:
     def _connect_events(self):
         # ## state
         # trigger whenever the "data" attribute of the cursor ColumnDataSource changes
-        self.model_model.on_change("data", self.on_model_model_change)
-        self.scalebar_model.on_change("data", self.on_scalebar_model_change)
-        self.feature_model.on_change("data", self.on_feature_model_change)
+        self._on_data_change(self.model_model, self.on_model_model_change)
+        self._on_data_change(self.scalebar_model, self.on_scalebar_model_change)
+        self._on_data_change(self.feature_model, self.on_feature_model_change)
 
         # ## nav_fig
         self.nav_fig.fig.on_event(Tap, self.move_scan_to)
@@ -1126,20 +1126,33 @@ class CoordinateCorrectionLayout:
 
     def push(self):
         self._push()
-        self.executor.submit(self._push)
+
+    def _on_data_change(self, cds: ColumnDataSource, callback):
+        """
+        Register :code:`callback` for changes of the data of :code:`cds`, see
+        :meth:`update_with_force`
+        """
+        cds.on_change("data", callback)
+        self._data_callbacks.setdefault(cds.id, []).append(callback)
 
     def update_with_force(self, cds: ColumnDataSource, update):
+        """
+        Update :code:`cds`, send the change to the browser and run its callbacks
+
+        In a notebook, Panel holds the document. During a hold, Bokeh collects
+        changes and doesn't call the :code:`on_change` callbacks, see
+        :meth:`bokeh.document.callbacks.DocumentCallbackManager.trigger_on_change`.
+        :meth:`push` sends the collected changes, so the callbacks registered
+        with :meth:`_on_data_change` are called here.
+        """
+        doc = cds.document
+        held = doc is not None and doc.callbacks.hold_value is not None
+        old = dict(cds.data)
         cds.data.update(**update)
         self.push()
-        if cds.document is not None:
-            holding = cds.document.callbacks._hold
-            cds.document.callbacks.unhold()
-        else:
-            holding = None
-        cds.data.update(**update)
-        self.push()
-        if cds.document is not None:
-            cds.document.callbacks.hold(holding)
+        if held:
+            for callback in self._data_callbacks.get(cds.id, []):
+                callback("data", old, cds.data)
 
     def center_correlation_regression(self):
         model = self.model
