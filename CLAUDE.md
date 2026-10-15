@@ -36,6 +36,9 @@ python -m microscope_calibration.common.generate
 ruff check src/ tests/
 ruff format src/ tests/
 pre-commit run --all-files
+
+# Type check src/ (configured in pyproject.toml, runs in CI, not in pre-commit)
+pyright
 ```
 
 Requires Python >= 3.14. `prototypes/` is excluded from lint, tests, and packaging — it holds
@@ -133,6 +136,9 @@ Key layers, bottom-up:
   compiles again. Models and `PixelYX` hold Python floats, so convert arguments with
   `jax.tree.map(jnp.asarray, args)` before passing them, as `_least_squares()` in
   `util/optimize.py` does. `jax.jit` traces Python numbers and is not affected.
+- pyright findings that come from the types of dependencies or from the `float` annotations
+  of the model are silenced per line with `# pyright: ignore[rule]  # reason`, or per file
+  for the GUI and `util/diffraction.py`. Unnecessary ignores are errors.
 - JAX x64 is enabled at import time (`jax.config.update("jax_enable_x64", True)`) in every
   module that uses JAX — this must happen before other JAX imports, hence the
   `# ruff: disable[E402]` markers at the top of those files. JAX-based solvers call

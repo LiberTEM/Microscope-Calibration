@@ -201,11 +201,11 @@ def make_overfocus_loss_function(
         """
         model = make_new_model(args)
         # Hack to make parameter update work
-        overfocus_udf.params.overfocus_model["model"] = model
+        overfocus_udf.params.overfocus_model["model"] = model  # pyright: ignore[reportIndexIssue]  # LiberTEM doesn't type UDF parameters
         res = ctx.run_udf(dataset=dataset, udf=[overfocus_udf, *list(extra_udfs)], **kwargs)
-        blur = blur_function(res[0]["backprojected_sum"].data)
+        blur = blur_function(res[0]["backprojected_sum"].data)  # pyright: ignore[reportArgumentType, reportIndexIssue]  # LiberTEM doesn't type UDF results
         if callback is not None:
-            callback(args, overfocus_udf.params.overfocus_model["model"], res, blur)
+            callback(args, overfocus_udf.params.overfocus_model["model"], res, blur)  # pyright: ignore[reportIndexIssue]  # LiberTEM doesn't type UDF results
         return blur
 
     return make_new_model, loss
@@ -272,7 +272,7 @@ def solve_camera_length(
     # for a classical TEM, only for reflection.
     camera_length = jnp.abs(opt_res.value[0])
     residual = _cl_loss(jnp.array((camera_length,)), args)
-    return ref_model.derive(camera_length=camera_length).normalize_types(), residual
+    return ref_model.derive(camera_length=camera_length).normalize_types(), residual  # pyright: ignore[reportArgumentType]  # JAX value for a float annotation
 
 
 class _SPPArgs(NamedTuple):
@@ -328,7 +328,7 @@ def solve_scan_pixel_pitch(
     # take the positive side since the inversion can be better expressed with a
     # scan rotation.
     return ref_model.derive(
-        scan_pixel_pitch=jnp.abs(opt_res.value[0]),
+        scan_pixel_pitch=jnp.abs(opt_res.value[0]),  # pyright: ignore[reportArgumentType]  # JAX value for a float annotation
     ).normalize_types(), residual
 
 

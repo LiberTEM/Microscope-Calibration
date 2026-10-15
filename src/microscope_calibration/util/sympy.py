@@ -182,7 +182,7 @@ def lambdify_tree[SymbolJaxTree](inp: SymbolJaxTree, outp: SymbolJaxTree, **kwar
             )
         else:
             # Compare with plain numbers in calls, which is much faster
-            inp_constants[i] = complex(leaf) if isinstance(leaf, sym.Basic) else leaf
+            inp_constants[i] = complex(leaf) if isinstance(leaf, sym.Basic) else leaf  # pyright: ignore[reportArgumentType, reportCallIssue]  # SymPy numbers support complex()
 
     outp_indices = [i for i, leaf in enumerate(outp_leaves) if isinstance(leaf, sym.Basic)]
     # Integer constants, e.g. a simplified zero, as float like the other

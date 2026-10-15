@@ -6,6 +6,9 @@ from diffsims.generators.zap_map_generator import get_rotation_from_z_to_directi
 from orix.crystal_map import Phase
 from orix.quaternion import Rotation
 
+# pyright: reportAttributeAccessIssue=false, reportArgumentType=false
+# The types of diffsims and orix don't match how they are used here
+
 
 # See also
 # https://github.com/py4dstem/py4DSTEM_tutorials/blob/main/notebooks/basics_03_calibration.ipynb

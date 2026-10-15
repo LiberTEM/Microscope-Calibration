@@ -63,7 +63,7 @@ authors = [
 repository = "https://github.com/LiberTEM/Microscope-Calibration"
 
 [project.optional-dependencies]
-test = ["pytest", "pytest-cov", "optax"]
+test = ["pytest", "pytest-cov", "optax", "pyright"]
 common = [
     "libertem",
     # Constrain numba to a recent version, otherwise version resolution might
@@ -127,3 +127,11 @@ exclude_also = [
     "if False:",
     "if __name__ == .__main__.:",
 ]
+
+[tool.pyright]
+include = ["src"]
+exclude = ["src/microscope_calibration/common/_generated.py"]
+pythonVersion = "3.14"
+typeCheckingMode = "standard"
+# Don't let "# pyright: ignore" comments go stale
+reportUnnecessaryTypeIgnoreComment = "error"

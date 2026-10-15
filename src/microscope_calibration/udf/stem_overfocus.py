@@ -65,13 +65,13 @@ class BaseCorrectionUDF(UDF):
     @property
     def _model(self) -> Model4DSTEM:
         # LiberTEM doesn't type the parameters of UDFs
-        return self.params.overfocus_model["model"]  # pyright: ignore[reportIndexIssue]
+        return self.params.overfocus_model["model"]  # pyright: ignore[reportIndexIssue, reportReturnType]
 
     def get_task_data(self):
         model = self._model.normalize_types()
         return {
-            "back_mat": _backward_matrix(model),
-            "corr_mat": _correction_matrix(model),
+            "back_mat": _backward_matrix(model),  # pyright: ignore[reportArgumentType]  # jax_dataclasses models are hashable
+            "corr_mat": _correction_matrix(model),  # pyright: ignore[reportArgumentType]  # jax_dataclasses models are hashable
         }
 
     def _get_fov(self) -> tuple[int, int]:
@@ -130,7 +130,7 @@ class OverfocusUDF(BaseCorrectionUDF):
             det_y = int(np.round(det_y))
             det_x = int(np.round(det_x))
             if det_y >= 0 and det_y < frame.shape[0] and det_x >= 0 and det_x < frame.shape[1]:
-                self.results.corrected_point[:] = frame[det_y, det_x]
+                self.results.corrected_point[:] = frame[det_y, det_x]  # pyright: ignore[reportIndexIssue]  # LiberTEM doesn't type UDF buffers
 
             correct_frame(
                 frame=frame,
@@ -186,14 +186,14 @@ class CorrectedPickUDF(BaseCorrectionUDF):
         scan_y, scan_x = self.meta.coordinates[0]
         overfocus_model = self._model
         # We work in flattened nav space with ROI applied
-        sl = self.meta.slice.get()
+        sl = self.meta.slice.get()  # pyright: ignore[reportOptionalMemberAccess]  # LiberTEM types the slice as optional
         if self.has_correction:
             correct_frame(
                 frame=frame,
                 scan_y=scan_y,
                 scan_x=scan_x,
                 mat=self.task_data.corr_mat,
-                detector_out=self.results.corrected[sl][0],
+                detector_out=self.results.corrected[sl][0],  # pyright: ignore[reportIndexIssue]  # LiberTEM doesn't type UDF buffers
             )
         if self.has_backprojection:
             project_frame_backwards(
@@ -202,7 +202,7 @@ class CorrectedPickUDF(BaseCorrectionUDF):
                 scan_y=scan_y,
                 scan_x=scan_x,
                 mat=self.task_data.back_mat,
-                image_out=self.results.backprojected[sl][0],
+                image_out=self.results.backprojected[sl][0],  # pyright: ignore[reportIndexIssue]  # LiberTEM doesn't type UDF buffers
             )
 
     def merge(self, dest, src):
