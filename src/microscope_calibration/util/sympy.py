@@ -67,10 +67,10 @@ def is_sympy(expr: Any) -> bool:
 
     Some complex structure which contains a sympy expression as an element returns False.
     One can use a recursive function to check each element of the structure (e.g., typing.Iterable),
-    However, because of a possibiblity to have a long sequence of elements, it does not seem to be
+    However, because of a possibility to have a long sequence of elements, it does not seem to be
     effective enough.
 
-    Any expressions that make sence mathematically are of class sympy.core.expr.Expr, which e.g.
+    Any expressions that make sense mathematically are of class sympy.core.expr.Expr, which e.g.
     includes sympy.core.symbol.Symbol, sympy.core.numbers.Number, sympy.core.add.Add.
     However, we use sympy.core.basic.Basic which includes sympy.core.expr.Expr, in case we need
     to test also any logic operations, booleans, relations, etc.:
@@ -85,7 +85,6 @@ def is_sympy(expr: Any) -> bool:
     expr
         anything to be checked if it is a sympy instance
     """
-    # FIXME confirm that this are all the base classes
     return isinstance(expr, (sym.Basic, sym.MatrixBase, sym.NDimArray))
 
 
@@ -260,12 +259,13 @@ def normalized_args(wrapped, args, kwargs):
 @cache
 def _outer_lambdify(wrapped, modules, sample_args, sample_kwargs, sym_kwargs, recurse_for):
     sig = inspect.signature(wrapped)
-    spec = inspect.getfullargspec(wrapped)
+    hints = typing.get_type_hints(wrapped)
     partial_bound = sig.bind_partial(*sample_args, **sample_kwargs)
     generated_args = {}
-    for arg in spec.args:
-        if arg not in partial_bound.arguments:
-            cls = spec.annotations.get(arg, float)
+    for arg, param in sig.parameters.items():
+        named = param.kind in (param.POSITIONAL_OR_KEYWORD, param.KEYWORD_ONLY)
+        if named and arg not in partial_bound.arguments:
+            cls = hints.get(arg, float)
             generated_args[arg] = symbol_maker(cls, postfix=arg, recurse_for=recurse_for)
     partial_bound.arguments.update(generated_args)
     normalized = normalized_args(wrapped, args=(), kwargs=partial_bound.arguments)
@@ -275,6 +275,8 @@ def _outer_lambdify(wrapped, modules, sample_args, sample_kwargs, sym_kwargs, re
 def lambdify(recurse_for=(), modules=sym, args=None, kwargs=None, **sym_kwargs):
     # Rename to keep outer API succinct
     sample_args = () if args is None else args
+    # Hashable for the cache of _outer_lambdify()
+    recurse_for = tuple(recurse_for)
     sample_kwargs = {} if kwargs is None else kwargs
 
     # wrapped -> numeric function, avoids hashing the arguments of
