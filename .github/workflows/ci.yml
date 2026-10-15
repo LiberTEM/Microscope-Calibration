@@ -45,10 +45,10 @@ jobs:
         with:
           python-version: '3.14'
       - name: install the package
-        run: python3 -m pip install uv && uv pip install --system .[test,common,diffraction,gui]
+        run: python3 -m pip install uv && uv pip install --system .[test,common,diffraction,gui] pre-commit
       - name: run pyright
-        # Configured in pyproject.toml
-        run: pyright
+        # Same hook as locally, see .pre-commit-config.yaml
+        run: pre-commit run pyright --all-files
 
   pinned-requirements:
     runs-on: ubuntu-latest
