@@ -48,7 +48,7 @@ def _lstsq(get_sample):
             input_sample, output_sample = get_sample(*(test_param_raw * factor))
             input_samples.append(input_sample)
             output_samples.append(output_sample)
-    x, residuals, rank, s = np.linalg.lstsq(
+    x, residuals, rank, _s = np.linalg.lstsq(
         np.array(input_samples, dtype=np.float64), np.array(output_samples, dtype=np.float64)
     )
     assert rank == 5

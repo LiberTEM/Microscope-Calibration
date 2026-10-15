@@ -63,11 +63,11 @@ def test_derive_model_start():
 
 @pytest.mark.parametrize(
     "changes, match",
-    [
+    (
         ({"ImageData.Calibrations.Dimension.4.Scale": 3.0}, "uniform scan step"),
         ({"ImageTags.Acquisition.Frame.CCD.Pixel Size (um)": np.array([55.0, 50.0])}, "uniform"),
         ({"ImageTags.Acquisition.Frame.CCD.Pixel Size (um)": np.ones(3)}, "two dimensions"),
-    ],
+    ),
 )
 def test_derive_model_invalid(changes, match):
     with pytest.raises(ValueError, match=match):

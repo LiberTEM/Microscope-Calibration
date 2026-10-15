@@ -223,14 +223,8 @@ def test_backproject_rot90_flip(rotate_scan, rotate_detector, fixed_reference, f
     # Projecting into 4D STEM dataset and then back-projecting a
     # detector frame into the reference coordinate system restores the object,
     # i.e. rotation and flip are canceled out.
-    if rotate_detector:
-        detector_rotation = np.pi / 2
-    else:
-        detector_rotation = 0.0
-    if rotate_scan:
-        scan_rotation = np.pi / 2
-    else:
-        scan_rotation = 0.0
+    detector_rotation = np.pi / 2 if rotate_detector else 0.0
+    scan_rotation = np.pi / 2 if rotate_scan else 0.0
 
     model = Model4DSTEM(
         overfocus=1,
@@ -521,13 +515,13 @@ def test_correct_flip(scan_rotation, detector_rotation):
 
 @pytest.mark.parametrize(
     "scan_rotation, detector_rotation, obj_half_size",
-    [
+    (
         (0.0, 0.0, 16),
         (0.0, np.pi / 2, 16),
         (np.pi / 2, 0.0, 16),
         (np.pi / 2, np.pi / 2, 16),
         pytest.param(0.0, 0.0, 1, marks=pytest.mark.with_numba),
-    ],
+    ),
 )
 def test_correct_fixed_manualref(scan_rotation, detector_rotation, obj_half_size):
     scan_shape, _ = correction_shapes(obj_half_size)
@@ -577,7 +571,7 @@ def test_correct_fixed_manualref(scan_rotation, detector_rotation, obj_half_size
     )
 
 
-@pytest.mark.parametrize("overfocus", [0.01, -0.02])
+@pytest.mark.parametrize("overfocus", (0.01, -0.02))
 def test_beam_geometry(overfocus):
     detector_pixel_pitch = 0.2
     camera_length = 1.234

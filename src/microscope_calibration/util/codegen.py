@@ -24,16 +24,16 @@ def symbol_paths(tree: Any, path: tuple[str, ...]) -> Iterator[tuple[tuple[str, 
         yield (path, tree)
     elif hasattr(tree, "_fields"):  # NamedTuple
         for name in tree._fields:
-            yield from symbol_paths(getattr(tree, name), path + (name,))
+            yield from symbol_paths(getattr(tree, name), (*path, name))
     elif dataclasses.is_dataclass(tree):
         for field in dataclasses.fields(tree):
-            yield from symbol_paths(getattr(tree, field.name), path + (field.name,))
+            yield from symbol_paths(getattr(tree, field.name), (*path, field.name))
 
 
 def _render_tree(tree: Any, printer: SymPyPrinter, types: set[type], indent: str) -> str:
     if isinstance(tree, sym.Basic):
         return printer.doprint(tree)
-    elif hasattr(tree, "_fields") or dataclasses.is_dataclass(tree):
+    if hasattr(tree, "_fields") or dataclasses.is_dataclass(tree):
         types.add(type(tree))
         names = (
             tree._fields
@@ -46,12 +46,11 @@ def _render_tree(tree: Any, printer: SymPyPrinter, types: set[type], indent: str
             for name in names
         ]
         return f"{type(tree).__name__}(\n{''.join(items)}{indent})"
-    elif isinstance(tree, tuple):
+    if isinstance(tree, tuple):
         inner = indent + "    "
         items = [f"{inner}{_render_tree(item, printer, types, inner)},\n" for item in tree]
         return f"(\n{''.join(items)}{indent})"
-    else:
-        return repr(tree)
+    return repr(tree)
 
 
 def render_function(name: str, args: dict[str, Any], output: Any) -> tuple[str, set[type]]:
@@ -147,17 +146,16 @@ def map_leaves(tree: Any, f: Callable[[Any], Any]) -> Any:
     """
     if hasattr(tree, "_fields"):
         return type(tree)(**{n: map_leaves(getattr(tree, n), f) for n in tree._fields})
-    elif dataclasses.is_dataclass(tree):
+    if dataclasses.is_dataclass(tree):
         return dataclasses.replace(
             tree,
             **{
                 fld.name: map_leaves(getattr(tree, fld.name), f) for fld in dataclasses.fields(tree)
             },
         )
-    elif isinstance(tree, tuple):
+    if isinstance(tree, tuple):
         return tuple(map_leaves(item, f) for item in tree)
-    else:
-        return f(tree)
+    return f(tree)
 
 
 def _free_names(source: str) -> set[str]:

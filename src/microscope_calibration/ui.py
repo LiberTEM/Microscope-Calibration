@@ -1,11 +1,11 @@
 import concurrent.futures
-from typing import Literal, Any
+from typing import Any, ClassVar, Literal
 from collections.abc import Mapping
 import html
 
 import jax
 
-jax.config.update("jax_enable_x64", True)  # noqa: E702
+jax.config.update("jax_enable_x64", True)
 # ruff: disable[E402]
 import flax
 import jax.numpy as jnp
@@ -268,7 +268,7 @@ def center_regression(field: np.ndarray, center: PixelYX) -> np.ndarray:
     field = field.copy()
     field[..., 0] -= center.y
     field[..., 1] -= center.x
-    inp = np.ones(field.shape[:-1] + (3,))
+    inp = np.ones((*field.shape[:-1], 3))
     y, x = np.ogrid[: field.shape[0], : field.shape[1]]
     inp[..., 1] = y
     inp[..., 2] = x
@@ -277,10 +277,10 @@ def center_regression(field: np.ndarray, center: PixelYX) -> np.ndarray:
 
 
 class CoordinateCorrectionLayout:
-    descan_columns = ["scan_y", "scan_x", "detector_cy", "detector_cx"]
-    descan_index_cols = descan_columns[:2]
+    descan_columns: ClassVar[list[str]] = ["scan_y", "scan_x", "detector_cy", "detector_cx"]
+    descan_index_cols: ClassVar[list[str]] = descan_columns[:2]
 
-    coord_columns = [
+    coord_columns: ClassVar[list[str]] = [
         "scan_y",
         "scan_x",
         "specimen_y",
@@ -288,12 +288,12 @@ class CoordinateCorrectionLayout:
         "detector_y",
         "detector_x",
     ]
-    coord_index_cols = coord_columns[:4]
+    coord_index_cols: ClassVar[list[str]] = coord_columns[:4]
 
-    model_columns = list(Model4DSTEM.__dataclass_fields__.keys())
+    model_columns: ClassVar[list[str]] = list(Model4DSTEM.__dataclass_fields__.keys())
     model_columns.remove("descan_error")
 
-    descan_error_columns = list(DescanError.__annotations__.keys())
+    descan_error_columns: ClassVar[list[str]] = list(DescanError.__annotations__.keys())
 
     def __init__(
         self,
@@ -934,7 +934,7 @@ class CoordinateCorrectionLayout:
     def get_feature_on_detector(
         model: Model4DSTEM, scan_pos: PixelYX, specimen_px: PixelYX
     ) -> PixelYX:
-        slope, residual = solve_hit_specimen(
+        slope, _residual = solve_hit_specimen(
             model=model,
             scan_pos=scan_pos,
             specimen_px=specimen_px,
@@ -964,12 +964,11 @@ class CoordinateCorrectionLayout:
             sig_shape = tuple(self.dataset.shape.sig)
 
             def get_mask():
-                a = sparse.COO(
+                return sparse.COO(
                     data=np.array([1]),
                     coords=np.array(([int(cy)], [int(cx)])),
                     shape=sig_shape,
                 )
-                return a
 
             nav_udf = ApplyMasksUDF(
                 mask_factories=[get_mask],
@@ -997,8 +996,8 @@ class CoordinateCorrectionLayout:
         return result
 
     def get_frames(self, pos: PixelYX):
-        y = int(round(pos.y))
-        x = int(round(pos.x))
+        y = round(pos.y)
+        x = round(pos.x)
         roi = self.dataset.roi[y, x]
         udfs = (
             PickUDF(),
@@ -1026,10 +1025,9 @@ class CoordinateCorrectionLayout:
         return flax.serialization.to_state_dict(model.normalize_types())
 
     def deserialize(self, state_dict):
-        res = flax.serialization.from_state_dict(
+        return flax.serialization.from_state_dict(
             target=self.start_model, state=state_dict
         ).normalize_types()
-        return res
 
     def model_update(self, model: Model4DSTEM):
         return {"model": [self.serialize(model)]}
@@ -1088,7 +1086,7 @@ class CoordinateCorrectionLayout:
     def perform_descan_update(self):
         points = self.descan_fixpoint_table.value.reset_index().to_numpy(dtype=np.float64)
         if len(points):
-            new_model, residual = solve_tilt_descan_error_points(
+            new_model, _residual = solve_tilt_descan_error_points(
                 ref_model=self.model, points=jnp.array(points)
             )
             self.update_with_force(self.model_model, self.model_update(new_model))
@@ -1096,7 +1094,7 @@ class CoordinateCorrectionLayout:
     def perform_coord_update(self):
         points = self.coord_fixpoint_table.value.reset_index().to_numpy(dtype=np.float64)
         if len(points):
-            new_model, residual = solve_coords_points(
+            new_model, _residual = solve_coords_points(
                 ref_model=self.model, points=jnp.array(points)
             )
             self.update_with_force(self.model_model, self.model_update(new_model))
@@ -1155,7 +1153,7 @@ class CoordinateCorrectionLayout:
         regression = center_regression(
             res["refineds"].data[:, :, 0, :], center=model.detector_center
         )
-        new_model, residual = solve_tilt_descan_error(ref_model=model, regression=regression)
+        new_model, _residual = solve_tilt_descan_error(ref_model=model, regression=regression)
         self.model_model.data.update(**self.model_update(new_model))
         self.push()
 

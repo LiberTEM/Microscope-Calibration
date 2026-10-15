@@ -242,7 +242,7 @@ def test_descan_error():
     assert_allclose(optargs, correct)
 
 
-@pytest.mark.parametrize("overfocus", [0.0, 0.01, -0.02])
+@pytest.mark.parametrize("overfocus", (0.0, 0.01, -0.02))
 def test_camera_length(overfocus):
     # Determine camera length from a known diffraction angle in radians,
     # corresponding detector pixel offset, and detector pixel pitch
@@ -309,7 +309,7 @@ def test_scan_pixel_pitch():
 
 @pytest.mark.parametrize(
     "scan_rotation, flip_factor, detector_rotation",
-    [(-np.pi, 1.0, np.pi / 7), (0.0, -1.0, 0.0), (np.pi / 7 * 3, -1.0, -np.pi / 3)],
+    ((-np.pi, 1.0, np.pi / 7), (0.0, -1.0, 0.0), (np.pi / 7 * 3, -1.0, -np.pi / 3)),
 )
 @pytest.mark.parametrize(
     "descans",
@@ -471,7 +471,7 @@ def test_normalize_descan(random_model):
 
 @pytest.mark.parametrize(
     "scan_rotation, flip_factor, detector_rotation",
-    [(-np.pi, 1.0, np.pi / 7), (0.0, -1.0, 0.0), (np.pi / 7 * 3, -1.0, -np.pi / 3)],
+    ((-np.pi, 1.0, np.pi / 7), (0.0, -1.0, 0.0), (np.pi / 7 * 3, -1.0, -np.pi / 3)),
 )
 @pytest.mark.parametrize(
     "descans",
@@ -595,7 +595,7 @@ def test_tilt_descan_error(scan_rotation, flip_factor, detector_rotation, descan
 
 @pytest.mark.parametrize(
     "scan_rotation, flip_factor, detector_rotation",
-    [(0.0, 1.0, 0.0), (np.pi / 7 * 3, -1.0, -np.pi / 3)],
+    ((0.0, 1.0, 0.0), (np.pi / 7 * 3, -1.0, -np.pi / 3)),
 )
 @pytest.mark.parametrize(
     "descans",
@@ -716,14 +716,14 @@ def test_solver_checks_float64(jax_float32):
 
 @pytest.mark.parametrize(
     "flip_factor, ref_flip_factor, model_class",
-    [
+    (
         (1.0, 1.0, Model4DSTEM),
         (1.0, -1.0, Model4DSTEM),
         (-1.0, 1.0, Model4DSTEM),
         (-1.0, -1.0, Model4DSTEM),
         # Returns the class of ref_model
         (-1.0, 1.0, Model4DSTEM.lambdify(np)),
-    ],
+    ),
 )
 def test_coords_points(flip_factor, ref_flip_factor, model_class):
     ref_model = Model4DSTEM.default(dataset_shape=(32, 32, 64, 64)).derive(

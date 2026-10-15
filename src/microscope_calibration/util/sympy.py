@@ -1,3 +1,4 @@
+import contextlib
 import dataclasses
 import functools
 import importlib
@@ -7,11 +8,11 @@ import typing
 from collections.abc import Callable, Container
 from functools import cache
 from numbers import Number
-from typing import Any, TypeVar
+from typing import Any
 
 import jax
 
-jax.config.update("jax_enable_x64", True)  # noqa: E702
+jax.config.update("jax_enable_x64", True)
 # ruff: disable[E402]
 import jax_dataclasses as jdc
 import numpy as np
@@ -21,8 +22,6 @@ import wrapt
 from frozendict import frozendict
 from jax.errors import TracerBoolConversionError
 # ruff: enable[E402]
-
-T = TypeVar("T")
 
 
 def isnumerictype(T):
@@ -90,7 +89,9 @@ def is_sympy(expr: Any) -> bool:
     return isinstance(expr, (sym.Basic, sym.MatrixBase, sym.NDimArray))
 
 
-def symbol_maker(params_cls: type[T], postfix: str | None = None, recurse_for: Container = ()) -> T:
+def symbol_maker[T](
+    params_cls: type[T], postfix: str | None = None, recurse_for: Container = ()
+) -> T:
     """
     Declare sympy symbols for each attribute of a given parameter class.
 
@@ -135,14 +136,13 @@ def symbol_maker(params_cls: type[T], postfix: str | None = None, recurse_for: C
                 else:
                     raise TypeError(f"Can't generate symbol for type {cls}.")
             return (index, params_cls(**symbols_dict))
-        elif isnumerictype(params_cls):
+        if isnumerictype(params_cls):
             attr = params_cls.__name__
             sym_name = attr if postfix is None else f"{attr}_{postfix}"
             sym_name = f"{sym_name}_{index}"
             index += 1
             return (index, sym.Symbol(sym_name))
-        else:
-            raise TypeError(f"Can't generate symbol for type {params_cls}.")
+        raise TypeError(f"Can't generate symbol for type {params_cls}.")
 
     (_, res) = symbol_maker_inner(
         params_cls=params_cls, postfix=postfix, recurse_for=recurse_for, index=0
@@ -150,10 +150,7 @@ def symbol_maker(params_cls: type[T], postfix: str | None = None, recurse_for: C
     return res
 
 
-SymbolJaxTree = TypeVar("SymbolJaxTree")
-
-
-def lambdify_tree(inp: SymbolJaxTree, outp: SymbolJaxTree, **kwargs):
+def lambdify_tree[SymbolJaxTree](inp: SymbolJaxTree, outp: SymbolJaxTree, **kwargs):
     """
     Numeric function that calculates the tree :code:`outp` from the tree :code:`inp`
 
@@ -223,12 +220,10 @@ def lambdify_tree(inp: SymbolJaxTree, outp: SymbolJaxTree, **kwargs):
                 f"Tree definition of input {ii_treedef} does not match expected "
                 f"tree definition {inp_treedef}."
             )
-        try:
-            check(ii, ii_leaves)
         # Error checking is incompatible with jax.jit
         # but can be skipped without affecting the result
-        except TracerBoolConversionError:
-            pass
+        with contextlib.suppress(TracerBoolConversionError):
+            check(ii, ii_leaves)
 
         oo_inner = inner_f(*(ii_leaves[i] for i in inp_indices))
         outp = list(outp_leaves)
@@ -259,8 +254,7 @@ def _signature(f) -> inspect.Signature:
 def normalized_args(wrapped, args, kwargs):
     bound = _signature(wrapped).bind(*args, **kwargs)
     bound.apply_defaults()
-    all_args = bound.arguments
-    return all_args
+    return bound.arguments
 
 
 @cache
@@ -268,7 +262,6 @@ def _outer_lambdify(wrapped, modules, sample_args, sample_kwargs, sym_kwargs, re
     sig = inspect.signature(wrapped)
     spec = inspect.getfullargspec(wrapped)
     partial_bound = sig.bind_partial(*sample_args, **sample_kwargs)
-    # partial_bound.apply_defaults()
     generated_args = {}
     for arg in spec.args:
         if arg not in partial_bound.arguments:
@@ -276,8 +269,7 @@ def _outer_lambdify(wrapped, modules, sample_args, sample_kwargs, sym_kwargs, re
             generated_args[arg] = symbol_maker(cls, postfix=arg, recurse_for=recurse_for)
     partial_bound.arguments.update(generated_args)
     normalized = normalized_args(wrapped, args=(), kwargs=partial_bound.arguments)
-    f = lambdify_tree(normalized, wrapped(**normalized), modules=modules, **sym_kwargs)
-    return f
+    return lambdify_tree(normalized, wrapped(**normalized), modules=modules, **sym_kwargs)
 
 
 def lambdify(recurse_for=(), modules=sym, args=None, kwargs=None, **sym_kwargs):
@@ -352,12 +344,12 @@ class _HashableArg:
 def _freeze(value):
     if isinstance(value, dict):
         return frozendict({k: _freeze(v) for k, v in value.items()})
-    elif isinstance(value, (list, tuple)):
+    if isinstance(value, (list, tuple)):
         return tuple(_freeze(v) for v in value)
     return value
 
 
-def lambdify_class(
+def lambdify_class[T](
     base: type[T],
     modules,
     make_symbolic: Callable[[type[T]], T],
@@ -514,9 +506,9 @@ class _ModuleRef(typing.NamedTuple):
 def _modules_to_refs(value):
     if isinstance(value, types.ModuleType):
         return _ModuleRef(value.__name__)
-    elif isinstance(value, dict):
+    if isinstance(value, dict):
         return {k: _modules_to_refs(v) for k, v in value.items()}
-    elif isinstance(value, (list, tuple)):
+    if isinstance(value, (list, tuple)):
         return type(value)(_modules_to_refs(v) for v in value)
     return value
 
@@ -524,14 +516,14 @@ def _modules_to_refs(value):
 def _refs_to_modules(value):
     if isinstance(value, _ModuleRef):
         return importlib.import_module(value.name)
-    elif isinstance(value, dict):
+    if isinstance(value, dict):
         return {k: _refs_to_modules(v) for k, v in value.items()}
-    elif isinstance(value, (list, tuple)):
+    if isinstance(value, (list, tuple)):
         return type(value)(_refs_to_modules(v) for v in value)
     return value
 
 
-def _convert(obj, target: type[T]) -> T:
+def _convert[T](obj, target: type[T]) -> T:
     """
     Instance of the dataclass :code:`target` with the field values of :code:`obj`
     """

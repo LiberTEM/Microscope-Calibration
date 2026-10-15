@@ -158,16 +158,16 @@ def test_base_class_uses_generated_code():
 
 def test_nonlinear_subclass():
     model = make_model(NonlinearModel)
-    with pytest.warns(RuntimeDerivationWarning):
-        with pytest.raises(NonlinearModelError):
-            model.adjust_scan_rotation(1.1)
-    with pytest.warns(RuntimeDerivationWarning):
-        with pytest.raises(NonlinearModelError):
-            ray_transfer_matrix(model)
+    with pytest.warns(RuntimeDerivationWarning), pytest.raises(NonlinearModelError):
+        model.adjust_scan_rotation(1.1)
+    with pytest.warns(RuntimeDerivationWarning), pytest.raises(NonlinearModelError):
+        ray_transfer_matrix(model)
 
 
 def test_undecorated_subclass():
     model = make_model(UndecoratedModel)
-    with pytest.warns(RuntimeDerivationWarning):
-        with pytest.raises(TypeError, match="pytree_dataclass"):
-            model.adjust_scan_rotation(1.1)
+    with (
+        pytest.warns(RuntimeDerivationWarning),
+        pytest.raises(TypeError, match="pytree_dataclass"),
+    ):
+        model.adjust_scan_rotation(1.1)

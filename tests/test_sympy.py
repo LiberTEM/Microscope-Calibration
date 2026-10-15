@@ -10,7 +10,7 @@ from temgym_core.source import PointSource
 from microscope_calibration.util.sympy import lambdify, lambdify_tree
 
 
-@pytest.mark.parametrize("sample", ["args", "kwargs"])
+@pytest.mark.parametrize("sample", ("args", "kwargs"))
 def test_lambdify_sample_input(sample):
     a = sym.Symbol("a")
     sample_input = {"args": (a, 2.0)} if sample == "args" else {"kwargs": {"a": a, "b": 2.0}}
@@ -38,11 +38,11 @@ def test_lambdify_tree():
 
 @pytest.mark.parametrize(
     "inp, match",
-    [
+    (
         ({"x": 1.0, "pair": (2.0, 3.0), "const": 2.0}, "duplicate symbol"),
         ({"x": 1.0, "pair": (2.0, 1.0), "const": 4.0}, "Constant value"),
         ({"x": 1.0, "pair": (2.0, 1.0)}, "Tree definition"),
-    ],
+    ),
 )
 def test_lambdify_tree_input_mismatch(inp, match):
     a, b = sym.symbols("a b")
@@ -90,7 +90,7 @@ COMPONENTS = [
 
 
 @pytest.mark.parametrize("component", COMPONENTS, ids=lambda c: type(c).__name__)
-@pytest.mark.parametrize("modules", [np, jax.numpy])
+@pytest.mark.parametrize("modules", (np, jax.numpy))
 def test_lambdify_component_identity(component, modules):
     # Components as input and output of a lambdified function
     def identity(c):

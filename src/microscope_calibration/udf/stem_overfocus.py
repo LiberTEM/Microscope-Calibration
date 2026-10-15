@@ -171,9 +171,9 @@ class CorrectedPickUDF(BaseCorrectionUDF):
         # accommodate multiple frames in the last and not first dimension.
         # A "nav" buffer would allocate a NaN-filled buffer for the whole dataset.
         return {
-            "corrected": self.buffer(kind="single", extra_shape=(navsize,) + sigshape, dtype=dtype),
+            "corrected": self.buffer(kind="single", extra_shape=(navsize, *sigshape), dtype=dtype),
             "backprojected": self.buffer(
-                kind="single", extra_shape=(navsize,) + backprojection_fov, dtype=dtype
+                kind="single", extra_shape=(navsize, *backprojection_fov), dtype=dtype
             ),
         }
 

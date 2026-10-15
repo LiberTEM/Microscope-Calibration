@@ -2,7 +2,7 @@ from typing import Annotated, NamedTuple, TYPE_CHECKING
 
 import jax
 
-jax.config.update("jax_enable_x64", True)  # noqa: E702
+jax.config.update("jax_enable_x64", True)
 # ruff: disable[E402]
 import numpy as np
 from scipy.optimize import shgo
@@ -202,7 +202,7 @@ def make_overfocus_loss_function(
         model = make_new_model(args)
         # Hack to make parameter update work
         overfocus_udf.params.overfocus_model["model"] = model
-        res = ctx.run_udf(dataset=dataset, udf=[overfocus_udf] + list(extra_udfs), **kwargs)
+        res = ctx.run_udf(dataset=dataset, udf=[overfocus_udf, *list(extra_udfs)], **kwargs)
         blur = blur_function(res[0]["backprojected_sum"].data)
         if callback is not None:
             callback(args, overfocus_udf.params.overfocus_model["model"], res, blur)
@@ -225,8 +225,7 @@ def optimize(loss, bounds=None, minimizer_kwargs=None, **kwargs):
 
     if minimizer_kwargs is None:
         minimizer_kwargs = {"method": "COBYLA"}
-    res = shgo(func=loss, bounds=bounds, minimizer_kwargs=minimizer_kwargs, **kwargs)
-    return res
+    return shgo(func=loss, bounds=bounds, minimizer_kwargs=minimizer_kwargs, **kwargs)
 
 
 class _CLArgs(NamedTuple):

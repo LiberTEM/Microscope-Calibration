@@ -7,7 +7,7 @@ from types import ModuleType
 
 import jax
 
-jax.config.update("jax_enable_x64", True)  # noqa: E702
+jax.config.update("jax_enable_x64", True)
 # ruff: disable[E402]
 import jax_dataclasses as jdc
 import sympy as sym
@@ -29,10 +29,7 @@ from microscope_calibration.util.sympy import (
 
 
 def equals(ray1: Ray, ray2: Ray) -> bool:
-    for key in ray1.__dict__.keys():
-        if not sym.sympify(ray1.__dict__[key]).equals(ray2.__dict__[key]):
-            return False
-    return True
+    return all(sym.sympify(ray1.__dict__[key]).equals(ray2.__dict__[key]) for key in ray1.__dict__)
 
 
 def _to_float(name: str, value) -> float:

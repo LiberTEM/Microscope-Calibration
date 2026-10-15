@@ -16,7 +16,7 @@ def get_twothetas(cif_filename, acceleration_voltage_V, reciprocal_radius=1):
         minimum_intensity=0.0001,
     )
     structure_raw = ReadCif(cif_filename)
-    key = list(structure_raw.keys())[0]
+    key = next(iter(structure_raw.keys()))
     space_group = int(structure_raw[key]["_space_group_IT_number"])
     structure = load_structure(cif_filename)
     p = Phase(structure=structure, space_group=space_group)
