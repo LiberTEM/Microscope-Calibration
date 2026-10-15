@@ -1,5 +1,5 @@
 import concurrent.futures
-from typing import Any, ClassVar, Literal
+from typing import Any, ClassVar, Literal, cast
 from collections.abc import Mapping
 import html
 
@@ -40,6 +40,7 @@ from .common.stem_overfocus import (
 )
 from .udf.stem_overfocus import CorrectedPickUDF, OverfocusUDF
 from .util.optimize import (
+    CoMRegression,
     make_overfocus_loss_function,
     optimize,
     solve_coords_points,
@@ -217,7 +218,7 @@ def correlation_pattern(ri: np.ndarray, ro: np.ndarray) -> BackgroundSubtraction
     return BackgroundSubtraction(radius=ro[0], radius_outer=radius_outer)
 
 
-def expected_center_shifts(model: Model4DSTEM, nav_shape: tuple[int, int]) -> np.ndarray:
+def expected_center_shifts(model: Model4DSTEM, nav_shape: tuple[int, ...]) -> np.ndarray:
     """
     Shift of the primary beam from the detector center at each scan position
     according to the descan error of :code:`model`, in detector pixels (y, x)
@@ -247,7 +248,7 @@ def expected_center_shifts(model: Model4DSTEM, nav_shape: tuple[int, int]) -> np
     return np.stack((expected_y - dc.y, expected_x - dc.x), axis=-1)
 
 
-def center_regression(field: np.ndarray, center: PixelYX) -> np.ndarray:
+def center_regression(field: np.ndarray, center: PixelYX) -> CoMRegression:
     """
     Linear regression of beam positions, following the CoMUDF regression
 
@@ -1005,14 +1006,8 @@ class CoordinateCorrectionLayout:
         )
         res = self.ctx.run_udf(dataset=self.dataset, udf=udfs, roi=roi)
 
-        if self.sig_mode == "log":
-
-            def fn(data):
-                return np.log1p(np.maximum(0, data))
-        else:
-
-            def fn(data):
-                return data
+        def fn(data):
+            return np.log1p(np.maximum(0, data)) if self.sig_mode == "log" else data
 
         return {
             "raw": fn(res[0]["intensity"].raw_data[0]),
@@ -1025,9 +1020,9 @@ class CoordinateCorrectionLayout:
         return flax.serialization.to_state_dict(model.normalize_types())
 
     def deserialize(self, state_dict):
-        return flax.serialization.from_state_dict(
-            target=self.start_model, state=state_dict
-        ).normalize_types()
+        model = flax.serialization.from_state_dict(target=self.start_model, state=state_dict)
+        # flax types the result as dict
+        return cast(Model4DSTEM, model).normalize_types()
 
     def model_update(self, model: Model4DSTEM):
         return {"model": [self.serialize(model)]}

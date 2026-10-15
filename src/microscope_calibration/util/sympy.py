@@ -8,7 +8,7 @@ import typing
 from collections.abc import Callable, Container
 from functools import cache
 from numbers import Number
-from typing import Any
+from typing import Any, cast
 
 import jax
 
@@ -140,7 +140,7 @@ def symbol_maker[T](
             sym_name = attr if postfix is None else f"{attr}_{postfix}"
             sym_name = f"{sym_name}_{index}"
             index += 1
-            return (index, sym.Symbol(sym_name))
+            return (index, cast(T, sym.Symbol(sym_name)))
         raise TypeError(f"Can't generate symbol for type {params_cls}.")
 
     (_, res) = symbol_maker_inner(
@@ -300,7 +300,17 @@ def lambdify(recurse_for=(), modules=sym, args=None, kwargs=None, **sym_kwargs):
     return lambdified
 
 
-def lambdify_method(method: Callable | None = None, *, static: tuple[str, ...] = ()):
+@typing.overload
+def lambdify_method[F: Callable](method: F, *, static: tuple[str, ...] = ()) -> F: ...
+
+
+@typing.overload
+def lambdify_method[F: Callable](
+    method: None = None, *, static: tuple[str, ...] = ()
+) -> Callable[[F], F]: ...
+
+
+def lambdify_method(method=None, *, static=()):
     """
     Mark a method to be compiled in classes created by :func:`lambdify_class`
 
@@ -317,8 +327,9 @@ def lambdify_method(method: Callable | None = None, *, static: tuple[str, ...] =
     Use as :code:`@lambdify_method` or :code:`@lambdify_method(static=("arg",))`.
     """
 
-    def mark(method: Callable) -> Callable:
-        method.__lambdify_method__ = frozenset(static)
+    def mark[F: Callable](method: F) -> F:
+        # Attribute of the function object
+        setattr(method, "__lambdify_method__", frozenset(static))  # noqa: B010
         return method
 
     return mark if method is None else mark(method)
@@ -529,4 +540,5 @@ def _convert[T](obj, target: type[T]) -> T:
     """
     Instance of the dataclass :code:`target` with the field values of :code:`obj`
     """
-    return target(**{f.name: getattr(obj, f.name) for f in dataclasses.fields(target) if f.init})
+    fields = dataclasses.fields(cast(Any, target))
+    return target(**{f.name: getattr(obj, f.name) for f in fields if f.init})

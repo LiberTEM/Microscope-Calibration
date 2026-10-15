@@ -1,6 +1,6 @@
 import dataclasses
 import warnings
-from typing import NamedTuple, Self, TypedDict
+from typing import Any, NamedTuple, Self, TypedDict, cast
 from functools import cache, partial
 from types import ModuleType
 
@@ -44,9 +44,10 @@ def _evaluate_sympy(name: str, value):
     """
     Convert SymPy numbers in :code:`value` or the leaves of a NamedTuple to :code:`float`
     """
-    if isinstance(value, tuple) and hasattr(value, "_fields"):
+    fields = getattr(value, "_fields", None)
+    if isinstance(value, tuple) and fields is not None:
         return type(value)(
-            **{key: _evaluate_sympy(f"{name}.{key}", getattr(value, key)) for key in value._fields}
+            **{key: _evaluate_sympy(f"{name}.{key}", getattr(value, key)) for key in fields}
         )
     return _to_float(name, value) if isinstance(value, sym.Basic) else value
 
@@ -56,9 +57,10 @@ def _to_float_tree(name: str, value):
     Convert :code:`value` or the leaves of a NamedTuple like :class:`PixelYX`
     to :code:`float`, see :meth:`Model4DSTEM.normalize_types`
     """
-    if isinstance(value, tuple) and hasattr(value, "_fields"):
+    fields = getattr(value, "_fields", None)
+    if isinstance(value, tuple) and fields is not None:
         return type(value)(
-            **{key: _to_float_tree(f"{name}.{key}", getattr(value, key)) for key in value._fields}
+            **{key: _to_float_tree(f"{name}.{key}", getattr(value, key)) for key in fields}
         )
     return _to_float(name, value)
 
@@ -108,23 +110,32 @@ class RuntimeDerivationWarning(UserWarning):
     """
 
 
-class Sampling(TypedDict, total=False):
+class ScanSampling(TypedDict):
     """
-    Pixel coordinates of a ray in a :class:`ResultSection`
+    Position of a ray on the specimen in scan pixel coordinates
     """
 
     scan_px: PixelYX
+
+
+class DetectorSampling(TypedDict):
+    """
+    Position of a ray on the detector in detector pixel coordinates
+    """
+
     detector_px: PixelYX
 
 
-class ResultSection(NamedTuple):
+class ResultSection[S](NamedTuple):
     """
-    "Layer" of a beam passing through a model
+    "Layer" of a beam passing through a model, with :code:`sampling` of type
+    :code:`S`, e.g. :class:`DetectorSampling`, or :code:`None`
     """
 
     component: Component | Source | Propagator
     ray: Ray
-    sampling: Sampling | None = None
+    # For sections without sampling, i.e. S = None
+    sampling: S = None  # pyright: ignore[reportAssignmentType]
 
 
 class Result4DSTEM(TypedDict):
@@ -132,13 +143,13 @@ class Result4DSTEM(TypedDict):
     Result of :meth:`Model4DSTEM.trace`, sections in the order of the beam path
     """
 
-    source: ResultSection
-    overfocus: ResultSection
-    scanner: ResultSection
-    specimen: ResultSection
-    descanner: ResultSection
-    camera_length: ResultSection
-    detector: ResultSection
+    source: ResultSection[None]
+    overfocus: ResultSection[None]
+    scanner: ResultSection[None]
+    specimen: ResultSection[ScanSampling]
+    descanner: ResultSection[None]
+    camera_length: ResultSection[None]
+    detector: ResultSection[DetectorSampling]
 
 
 # TODO use LiberTEM-schema later
@@ -259,11 +270,16 @@ class Model4DSTEM:
         >>> float(model.adjust_scan_rotation(0.1).scan_rotation)
         0.1
         """
-        return lambdify_class(
-            cls._symbolic_class(),
-            modules=modules,
-            make_symbolic=symbolic_model,
-            recurse_for=(PixelYX, CoordXY, CoordsXY, DescanError),
+        # A subclass of the symbolic class, i.e. of this class unless this
+        # class is a lambdified class itself
+        return cast(
+            type[Self],
+            lambdify_class(
+                cls._symbolic_class(),
+                modules=modules,
+                make_symbolic=symbolic_model,
+                recurse_for=(PixelYX, CoordXY, CoordsXY, DescanError),
+            ),
         )
 
     @classmethod
@@ -300,7 +316,7 @@ class Model4DSTEM:
         return cls(**values)
 
     @classmethod
-    def default(cls, dataset_shape: tuple[int, int, int, int] = (0, 0, 0, 0)):
+    def default(cls, dataset_shape: tuple[int, ...] = (0, 0, 0, 0)) -> Self:
         """
         Model with somewhat sensible default values for a given dataset shape
 
@@ -475,7 +491,8 @@ class Model4DSTEM:
             specimen = Plane(z=self.overfocus)
         else:
             # The specimen is in the overfocus plane by definition
-            specimen = dataclasses.replace(specimen, z=self.overfocus)
+            # Components are dataclasses
+            specimen = dataclasses.replace(cast(Any, specimen), z=self.overfocus)
         scan_pos_phys = self.scan_to_real(scan_pos, _one=_one)
         res = {}
         res["source"] = PointSource(z=0.0, semi_conv=self.semiconv)
@@ -531,6 +548,7 @@ class Model4DSTEM:
             _one=_one,
         )
         source = components["source"]
+        assert isinstance(source, PointSource)
         ray = Ray(
             x=source.offset_xy.x,
             y=source.offset_xy.y,
@@ -548,7 +566,7 @@ class Model4DSTEM:
         # components and rays we expect. Furthermore, we make sure that our
         # result ALWAYS has the same schema independent of parameters by
         # inserting gaps of zero length manually.
-        run_result = list(run_iter(ray=ray, components=components.values()))
+        run_result = list(run_iter(ray=ray, components=list(components.values())))
 
         # skip the first propagation, which should be zero distance
         comp, r = run_result.pop(0)
