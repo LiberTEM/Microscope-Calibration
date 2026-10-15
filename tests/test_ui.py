@@ -1,5 +1,6 @@
 import numpy as np
 import pytest
+from bokeh.document import Document
 from libertem.api import Context
 from numpy.testing import assert_allclose
 
@@ -113,3 +114,28 @@ def test_in_focus_keeps_feature_selection(monkeypatch):
     layout.move_feature_to(MockEvent(y=2, x=3))
     layout.cl_input.value = 1.2
     assert layout.feature_select_model.data == start
+
+
+@pytest.mark.parametrize("held", (False, True))
+def test_update_with_force(held):
+    ctx = Context.make_with("inline")
+    ds = ctx.load("memory", data=np.zeros((4, 5, 6, 7)))
+    model = Model4DSTEM.default(dataset_shape=ds.shape)
+    layout = CoordinateCorrectionLayout(
+        calibrated_dataset=CalibratedDataset(dataset=ds, model=model), ctx=ctx
+    )
+    calls = []
+    layout._on_data_change(layout.feature_model, lambda attr, old, new: calls.append(dict(new)))
+    doc = Document()
+    doc.add_root(layout.feature_model)
+    if held:
+        # Like Panel in a notebook
+        doc.hold("combine")
+    update = layout.scan_pos_update(PixelYX(y=1.0, x=2.0))
+    layout.update_with_force(layout.feature_model, update)
+    # Callbacks run once, also during a hold
+    assert calls == [dict(layout.feature_model.data)]
+    assert layout.feature_model.data["scan_y"] == [1.0]
+    if held:
+        # The change is collected to be sent to the browser
+        assert doc.callbacks._held_events
