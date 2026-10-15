@@ -49,5 +49,5 @@ class CalibratedDataset(AbstractCalibratedDataset):
         return CalibratedDataset(dataset=self.dataset, model=model)
 
     @property
-    def tags(self):
+    def tags(self) -> Mapping[str, Any]:
         return {}

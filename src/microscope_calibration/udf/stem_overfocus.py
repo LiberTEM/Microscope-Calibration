@@ -62,8 +62,13 @@ class BaseCorrectionUDF(UDF):
     def __init__(self, overfocus_model: dict, **kwargs):
         super().__init__(overfocus_model=overfocus_model, **kwargs)
 
+    @property
+    def _model(self) -> Model4DSTEM:
+        # LiberTEM doesn't type the parameters of UDFs
+        return self.params.overfocus_model["model"]  # pyright: ignore[reportIndexIssue]
+
     def get_task_data(self):
-        model = self.params.overfocus_model["model"].normalize_types()
+        model = self._model.normalize_types()
         return {
             "back_mat": _backward_matrix(model),
             "corr_mat": _correction_matrix(model),
@@ -96,7 +101,7 @@ class OverfocusUDF(BaseCorrectionUDF):
 
     def process_frame(self, frame):
         scan_y, scan_x = self.meta.coordinates[0]
-        overfocus_model: Model4DSTEM = self.params.overfocus_model["model"]
+        overfocus_model = self._model
         if self.has_backprojection:
             project_frame_backwards(
                 frame=frame,
@@ -179,7 +184,7 @@ class CorrectedPickUDF(BaseCorrectionUDF):
 
     def process_frame(self, frame):
         scan_y, scan_x = self.meta.coordinates[0]
-        overfocus_model: Model4DSTEM = self.params.overfocus_model["model"]
+        overfocus_model = self._model
         # We work in flattened nav space with ROI applied
         sl = self.meta.slice.get()
         if self.has_correction:

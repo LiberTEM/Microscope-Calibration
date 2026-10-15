@@ -336,7 +336,8 @@ def solve_scan_pixel_pitch(
 # RegressionOptions.SUBTRACT_LINEAR This allows preliminary calibration of
 # descan error for a single camera length by adjusting constant tilt offset and
 # tilt as a function of scan.
-CoMRegression = np.ndarray[tuple[3, 2], np.floating]
+# Shape (3, 2)
+CoMRegression = np.ndarray[tuple[int, int], np.dtype[np.floating]]
 
 
 # Type specification for dictionary where keys are calibrated camera lengths and

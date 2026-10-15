@@ -32,14 +32,11 @@ def symbol_paths(tree: Any, path: tuple[str, ...]) -> Iterator[tuple[tuple[str, 
 
 def _render_tree(tree: Any, printer: SymPyPrinter, types: set[type], indent: str) -> str:
     if isinstance(tree, sym.Basic):
-        return printer.doprint(tree)
-    if hasattr(tree, "_fields") or dataclasses.is_dataclass(tree):
+        return str(printer.doprint(tree))
+    fields = getattr(tree, "_fields", None)
+    if fields is not None or dataclasses.is_dataclass(tree):
         types.add(type(tree))
-        names = (
-            tree._fields
-            if hasattr(tree, "_fields")
-            else [field.name for field in dataclasses.fields(tree)]
-        )
+        names = fields if fields is not None else [field.name for field in dataclasses.fields(tree)]
         inner = indent + "    "
         items = [
             f"{inner}{name}={_render_tree(getattr(tree, name), printer, types, inner)},\n"
@@ -92,7 +89,11 @@ def render_function(name: str, args: dict[str, Any], output: Any) -> tuple[str, 
 
     output = map_leaves(output, lambda leaf: _xreplace(leaf, replacements))
     used = {
-        s.name for leaf in leaves(output) if isinstance(leaf, sym.Basic) for s in leaf.free_symbols
+        s.name
+        for leaf in leaves(output)
+        if isinstance(leaf, sym.Basic)
+        for s in leaf.free_symbols
+        if isinstance(s, sym.Symbol)
     }
     unknown = used - {s.name for s in replacements.values()}
     if unknown:
@@ -147,7 +148,7 @@ def map_leaves(tree: Any, f: Callable[[Any], Any]) -> Any:
     """
     if hasattr(tree, "_fields"):
         return type(tree)(**{n: map_leaves(getattr(tree, n), f) for n in tree._fields})
-    if dataclasses.is_dataclass(tree):
+    if dataclasses.is_dataclass(tree) and not isinstance(tree, type):
         return dataclasses.replace(
             tree,
             **{
