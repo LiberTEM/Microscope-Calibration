@@ -487,7 +487,11 @@ def get_diffraction_pixel_radius(model: Model4DSTEM, twotheta: float):
     center_res = model.trace(scan_pos=PixelYX(0.0, 0.0), source_dx=0.0, source_dy=0.0)
     # Deflects the ray like a diffracting specimen
     diffractor = Scanner(
-        z=0.0, scan_pos_x=0.0, scan_pos_y=0.0, scan_tilt_x=jnp.tan(twotheta), scan_tilt_y=0.0
+        z=0.0,
+        scan_pos_x=0.0,
+        scan_pos_y=0.0,
+        scan_tilt_x=jnp.tan(twotheta),  # pyright: ignore[reportArgumentType]  # JAX value for a float annotation
+        scan_tilt_y=0.0,
     )
     diff_res = model.trace(
         scan_pos=PixelYX(0.0, 0.0), source_dx=0.0, source_dy=0.0, specimen=diffractor

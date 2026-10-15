@@ -10,7 +10,7 @@ import json
 from collections.abc import Mapping
 from typing import Any, Self
 
-import flax
+import flax.serialization
 import numpy as np
 import pint
 from libertem.api import Context
@@ -68,7 +68,7 @@ class CalibratedJEOLDM4(CalibratedDataset):
         dm4path, model = flax.serialization.from_state_dict(
             target=("", Model4DSTEM.default()), state=statedict
         )
-        return cls(path=dm4path, model=model, ctx=ctx)
+        return cls(path=dm4path, model=model, ctx=ctx)  # pyright: ignore[reportArgumentType]  # flax types the result too loosely
 
     @property
     def tags(self) -> DM4Tags:

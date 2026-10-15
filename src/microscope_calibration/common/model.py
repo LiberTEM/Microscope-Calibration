@@ -77,8 +77,8 @@ def rotate(c: CoordXY | PixelYX, radians: float) -> CoordXY:
     cosr = sym.cos(radians)
     sinr = sym.sin(radians)
     return CoordXY(
-        x=c.x * cosr - c.y * sinr,
-        y=c.y * cosr + c.x * sinr,
+        x=c.x * cosr - c.y * sinr,  # pyright: ignore[reportArgumentType]  # SymPy value for a float annotation
+        y=c.y * cosr + c.x * sinr,  # pyright: ignore[reportArgumentType]  # SymPy value for a float annotation
     )
 
 
@@ -550,8 +550,8 @@ class Model4DSTEM:
         source = components["source"]
         assert isinstance(source, PointSource)
         ray = Ray(
-            x=source.offset_xy.x,
-            y=source.offset_xy.y,
+            x=source.offset_xy.x,  # pyright: ignore[reportArgumentType]  # TemGymCore types CoordsXY as arrays
+            y=source.offset_xy.y,  # pyright: ignore[reportArgumentType]  # TemGymCore types CoordsXY as arrays
             dx=source_dx,
             dy=source_dy,
             z=source.z,
@@ -571,7 +571,7 @@ class Model4DSTEM:
         # skip the first propagation, which should be zero distance
         comp, r = run_result.pop(0)
         assert isinstance(comp, Propagator)
-        assert sym.simplify(comp.distance).equals(0.0)
+        assert sym.simplify(comp.distance).equals(0.0)  # pyright: ignore[reportArgumentType, reportCallIssue]  # SymPy types simplify() too narrowly
         assert equals(r, ray)
 
         comp, r = run_result.pop(0)
@@ -593,7 +593,7 @@ class Model4DSTEM:
         # Skip zero distance propagation between scanner and specimen
         comp, r = run_result.pop(0)
         assert isinstance(comp, Propagator)
-        assert sym.simplify(comp.distance).equals(0.0)
+        assert sym.simplify(comp.distance).equals(0.0)  # pyright: ignore[reportArgumentType, reportCallIssue]  # SymPy types simplify() too narrowly
         assert isinstance(r, Ray)
         assert equals(r, result["scanner"].ray)
 
@@ -610,7 +610,7 @@ class Model4DSTEM:
         # Skip zero distance propagation between specimen and descanner
         comp, r = run_result.pop(0)
         assert isinstance(comp, Propagator)
-        assert sym.simplify(comp.distance).equals(0.0)
+        assert sym.simplify(comp.distance).equals(0.0)  # pyright: ignore[reportArgumentType, reportCallIssue]  # SymPy types simplify() too narrowly
         assert equals(r, result["specimen"].ray)
         comp, r = run_result.pop(0)
         assert comp == components["descanner"]
@@ -850,8 +850,8 @@ def _derive_descan_compensation(param: str, model_type: type[Model4DSTEM] = Mode
     if param == "camera_length":
         cl_scale = sym.Symbol("cl_scale")
         free_variable = cl_scale
-        old_traced = old.derive(camera_length=cl_scale * old.camera_length)
-        new_traced = new.derive(camera_length=cl_scale * new.camera_length)
+        old_traced = old.derive(camera_length=cl_scale * old.camera_length)  # pyright: ignore[reportArgumentType]  # SymPy value for a float annotation
+        new_traced = new.derive(camera_length=cl_scale * new.camera_length)  # pyright: ignore[reportArgumentType]  # SymPy value for a float annotation
     else:
         free_variable = old.camera_length
         old_traced = old
@@ -893,7 +893,7 @@ def _derive_descan_compensation(param: str, model_type: type[Model4DSTEM] = Mode
             f"Could not derive a unique descan error compensation for {param}: {solutions}"
         )
     (solution,) = solutions
-    solved_de = DescanError(*(sym.trigsimp(solution[s]) for s in new_de))
+    solved_de = DescanError(*(sym.trigsimp(solution[s]) for s in new_de))  # pyright: ignore[reportArgumentType]  # SymPy values for float annotations
     return {"model": old, "value": value}, solved_de
 
 

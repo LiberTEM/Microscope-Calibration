@@ -7,7 +7,7 @@ import jax
 
 jax.config.update("jax_enable_x64", True)
 # ruff: disable[E402]
-import flax
+import flax.serialization
 import jax.numpy as jnp
 import numpy as np
 import pandas as pd
@@ -49,6 +49,11 @@ from .util.optimize import (
     solve_tilt_descan_error_points,
 )
 # ruff: enable[E402]
+
+# pyright: reportIndexIssue=false, reportOptionalMemberAccess=false
+# pyright: reportOptionalSubscript=false, reportArgumentType=false, reportCallIssue=false
+# The types of LiberTEM's UDF results and buffers, libertem_ui's figures, Bokeh
+# and pandas are too loose or missing for these checks in the GUI code.
 
 NavModeT = Literal[
     "point",
