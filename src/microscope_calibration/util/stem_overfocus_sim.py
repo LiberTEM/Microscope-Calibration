@@ -1,6 +1,6 @@
 import jax
 
-jax.config.update("jax_enable_x64", True)  # noqa fmt: skip
+jax.config.update("jax_enable_x64", True)
 # ruff: disable[E402]
 
 import numba
@@ -58,8 +58,7 @@ def smiley(size):
 
     obj += 0.3 * signature_wave - 0.3
 
-    obj = np.abs(obj)
-    return obj
+    return np.abs(obj)
 
 
 def get_forward_transformation_matrix(

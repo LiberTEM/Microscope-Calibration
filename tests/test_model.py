@@ -77,7 +77,6 @@ def test_trace_focused():
     res1 = model.trace(scan_pos=PixelYX(y=13, x=7), source_dx=0.034, source_dy=0.042)
     res2 = model.trace(scan_pos=PixelYX(y=13, x=7), source_dx=0.0, source_dy=0.0)
     assert sym.sympify(res1["specimen"].ray.x).equals(res2["specimen"].ray.x)
-    # assert_allclose(res1['specimen'].ray.x, res2['specimen'].ray.x)
     assert sym.sympify(res1["specimen"].ray.y).equals(res2["specimen"].ray.y)
     assert sym.sympify(res1["specimen"].sampling["scan_px"].x).equals(7)
     assert sym.sympify(res1["specimen"].sampling["scan_px"].y).equals(13)
@@ -132,8 +131,8 @@ def test_straight():
     )
     res = model.trace(scan_pos=PixelYX(y=0.0, x=0.0), source_dx=0.0, source_dy=0.0)
 
-    for key, sect in res.items():
-        if isinstance(sect.component, Component) or isinstance(sect.component, Source):
+    for sect in res.values():
+        if isinstance(sect.component, (Component, Source)):
             assert sect.component.z == sect.ray.z
             assert sect.component.z == sect.ray.pathlength
         assert sym.sympify(sect.ray.x).equals(0.0)
@@ -169,12 +168,12 @@ def test_scan(dy, dx, scan_y, scan_x):
     res_straight = model.trace(scan_pos=PixelYX(y=0.0, x=0.0), source_dx=dx, source_dy=dy)
     res = model.trace(scan_pos=PixelYX(y=scan_y, x=scan_x), source_dx=dx, source_dy=dy)
 
-    for key in res.keys():
+    for key in res:
         sect = res[key]
         sect_straight = res_straight[key]
         assert sect.ray.z == sect_straight.ray.z
         assert sect.ray.pathlength == sect_straight.ray.pathlength
-        if isinstance(sect.component, Component) or isinstance(sect.component, Source):
+        if isinstance(sect.component, (Component, Source)):
             assert sect.component.z == sect.ray.z
             assert sect.component.z == sect.ray.pathlength
         # Beam is deflected
@@ -1137,7 +1136,7 @@ def test_invert_focus_numpy(random_model):
 
 
 @pytest.mark.parametrize(
-    "param", ["scan_rotation", "scan_pixel_pitch", "detector_rotation", "camera_length"]
+    "param", ("scan_rotation", "scan_pixel_pitch", "detector_rotation", "camera_length")
 )
 def test_adjust_grad(random_model, param):
     def f(value):
@@ -1149,7 +1148,7 @@ def test_adjust_grad(random_model, param):
     assert_allclose(jax.grad(f)(value), expected, rtol=1e-5, atol=1e-8)
 
 
-@pytest.mark.parametrize("flip_factor", [-1.0, 1.0])
+@pytest.mark.parametrize("flip_factor", (-1.0, 1.0))
 def test_adjust_flip_factor_jit(random_model, flip_factor):
     res = jax.jit(ADJUST_JAX["flip_factor"])(random_model, flip_factor)
     ref = ADJUST_NUMPY["flip_factor"](random_model, flip_factor)
@@ -1187,13 +1186,13 @@ def test_trace_homogeneous(random_model):
 
 @pytest.mark.parametrize(
     "changes, exception, match",
-    [
+    (
         ({"overfocus": sym.Symbol("x")}, TypeError, "overfocus = x"),
         ({"scan_center": PixelYX(y=0.0, x=1 + sym.I)}, TypeError, "scan_center.x"),
         ({"semiconv": np.array([1.0, 2.0])}, TypeError, "semiconv"),
         ({"camera_length": "1.5"}, TypeError, "camera_length is a string"),
         ({"descan_error": DescanError(offpxi=sym.zoo)}, TypeError, "descan_error.offpxi"),
-    ],
+    ),
 )
 def test_normalize_types_invalid(random_model, changes, exception, match):
     with pytest.raises(exception, match=match):

@@ -202,7 +202,7 @@ def test_cached_matrices_read_only():
             mat[0, 0] = 1.0
 
 
-@pytest.mark.parametrize("udf_class", [OverfocusUDF, CorrectedPickUDF])
+@pytest.mark.parametrize("udf_class", (OverfocusUDF, CorrectedPickUDF))
 def test_udf_requires_2d_scan(udf_class):
     ctx = Context.make_with("inline")
     ds = ctx.load("memory", data=np.zeros((2, 3, 4, 5, 6)), sig_dims=2)

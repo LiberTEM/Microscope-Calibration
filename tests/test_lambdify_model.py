@@ -106,14 +106,14 @@ def test_adjust(random_model, backend, param):
 @pytest.mark.parametrize("backend", sorted(BACKENDS))
 @pytest.mark.parametrize(
     "method, kwargs",
-    [
+    (
         ("invert_focus", {}),
         ("trace", TRACE_KWARGS),
         ("scan_to_real", {"pixels": PixelYX(y=3.0, x=-4.0)}),
         ("real_to_scan", {"coords": CoordXY(x=0.3, y=-0.4)}),
         ("detector_to_real", {"pixels": PixelYX(y=3.0, x=-4.0)}),
         ("real_to_detector", {"coords": CoordXY(x=0.3, y=-0.4)}),
-    ],
+    ),
 )
 def test_methods(random_model, backend, method, kwargs):
     cls = Model4DSTEM.lambdify(BACKENDS[backend])
@@ -183,7 +183,7 @@ def test_ray_transfer_matrix(random_model):
     assert_allclose(res, ray_transfer_matrix(random_model), rtol=1e-12, atol=1e-12)
 
 
-@pytest.mark.parametrize("param", ["scan_rotation", "camera_length"])
+@pytest.mark.parametrize("param", ("scan_rotation", "camera_length"))
 def test_jax_grad(random_model, param):
     # Gradients use a dedicated function with the inputs and outputs of
     # interest, see examples/model.ipynb
@@ -287,7 +287,7 @@ def test_trace_specimen_subclass(random_model):
 
 @pytest.mark.parametrize(
     "modules",
-    [np, jnp, "numpy", [{"cos": np.cos}, "numpy"]],
+    (np, jnp, "numpy", [{"cos": np.cos}, "numpy"]),
     ids=["numpy", "jax", "numpy-string", "list"],
 )
 def test_pickle(random_model, modules):

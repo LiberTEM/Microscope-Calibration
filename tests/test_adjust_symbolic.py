@@ -190,8 +190,7 @@ def reference_adjust_flip_factor(self, flip_factor: float):
             flip_factor=flip_factor,
             descan_error=new_de,
         )
-    else:
-        return self
+    return self
 
 
 def reference_adjust_detector_center(self, detector_center: PixelYX):

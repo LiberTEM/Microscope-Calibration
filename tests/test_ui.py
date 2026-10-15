@@ -9,11 +9,11 @@ from microscope_calibration.ui import CalibratedDataset, CoordinateCorrectionLay
 
 @pytest.mark.parametrize(
     "kwargs",
-    [
+    (
         {},
         {"nav_mode": "point", "sig_mode": "lin"},
         {"nav_mode": "sumsig", "sig_mode": "log", "twothetas": np.array((0.01, 0.02, 0.03))},
-    ],
+    ),
 )
 def test_smoke(kwargs):
     ctx = Context.make_with("inline")
@@ -30,9 +30,7 @@ class MockEvent(PixelYX):
 
 @pytest.mark.parametrize(
     "kwargs",
-    [
-        {"nav_mode": "sumsig", "sig_mode": "log", "twothetas": np.array((0.01, 0.02, 0.03))},
-    ],
+    ({"nav_mode": "sumsig", "sig_mode": "log", "twothetas": np.array((0.01, 0.02, 0.03))},),
 )
 def test_events(kwargs):
     ctx = Context.make_with("inline")

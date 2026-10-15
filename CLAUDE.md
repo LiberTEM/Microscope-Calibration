@@ -134,8 +134,8 @@ Key layers, bottom-up:
   `jax.tree.map(jnp.asarray, args)` before passing them, as `_least_squares()` in
   `util/optimize.py` does. `jax.jit` traces Python numbers and is not affected.
 - JAX x64 is enabled at import time (`jax.config.update("jax_enable_x64", True)`) in every
-  module that uses JAX — this must happen before other JAX imports, hence the `# noqa: E702`
-  and `# ruff: disable[E402]` markers at the top of those files. JAX-based solvers call
+  module that uses JAX — this must happen before other JAX imports, hence the
+  `# ruff: disable[E402]` markers at the top of those files. JAX-based solvers call
   `check_float64()` (`util/optimize.py`).
 
 ## Testing notes
