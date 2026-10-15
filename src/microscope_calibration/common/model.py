@@ -1,7 +1,6 @@
 import dataclasses
 import warnings
-from typing import NamedTuple, Self
-from collections import OrderedDict
+from typing import NamedTuple, Self, TypedDict
 from functools import cache, partial
 from types import ModuleType
 
@@ -109,15 +108,37 @@ class RuntimeDerivationWarning(UserWarning):
     """
 
 
-# "Layer" of a beam passing through a model
+class Sampling(TypedDict, total=False):
+    """
+    Pixel coordinates of a ray in a :class:`ResultSection`
+    """
+
+    scan_px: PixelYX
+    detector_px: PixelYX
+
+
 class ResultSection(NamedTuple):
+    """
+    "Layer" of a beam passing through a model
+    """
+
     component: Component | Source | Propagator
     ray: Ray
-    sampling: dict | None = None
+    sampling: Sampling | None = None
 
 
-# Layer stack, result of tracing a ray through a model
-Result4DSTEM = OrderedDict[str, ResultSection]
+class Result4DSTEM(TypedDict):
+    """
+    Result of :meth:`Model4DSTEM.trace`, sections in the order of the beam path
+    """
+
+    source: ResultSection
+    overfocus: ResultSection
+    scanner: ResultSection
+    specimen: ResultSection
+    descanner: ResultSection
+    camera_length: ResultSection
+    detector: ResultSection
 
 
 # TODO use LiberTEM-schema later
@@ -449,14 +470,14 @@ class Model4DSTEM:
 
     def _components(
         self, scan_pos: PixelYX, specimen: Component | None = None, _one: float = 1.0
-    ) -> OrderedDict[str, Component]:
+    ) -> dict[str, Component]:
         if specimen is None:
             specimen = Plane(z=self.overfocus)
         else:
             # The specimen is in the overfocus plane by definition
             specimen = dataclasses.replace(specimen, z=self.overfocus)
         scan_pos_phys = self.scan_to_real(scan_pos, _one=_one)
-        res = OrderedDict()
+        res = {}
         res["source"] = PointSource(z=0.0, semi_conv=self.semiconv)
         res["scanner"] = Scanner(
             z=self.overfocus, scan_pos_x=scan_pos_phys.x, scan_pos_y=scan_pos_phys.y
@@ -519,7 +540,7 @@ class Model4DSTEM:
             pathlength=0.0,
             _one=_one,
         )
-        result = OrderedDict()
+        result = {}
 
         # run_iter() currently inserts a propagation if two subsequent
         # components have a non-zero distance, but skips for equal z. We
@@ -595,9 +616,9 @@ class Model4DSTEM:
         )
 
         assert len(run_result) == 0
-        return result
+        return Result4DSTEM(**result)
 
-    def _adjust_compensating_descan_error(self, param: str, value) -> Model4DSTEM:
+    def _adjust_compensating_descan_error(self, param: str, value) -> Self:
         """
         Set :code:`param` to :code:`value` and compensate the effect on the
         central ray in pixel coordinates with the descan error.
@@ -615,7 +636,7 @@ class Model4DSTEM:
         return self.derive(**{param: value}, descan_error=descan_error)
 
     @lambdify_method
-    def adjust_scan_rotation(self, scan_rotation: float) -> Model4DSTEM:
+    def adjust_scan_rotation(self, scan_rotation: float) -> Self:
         """
         Adjust the scan rotation while keeping the effective descan error
         compensation the same.
@@ -625,7 +646,7 @@ class Model4DSTEM:
         return self._adjust_compensating_descan_error("scan_rotation", scan_rotation)
 
     @lambdify_method
-    def adjust_scan_pixel_pitch(self, scan_pixel_pitch: float) -> Model4DSTEM:
+    def adjust_scan_pixel_pitch(self, scan_pixel_pitch: float) -> Self:
         """
         Adjust the scan pixel pitch while keeping the effective descan error
         compensation the same.
@@ -635,7 +656,7 @@ class Model4DSTEM:
         return self._adjust_compensating_descan_error("scan_pixel_pitch", scan_pixel_pitch)
 
     @lambdify_method
-    def adjust_scan_center(self, scan_center: PixelYX) -> Model4DSTEM:
+    def adjust_scan_center(self, scan_center: PixelYX) -> Self:
         """
         Adjust the scan center while keeping the effective descan error
         compensation the same.
@@ -645,7 +666,7 @@ class Model4DSTEM:
         return self._adjust_compensating_descan_error("scan_center", scan_center)
 
     @lambdify_method
-    def adjust_detector_rotation(self, detector_rotation: float) -> Model4DSTEM:
+    def adjust_detector_rotation(self, detector_rotation: float) -> Self:
         """
         Adjust the detector rotation while keeping the effective descan error
         compensation the same.
@@ -655,7 +676,7 @@ class Model4DSTEM:
         return self._adjust_compensating_descan_error("detector_rotation", detector_rotation)
 
     @lambdify_method
-    def adjust_flip_factor(self, flip_factor: float) -> Model4DSTEM:
+    def adjust_flip_factor(self, flip_factor: float) -> Self:
         """
         Adjust the flip factor while keeping the effective descan error
         compensation the same.
@@ -665,7 +686,7 @@ class Model4DSTEM:
         return self._adjust_compensating_descan_error("flip_factor", flip_factor)
 
     @lambdify_method
-    def adjust_detector_center(self, detector_center: PixelYX) -> Model4DSTEM:
+    def adjust_detector_center(self, detector_center: PixelYX) -> Self:
         """
         Adjust the detector center while keeping the effective descan error
         compensation the same.
@@ -675,7 +696,7 @@ class Model4DSTEM:
         return self._adjust_compensating_descan_error("detector_center", detector_center)
 
     @lambdify_method
-    def adjust_detector_pixel_pitch(self, detector_pixel_pitch: float) -> Model4DSTEM:
+    def adjust_detector_pixel_pitch(self, detector_pixel_pitch: float) -> Self:
         """
         Adjust the detector pixel pitch while keeping the effective descan error
         compensation the same.
@@ -685,7 +706,7 @@ class Model4DSTEM:
         return self._adjust_compensating_descan_error("detector_pixel_pitch", detector_pixel_pitch)
 
     @lambdify_method
-    def adjust_camera_length(self, camera_length: float) -> Model4DSTEM:
+    def adjust_camera_length(self, camera_length: float) -> Self:
         """
         Adjust the camera length while keeping the effective descan error
         compensation the same.
